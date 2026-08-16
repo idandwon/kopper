@@ -40,9 +40,16 @@ beforeEach(() => {
 describe("preload bridge", () => {
   it("exposes only the typed Kopper API", () => {
     expect(Object.keys(exposedApi()).sort()).toEqual([
+      "chooseDataImport",
+      "confirmDataImport",
       "copyNotes",
+      "createNewStore",
       "execute",
+      "exportData",
+      "exportRecoveryBytes",
+      "getDataPath",
       "getDocument",
+      "openEditorWindow",
       "subscribeDocument",
       "undo",
     ]);
@@ -116,6 +123,39 @@ describe("preload bridge", () => {
     await expect(exposedApi().copyNotes([], "plain")).rejects.toThrow();
     electron.invoke.mockResolvedValueOnce({ ok: true });
     await expect(exposedApi().copyNotes(["first"], "plain")).rejects.toThrow();
+  });
+
+  it("validates editor and data-file payloads in both directions", async () => {
+    const document = createEmptyDocument(new Date("2026-08-16T12:00:00.000Z"));
+    electron.invoke
+      .mockResolvedValueOnce({ ok: true, value: { noteId: "note-1" } })
+      .mockResolvedValueOnce({ ok: true, value: { cancelled: true } })
+      .mockResolvedValueOnce({
+        ok: true,
+        value: {
+          token: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
+          fileName: "notes.json",
+          noteCount: 0,
+          sectionCount: 1,
+        },
+      })
+      .mockResolvedValueOnce({ ok: true, value: document })
+      .mockResolvedValueOnce({ ok: true, value: { cancelled: true } })
+      .mockResolvedValueOnce({ ok: true, value: document })
+      .mockResolvedValueOnce({ ok: true, value: "/tmp/kopper.json" });
+
+    await expect(exposedApi().openEditorWindow("note-1")).resolves.toMatchObject({ ok: true });
+    await expect(exposedApi().exportData()).resolves.toMatchObject({ ok: true });
+    const preview = await exposedApi().chooseDataImport();
+    expect(preview).toMatchObject({ ok: true, value: { fileName: "notes.json" } });
+    await expect(exposedApi().confirmDataImport("0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5")).resolves.toMatchObject({ ok: true });
+    await expect(exposedApi().exportRecoveryBytes()).resolves.toMatchObject({ ok: true });
+    await expect(exposedApi().createNewStore()).resolves.toMatchObject({ ok: true });
+    await expect(exposedApi().getDataPath()).resolves.toEqual({ ok: true, value: "/tmp/kopper.json" });
+
+    await expect(exposedApi().openEditorWindow("")).rejects.toThrow();
+    electron.invoke.mockResolvedValueOnce({ ok: true, value: { cancelled: "yes" } });
+    await expect(exposedApi().exportData()).rejects.toThrow();
   });
 
   it("validates document events before notifying subscribers", () => {

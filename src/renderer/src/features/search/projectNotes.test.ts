@@ -117,15 +117,36 @@ describe("projectNotes", () => {
     expect(projectNotes(makeDocument(), "  \n ", "active")).toHaveLength(3);
   });
 
-  it("projects only completed notes in their saved placement", () => {
-    const result = projectNotes(makeDocument(), "", "completed");
+  it("projects completed notes newest-first in saved placement with first-section fallback", () => {
+    const document = makeDocument();
+    document.notes.push(
+      {
+        ...document.notes[3],
+        id: "newer-done",
+        body: "Newer done",
+        completedAt: "2026-08-16T13:00:00.000Z",
+        previousPlacement: { sectionId: "inbox", order: 0 },
+      },
+      {
+        ...document.notes[3],
+        id: "orphan-done",
+        body: "Orphan done",
+        completedAt: "2026-08-16T11:00:00.000Z",
+        previousPlacement: { sectionId: "deleted", order: 0 },
+      },
+    );
+    const result = projectNotes(document, "", "completed");
 
     expect(result.map(({ section }) => section.id)).toEqual([
       "inbox",
       "later",
       "empty",
     ]);
-    expect(result[0].notes.map(({ id }) => id)).toEqual(["done"]);
+    expect(result[0].notes.map(({ id }) => id)).toEqual([
+      "newer-done",
+      "done",
+      "orphan-done",
+    ]);
     expect(result[1].notes).toEqual([]);
   });
 });

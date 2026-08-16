@@ -60,6 +60,27 @@ function wrapper({ children }: { children: ReactNode }) {
   return <DocumentProvider>{children}</DocumentProvider>;
 }
 
+function fileApiMocks(): Pick<
+  KopperApi,
+  | "openEditorWindow"
+  | "exportData"
+  | "chooseDataImport"
+  | "confirmDataImport"
+  | "exportRecoveryBytes"
+  | "createNewStore"
+  | "getDataPath"
+> {
+  return {
+    openEditorWindow: vi.fn(),
+    exportData: vi.fn(),
+    chooseDataImport: vi.fn(),
+    confirmDataImport: vi.fn(),
+    exportRecoveryBytes: vi.fn(),
+    createNewStore: vi.fn(),
+    getDataPath: vi.fn(),
+  };
+}
+
 function installApi(
   initialResult: Result<KopperDocument, KopperError> = {
     ok: true,
@@ -69,6 +90,7 @@ function installApi(
   let listener: ((document: KopperDocument) => void) | undefined;
   const unsubscribe = vi.fn();
   const api: KopperApi = {
+    ...fileApiMocks(),
     getDocument: vi.fn().mockResolvedValue(initialResult),
     execute: vi.fn(),
     undo: vi.fn(),
@@ -100,6 +122,7 @@ describe("DocumentProvider", () => {
     const callOrder: string[] = [];
     let listener: ((document: KopperDocument) => void) | undefined;
     window.kopper = {
+      ...fileApiMocks(),
       getDocument: vi.fn(async () => {
         callOrder.push("get");
         return { ok: true as const, value: initial };
@@ -122,6 +145,27 @@ describe("DocumentProvider", () => {
 
     act(() => listener?.(changed));
     expect(result.current.document).toEqual(changed);
+  });
+
+  it("transitions from initial recovery failure after a published replacement", async () => {
+    const recoveryError: KopperError = {
+      code: "invalid_document",
+      message: "Damaged store",
+      retryable: false,
+      recoveryAction: "choose_file",
+    };
+    const recovered = documentWith("Recovered");
+    const { emit } = installApi({ ok: false, error: recoveryError });
+    const { result } = renderHook(() => useKopperDocument(), { wrapper });
+
+    await waitFor(() => expect(result.current.pendingAction).toBeNull());
+    expect(result.current.ready).toBe(false);
+    expect(result.current.error).toEqual(recoveryError);
+
+    act(() => emit(recovered));
+    expect(result.current.ready).toBe(true);
+    expect(result.current.document).toEqual(recovered);
+    expect(result.current.error).toBeNull();
   });
 
   it("does not let a stale initial fetch overwrite a subscribed snapshot", async () => {

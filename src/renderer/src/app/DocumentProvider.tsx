@@ -18,6 +18,7 @@ import type { KopperError } from "../../../shared/domain/errors";
 
 export interface KopperDocumentContextValue {
   document: KopperDocument;
+  ready: boolean;
   pendingAction: string | null;
   error: KopperError | null;
   execute(command: DocumentCommand): Promise<boolean>;
@@ -50,6 +51,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   );
   const [pendingAction, setPendingAction] = useState<string | null>("load");
   const [error, setError] = useState<KopperError | null>(null);
+  const [ready, setReady] = useState(false);
   const mountedRef = useRef(true);
   const readyRef = useRef(false);
   const mutationPendingRef = useRef(false);
@@ -64,6 +66,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
 
       receivedSubscribedSnapshot = true;
       readyRef.current = true;
+      setReady(true);
       setDocument(snapshot);
       if (!mutationPendingRef.current) setPendingAction(null);
       setError(null);
@@ -75,10 +78,12 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
 
         if (result.ok) {
           readyRef.current = true;
+          setReady(true);
           setDocument(result.value);
           setError(null);
         } else {
           readyRef.current = false;
+          setReady(false);
           setError(result.error);
         }
         setPendingAction(null);
@@ -87,6 +92,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         if (!mountedRef.current || receivedSubscribedSnapshot) return;
 
         readyRef.current = false;
+        setReady(false);
         setError(readFailure());
         setPendingAction(null);
       },
@@ -182,6 +188,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const value = useMemo<KopperDocumentContextValue>(
     () => ({
       document,
+      ready,
       pendingAction,
       error,
       execute,
@@ -195,6 +202,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       error,
       execute,
       pendingAction,
+      ready,
       retryLastAction,
       undo,
     ],

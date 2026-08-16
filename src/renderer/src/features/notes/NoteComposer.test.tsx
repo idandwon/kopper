@@ -56,6 +56,7 @@ beforeEach(() => {
   execute.mockReset().mockResolvedValue(true);
   mockedUseKopperDocument.mockReturnValue({
     document,
+    ready: true,
     pendingAction: null,
     error: null,
     execute,

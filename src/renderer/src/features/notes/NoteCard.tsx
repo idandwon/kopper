@@ -2,6 +2,7 @@ import type { KeyboardEvent, MouseEvent } from "react";
 
 import type { Note, Section } from "../../../../shared/domain/document";
 import type { NoteProjectionView } from "../search/projectNotes";
+import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { cn } from "../../lib/utils";
 import { NoteContextMenu, type NoteMenuAction } from "./NoteContextMenu";
 
@@ -21,6 +22,9 @@ export interface NoteCardProps {
   actionNotes: Note[];
   sections: Section[];
   disabled: boolean;
+  editing?: boolean;
+  onEditingChange?(editing: boolean): void;
+  onSave?(body: string): Promise<boolean>;
   onSelect(intent: NoteSelectIntent): void;
   onContextSelect(id: string): void;
   onMoveFocus(sourceId: string, direction: -1 | 1, extend: boolean): void;
@@ -47,6 +51,9 @@ export function NoteCard({
   actionNotes,
   sections,
   disabled,
+  editing = false,
+  onEditingChange,
+  onSave,
   onSelect,
   onContextSelect,
   onMoveFocus,
@@ -73,6 +80,11 @@ export function NoteCard({
     const command = event.metaKey || event.ctrlKey;
     let action: NoteMenuAction | undefined;
 
+    if (event.key === "Enter" && !command) {
+      event.preventDefault();
+      onAction({ type: "edit", noteId: note.id });
+      return;
+    }
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       onMoveFocus(
@@ -142,7 +154,15 @@ export function NoteCard({
           <span className="sr-only">
             {view === "completed" ? "Completed" : "Captured"}
           </span>
-          <p className="m-0 whitespace-pre-wrap">{note.body}</p>
+          <MarkdownEditor
+            noteId={note.id}
+            body={note.body}
+            editing={editing}
+            disabled={disabled}
+            autoFocus
+            onEditingChange={onEditingChange ?? (() => undefined)}
+            onSave={onSave ?? (async () => false)}
+          />
         </article>
         <button
           type="button"

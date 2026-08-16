@@ -18,15 +18,23 @@ export function projectNotes(
 ): SectionProjection[] {
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const completed = view === "completed";
+  const orderedSections = [...document.sections].sort(
+    (left, right) => left.order - right.order,
+  );
+  const sectionIds = new Set(orderedSections.map(({ id }) => id));
+  const fallbackSectionId = orderedSections[0].id;
 
-  return [...document.sections]
-    .sort((left, right) => left.order - right.order)
+  return orderedSections
     .map((section): SectionProjection => {
       const notes = document.notes
         .filter((note) => {
           if ((note.completedAt !== null) !== completed) return false;
+          const savedSectionId =
+            note.previousPlacement?.sectionId ?? note.sectionId;
           const placementSectionId = completed
-            ? (note.previousPlacement?.sectionId ?? note.sectionId)
+            ? sectionIds.has(savedSectionId)
+              ? savedSectionId
+              : fallbackSectionId
             : note.sectionId;
           return (
             placementSectionId === section.id &&
@@ -35,13 +43,10 @@ export function projectNotes(
           );
         })
         .sort((left, right) => {
-          const leftOrder = completed
-            ? (left.previousPlacement?.order ?? left.order)
-            : left.order;
-          const rightOrder = completed
-            ? (right.previousPlacement?.order ?? right.order)
-            : right.order;
-          return leftOrder - rightOrder;
+          if (completed) {
+            return (right.completedAt ?? "").localeCompare(left.completedAt ?? "");
+          }
+          return left.order - right.order;
         });
 
       return { section, notes };

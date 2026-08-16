@@ -29,7 +29,7 @@ const execute = vi.fn<KopperDocumentContextValue["execute"]>();
 
 beforeEach(() => {
   execute.mockReset().mockResolvedValue(true);
-  vi.mocked(useKopperDocument).mockReturnValue({ document, pendingAction: null, error: null, execute, undo: vi.fn(), retryLastAction: vi.fn(), clearError: vi.fn() });
+  vi.mocked(useKopperDocument).mockReturnValue({ document, ready: true, pendingAction: null, error: null, execute, undo: vi.fn(), retryLastAction: vi.fn(), clearError: vi.fn() });
 });
 afterEach(cleanup);
 

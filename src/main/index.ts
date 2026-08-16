@@ -1,10 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { app, BrowserWindow, clipboard, ipcMain } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain } from "electron";
 
 import { APP_NAME, STORE_FILE_NAME } from "../shared/appIdentity";
 import { IPC_CHANNELS } from "../shared/ipc/contract";
-import { createMainWindow } from "./createMainWindow";
+import {
+  createMainWindow,
+  openExpandedEditorWindow,
+} from "./createMainWindow";
+import { DocumentFiles } from "./files/documentFiles";
 import { CommandService } from "./domain/commandService";
 import { registerIpcHandlers } from "./ipc/registerIpcHandlers";
 import { NoteRepository } from "./persistence/noteRepository";
@@ -19,22 +23,29 @@ void app.whenReady().then(async () => {
   );
   await repository.load();
 
+  const publish = (document: ReturnType<NoteRepository["snapshot"]>) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+        window.webContents.send(IPC_CHANNELS.documentChanged, document);
+      }
+    }
+  };
   const commandService = new CommandService(repository, {
     now: () => new Date().toISOString(),
     createId: randomUUID,
-    publish: (document) => {
-      for (const window of BrowserWindow.getAllWindows()) {
-        if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
-          window.webContents.send(IPC_CHANNELS.documentChanged, document);
-        }
-      }
-    },
+    publish,
   });
+  const documentFiles = new DocumentFiles(repository, dialog);
   cleanupIpcHandlers = registerIpcHandlers(
     repository,
     commandService,
     ipcMain,
     clipboard,
+    {
+      files: documentFiles,
+      openEditorWindow: openExpandedEditorWindow,
+      publish,
+    },
   );
   createMainWindow();
 

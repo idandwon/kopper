@@ -1,4 +1,4 @@
-import type { Dispatch } from "react";
+import { useState, type Dispatch } from "react";
 
 import { cn } from "../../lib/utils";
 import { useKopperDocument } from "../../app/DocumentProvider";
@@ -45,6 +45,7 @@ export function SectionGroup({
     return note === undefined ? [] : [note];
   });
   const disabled = pendingAction !== null;
+  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
 
   const handleAction = (action: NoteMenuAction) => {
     switch (action.type) {
@@ -85,6 +86,7 @@ export function SectionGroup({
         onExpand?.(action.noteId);
         return;
       case "edit":
+        setEditingNoteId(action.noteId);
         onEdit?.(action.noteId);
         return;
       case "edit-new-window":
@@ -141,6 +143,13 @@ export function SectionGroup({
               actionNotes={selected ? selectedNotes : [note]}
               sections={document.sections}
               disabled={disabled}
+              editing={editingNoteId === note.id}
+              onEditingChange={(editing) =>
+                setEditingNoteId(editing ? note.id : null)
+              }
+              onSave={(body) =>
+                execute({ type: "note.edit", noteId: note.id, body })
+              }
               onSelect={(intent) =>
                 dispatchSelection({
                   type: "click",

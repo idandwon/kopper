@@ -1,9 +1,16 @@
 import { contextBridge, ipcRenderer } from "electron";
 
+import { DocumentCommandSchema } from "../shared/domain/commands";
 import { KopperDocumentSchema } from "../shared/domain/document";
 import {
   CopyNotesArgumentsSchema,
+  DataImportPreviewResultSchema,
+  DataPathResultSchema,
+  FileOperationResultSchema,
+  ImportTokenArgumentsSchema,
   IPC_CHANNELS,
+  OpenEditorResultSchema,
+  SingleIdentifierArgumentsSchema,
   parseClipboardCopyResult,
   parseDocumentResult,
   type KopperApi,
@@ -17,8 +24,9 @@ const api: KopperApi = {
   },
 
   async execute(command) {
+    const parsedCommand = DocumentCommandSchema.parse(command);
     return parseDocumentResult(
-      await ipcRenderer.invoke(IPC_CHANNELS.executeCommand, command),
+      await ipcRenderer.invoke(IPC_CHANNELS.executeCommand, parsedCommand),
     );
   },
 
@@ -33,6 +41,50 @@ const api: KopperApi = {
     ]);
     return parseClipboardCopyResult(
       await ipcRenderer.invoke(IPC_CHANNELS.copyNotes, parsedIds, parsedMode),
+    );
+  },
+
+  async openEditorWindow(noteId) {
+    const [parsedNoteId] = SingleIdentifierArgumentsSchema.parse([noteId]);
+    return OpenEditorResultSchema.parse(
+      await ipcRenderer.invoke(IPC_CHANNELS.openEditorWindow, parsedNoteId),
+    );
+  },
+
+  async exportData() {
+    return FileOperationResultSchema.parse(
+      await ipcRenderer.invoke(IPC_CHANNELS.exportData),
+    );
+  },
+
+  async chooseDataImport() {
+    return DataImportPreviewResultSchema.parse(
+      await ipcRenderer.invoke(IPC_CHANNELS.chooseDataImport),
+    );
+  },
+
+  async confirmDataImport(token) {
+    const [parsedToken] = ImportTokenArgumentsSchema.parse([token]);
+    return parseDocumentResult(
+      await ipcRenderer.invoke(IPC_CHANNELS.confirmDataImport, parsedToken),
+    );
+  },
+
+  async exportRecoveryBytes() {
+    return FileOperationResultSchema.parse(
+      await ipcRenderer.invoke(IPC_CHANNELS.exportRecoveryBytes),
+    );
+  },
+
+  async createNewStore() {
+    return parseDocumentResult(
+      await ipcRenderer.invoke(IPC_CHANNELS.createNewStore),
+    );
+  },
+
+  async getDataPath() {
+    return DataPathResultSchema.parse(
+      await ipcRenderer.invoke(IPC_CHANNELS.getDataPath),
     );
   },
 

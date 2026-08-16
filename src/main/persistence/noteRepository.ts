@@ -125,6 +125,20 @@ export class NoteRepository {
     return { ok: true, value: this.snapshot() };
   }
 
+  activePath(): string {
+    return this.path;
+  }
+
+  recoveryBytes(): Buffer | undefined {
+    return this.rawRecoveryBytes === undefined
+      ? undefined
+      : Buffer.from(this.rawRecoveryBytes);
+  }
+
+  createNewStore(): Promise<Result<KopperDocument, KopperError>> {
+    return this.replace(createEmptyDocument());
+  }
+
   snapshot(): KopperDocument {
     return structuredClone(this.document);
   }

@@ -5,7 +5,9 @@ import { createEmptyDocument } from "../domain/document";
 import {
   ClipboardCopyResultSchema,
   CopyNotesArgumentsSchema,
+  DataImportPreviewResultSchema,
   DocumentResultSchema,
+  FileOperationResultSchema,
   IPC_CHANNELS,
   parseClipboardCopyResult,
   parseDocumentResult,
@@ -57,6 +59,35 @@ describe("IPC contract", () => {
       parseClipboardCopyResult({ ok: true, value: { copiedCount: 2 } }),
     ).toEqual({ ok: true, value: { copiedCount: 2 } });
     expect(() => ClipboardCopyResultSchema.parse({ ok: true })).toThrow();
+  });
+
+  it("runtime-validates file-operation and import-preview envelopes", () => {
+    expect(
+      FileOperationResultSchema.parse({
+        ok: true,
+        value: { cancelled: false, fileName: "export.json" },
+      }),
+    ).toEqual({
+      ok: true,
+      value: { cancelled: false, fileName: "export.json" },
+    });
+    expect(() =>
+      FileOperationResultSchema.parse({
+        ok: true,
+        value: { cancelled: false },
+      }),
+    ).toThrow();
+    expect(() =>
+      DataImportPreviewResultSchema.parse({
+        ok: true,
+        value: {
+          token: "not-a-token",
+          fileName: "import.json",
+          noteCount: 1,
+          sectionCount: 1,
+        },
+      }),
+    ).toThrow();
   });
 
   it("rejects malformed document result envelopes", () => {

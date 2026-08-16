@@ -13,6 +13,7 @@ import { NoteRepository } from "../persistence/noteRepository";
 import {
   registerIpcHandlers,
   type CommandExecutor,
+  type IpcFileOperations,
   type IpcMainRegistrar,
 } from "./registerIpcHandlers";
 
@@ -46,6 +47,9 @@ class FakeIpcMain implements IpcMainRegistrar {
 }
 
 const temporaryDirectories: string[] = [];
+const registeredChannels = Object.values(IPC_CHANNELS).filter(
+  (channel) => channel !== IPC_CHANNELS.documentChanged,
+);
 
 function makeClipboardWriter(): ClipboardWriter & {
   writeText: ReturnType<typeof vi.fn<ClipboardWriter["writeText"]>>;
@@ -115,12 +119,7 @@ describe("registerIpcHandlers", () => {
     expect(
       parseDocumentResult(await ipcMain.invoke(IPC_CHANNELS.getDocument)),
     ).toEqual({ ok: true, value: recovered });
-    expect([...ipcMain.handlers.keys()]).toEqual([
-      IPC_CHANNELS.getDocument,
-      IPC_CHANNELS.executeCommand,
-      IPC_CHANNELS.undo,
-      IPC_CHANNELS.copyNotes,
-    ]);
+    expect([...ipcMain.handlers.keys()]).toEqual(registeredChannels);
   });
 
   it("returns a structured validation error for unexpected handler input", async () => {
@@ -236,6 +235,62 @@ describe("registerIpcHandlers", () => {
     expect(clipboard.writeText).toHaveBeenCalledTimes(1);
   });
 
+  it("runtime-validates file/editor IPC and publishes successful recovery replacements", async () => {
+    const repository = new NoteRepository("/tmp/kopper.json");
+    const document = repository.snapshot();
+    const files: IpcFileOperations = {
+      activePath: () => "/tmp/kopper.json",
+      exportData: vi.fn().mockResolvedValue({ ok: true, value: { cancelled: true } }),
+      chooseImport: vi.fn().mockResolvedValue({ ok: true, value: null }),
+      confirmImport: vi.fn().mockResolvedValue({ ok: true, value: document }),
+      exportRecoveryBytes: vi.fn().mockResolvedValue({ ok: true, value: { cancelled: true } }),
+      createNewStore: vi.fn().mockResolvedValue({ ok: true, value: document }),
+    };
+    const publish = vi.fn();
+    const openEditorWindow = vi.fn();
+    const ipcMain = new FakeIpcMain();
+    registerIpcHandlers(repository, makeCommandExecutor(), ipcMain, makeClipboardWriter(), {
+      files,
+      publish,
+      openEditorWindow,
+    });
+
+    await expect(ipcMain.invoke(IPC_CHANNELS.getDataPath)).resolves.toEqual({ ok: true, value: "/tmp/kopper.json" });
+    await expect(ipcMain.invoke(IPC_CHANNELS.exportData)).resolves.toEqual({ ok: true, value: { cancelled: true } });
+    await expect(ipcMain.invoke(IPC_CHANNELS.chooseDataImport)).resolves.toEqual({ ok: true, value: null });
+    await expect(
+      ipcMain.invoke(
+        IPC_CHANNELS.confirmDataImport,
+        "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
+      ),
+    ).resolves.toEqual({ ok: true, value: document });
+    await expect(ipcMain.invoke(IPC_CHANNELS.createNewStore)).resolves.toEqual({ ok: true, value: document });
+    expect(publish).toHaveBeenCalledTimes(2);
+
+    document.notes.push({
+      id: "note-1",
+      sectionId: document.activeSectionId,
+      body: "Edit me",
+      order: 0,
+      createdAt: "2026-08-16T12:00:00.000Z",
+      updatedAt: "2026-08-16T12:00:00.000Z",
+      completedAt: null,
+      previousPlacement: null,
+    });
+    await repository.replace(document);
+    await expect(ipcMain.invoke(IPC_CHANNELS.openEditorWindow, "note-1")).resolves.toEqual({ ok: true, value: { noteId: "note-1" } });
+    expect(openEditorWindow).toHaveBeenCalledWith("note-1");
+
+    for (const [channel, args] of [
+      [IPC_CHANNELS.exportData, ["extra"]],
+      [IPC_CHANNELS.confirmDataImport, []],
+      [IPC_CHANNELS.openEditorWindow, [""]],
+      [IPC_CHANNELS.getDataPath, ["extra"]],
+    ] as const) {
+      await expect(ipcMain.invoke(channel, ...args)).resolves.toMatchObject({ ok: false, error: { code: "validation_failed" } });
+    }
+  });
+
   it("dispatches argument-free undo and rejects malformed undo requests", async () => {
     const repository = new NoteRepository("unused.json");
     const commandExecutor = makeCommandExecutor();
@@ -279,20 +334,10 @@ describe("registerIpcHandlers", () => {
       ipcMain,
     );
 
-    expect([...ipcMain.handlers.keys()]).toEqual([
-      IPC_CHANNELS.getDocument,
-      IPC_CHANNELS.executeCommand,
-      IPC_CHANNELS.undo,
-      IPC_CHANNELS.copyNotes,
-    ]);
+    expect([...ipcMain.handlers.keys()]).toEqual(registeredChannels);
     cleanup();
     cleanup();
-    expect(ipcMain.removedChannels).toEqual([
-      IPC_CHANNELS.getDocument,
-      IPC_CHANNELS.executeCommand,
-      IPC_CHANNELS.undo,
-      IPC_CHANNELS.copyNotes,
-    ]);
+    expect(ipcMain.removedChannels).toEqual(registeredChannels);
 
     expect(() =>
       registerIpcHandlers(repository, makeCommandExecutor(), ipcMain),

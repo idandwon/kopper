@@ -70,6 +70,7 @@ beforeEach(() => {
   execute.mockReset().mockResolvedValue(true);
   vi.mocked(useKopperDocument).mockReturnValue({
     document,
+    ready: true,
     pendingAction: null,
     error: null,
     execute,

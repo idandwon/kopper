@@ -9,10 +9,25 @@ import {
 import type { KopperDocument } from "../../../shared/domain/document";
 import type { KopperError } from "../../../shared/domain/errors";
 import { Button } from "../components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "../components/ui/dialog";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { AddSectionDialog } from "../features/sections/SectionManager";
 import { SectionGroup } from "../features/sections/SectionGroup";
+import { CompletedView } from "../features/completed/CompletedView";
+import {
+  ExpandedEditorWindow,
+  expandedEditorNoteId,
+} from "../features/editor/ExpandedEditorWindow";
 import { NoteComposer } from "../features/notes/NoteComposer";
+import { RecoveryScreen } from "../features/recovery/RecoveryScreen";
+import { DataSettings } from "../features/settings/DataSettings";
 import {
   initialSelectionState,
   selectionReducer,
@@ -159,6 +174,7 @@ function DocumentPanel({ document }: { document: KopperDocument }) {
           <SearchField query={query} onQueryChange={setQuery} />
           <div className="flex items-center justify-between gap-2">
             <div
+              role="group"
               className="flex rounded-lg border border-border bg-card p-0.5"
               aria-label="Note lifecycle view"
             >
@@ -166,6 +182,22 @@ function DocumentPanel({ document }: { document: KopperDocument }) {
               <ViewButton view="completed" current={view} onSelect={setView} />
             </div>
             <div className="flex items-center gap-1">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button type="button" variant="ghost" size="xs">
+                    Data
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Data settings</DialogTitle>
+                    <DialogDescription>
+                      Import and export the active local store.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <DataSettings />
+                </DialogContent>
+              </Dialog>
               <AddSectionDialog />
               <Button
                 type="button"
@@ -186,16 +218,34 @@ function DocumentPanel({ document }: { document: KopperDocument }) {
 
         <ScrollArea className="min-h-0 flex-1" aria-label="Notes by section">
           <div className="space-y-5 px-4 pt-1 pb-36 pl-5">
-            {projections.map((projection) => (
-              <SectionGroup
-                key={projection.section.id}
-                projection={projection}
-                view={view}
+            {view === "completed" ? (
+              <CompletedView
+                projections={projections}
                 displayedIds={displayedIds}
                 selection={visibleSelection}
                 dispatchSelection={dispatchSelection}
+                onOpenEditor={(noteId) => {
+                  void window.kopper.openEditorWindow(noteId);
+                }}
               />
-            ))}
+            ) : (
+              projections.map((projection) => (
+                <SectionGroup
+                  key={projection.section.id}
+                  projection={projection}
+                  view="active"
+                  displayedIds={displayedIds}
+                  selection={visibleSelection}
+                  dispatchSelection={dispatchSelection}
+                  onExpand={(noteId) => {
+                    void window.kopper.openEditorWindow(noteId);
+                  }}
+                  onEditNewWindow={(noteId) => {
+                    void window.kopper.openEditorWindow(noteId);
+                  }}
+                />
+              ))
+            )}
             {projections.length === 0 && (
               <p className="py-8 text-center text-sm text-muted-foreground">
                 No matching notes
@@ -204,15 +254,20 @@ function DocumentPanel({ document }: { document: KopperDocument }) {
           </div>
         </ScrollArea>
 
-        <NoteComposer />
+        {view === "active" && <NoteComposer />}
       </Panel>
     </div>
   );
 }
 
 export function App() {
-  const { document, pendingAction } = useKopperDocument();
+  const { document, ready, error, pendingAction } = useKopperDocument();
+  const editorNoteId = expandedEditorNoteId(globalThis.location.hash);
 
   if (pendingAction === "load") return <LoadingState />;
+  if (!ready && error !== null) return <RecoveryScreen error={error} />;
+  if (editorNoteId !== null) {
+    return <ExpandedEditorWindow noteId={editorNoteId} />;
+  }
   return <DocumentPanel document={document} />;
 }

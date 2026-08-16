@@ -32,7 +32,7 @@ const undo = vi.fn<KopperDocumentContextValue["undo"]>();
 const retryLastAction = vi.fn<KopperDocumentContextValue["retryLastAction"]>();
 
 function contextValue(overrides: Partial<KopperDocumentContextValue> = {}): KopperDocumentContextValue {
-  return { document, pendingAction: null, error: null, execute, undo, retryLastAction, clearError: vi.fn(), ...overrides };
+  return { document, ready: true, pendingAction: null, error: null, execute, undo, retryLastAction, clearError: vi.fn(), ...overrides };
 }
 
 beforeEach(() => {
@@ -102,17 +102,36 @@ describe("Oxide Ledger App", () => {
     expect(extendedCard).toHaveAttribute("aria-selected", "true");
   });
 
-  it("switches to completed projections and filters by search", async () => {
+  it("switches to completed projections, hides the composer, and filters by search", async () => {
     const user = userEvent.setup();
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "Completed notes" }));
     expect(screen.getByText("Completed note")).toBeVisible();
     expect(screen.queryByText("Captured note")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "Add a note or prompt" })).not.toBeInTheDocument();
 
     await user.type(screen.getByRole("searchbox"), "missing");
     expect(screen.queryByRole("heading", { name: "Inbox" })).not.toBeInTheDocument();
     expect(screen.getByText("No matching notes")).toBeVisible();
+  });
+
+  it("enters inline editing with Return and saves through note.edit", async () => {
+    render(<App />);
+    const card = screen.getByRole("option", { name: "Note: Captured note" });
+    card.focus();
+    fireEvent.keyDown(card, { key: "Enter" });
+    const editor = screen.getByRole("textbox", { name: "Edit note" });
+    fireEvent.change(editor, { target: { value: "Edited note" } });
+    fireEvent.keyDown(editor, { key: "Enter", metaKey: true });
+
+    await vi.waitFor(() =>
+      expect(execute).toHaveBeenCalledWith({
+        type: "note.edit",
+        noteId: "note-1",
+        body: "Edited note",
+      }),
+    );
   });
 
   it("supports Cmd+K outside editors and Undo", async () => {
