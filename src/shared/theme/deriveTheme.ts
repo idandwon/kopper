@@ -100,8 +100,8 @@ function composite(foreground: Rgb, background: Rgb): Rgb {
   };
 }
 
-function roundedRatio(background: Rgb, foreground: Rgb): number {
-  return Number(wcagContrast(background, foreground).toFixed(2));
+function roundedRatio(ratio: number): number {
+  return Number(ratio.toFixed(2));
 }
 
 export function validateReadableTheme(
@@ -127,13 +127,13 @@ export function validateReadableTheme(
         parsedRgb(mode[foregroundToken]),
         semanticBackground,
       );
-      const ratio = roundedRatio(semanticBackground, semanticForeground);
+      const ratio = wcagContrast(semanticBackground, semanticForeground);
       if (ratio < 4.5) {
         failures.push({
           mode: modeName,
           backgroundToken,
           foregroundToken,
-          ratio,
+          ratio: roundedRatio(ratio),
         });
       }
     }

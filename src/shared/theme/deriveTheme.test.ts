@@ -91,6 +91,42 @@ describe("validateReadableTheme", () => {
     });
   });
 
+  it("compares full-precision contrast at the 4.5 boundary and rounds only failures", () => {
+    const cases = [
+      {
+        label: "just below",
+        foreground: "color(srgb 0.4654 0.4654 0.4654)",
+        readable: false,
+      },
+      {
+        label: "exactly at",
+        foreground:
+          "color(srgb 0.46531904698148846 0.46531904698148846 0.46531904698148846)",
+        readable: true,
+      },
+      {
+        label: "just above",
+        foreground: "color(srgb 0.4653 0.4653 0.4653)",
+        readable: true,
+      },
+    ] as const;
+
+    for (const { label, foreground, readable } of cases) {
+      const theme = withMode(readableTheme(), "light", { foreground });
+      const result = validateReadableTheme(deriveCompleteTheme(theme));
+
+      expect(result.ok, label).toBe(readable);
+      if (label === "just below" && !result.ok) {
+        expect(result.error.failures).toContainEqual({
+          mode: "light",
+          backgroundToken: "background",
+          foregroundToken: "foreground",
+          ratio: 4.5,
+        });
+      }
+    }
+  });
+
   it("returns every failing semantic pair with ratios rounded to two decimals", () => {
     let theme = readableTheme();
     theme = withMode(theme, "light", {

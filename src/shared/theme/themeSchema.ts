@@ -36,6 +36,7 @@ const rawThemeModeSchema = explicitThemeTokenKeysSchema.pipe(
   z.partialRecord(AllowedThemeTokenSchema, z.string()),
 );
 const RADIUS_PATTERN = /^(0|0?\.\d+|1(?:\.\d+)?|2(?:\.0+)?)rem$/;
+const EXPLICIT_MISSING_ALPHA_PATTERN = /\/\s*none\s*\)$/i;
 
 export type ThemeMode = Record<ShadcnThemeToken, string> &
   Partial<Record<KopperThemeToken, string>>;
@@ -62,6 +63,12 @@ function validateThemeMode(
         code: "custom",
         path: [token],
         message: `Invalid CSS color for theme token: ${token}`,
+      });
+    } else if (EXPLICIT_MISSING_ALPHA_PATTERN.test(value)) {
+      context.addIssue({
+        code: "custom",
+        path: [token],
+        message: `Theme color alpha cannot be none: ${token}`,
       });
     }
   }
@@ -94,6 +101,15 @@ function validateThemeMode(
         code: "custom",
         path: [token],
         message: `Invalid CSS color for theme token: ${token}`,
+      });
+    } else if (
+      value !== undefined &&
+      EXPLICIT_MISSING_ALPHA_PATTERN.test(value)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: [token],
+        message: `Theme color alpha cannot be none: ${token}`,
       });
     }
   }
