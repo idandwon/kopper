@@ -109,7 +109,8 @@ void app.whenReady().then(async () => {
     platform: process.platform,
     isTrustedAccessibilityClient: (prompt) =>
       systemPreferences.isTrustedAccessibilityClient(prompt),
-    openExternal: () => shell.openExternal(ACCESSIBILITY_SETTINGS_URL),
+    openAccessibilitySettings: () =>
+      shell.openExternal(ACCESSIBILITY_SETTINGS_URL),
   });
   const selectionCapture = new SelectionCapture({
     clipboard,

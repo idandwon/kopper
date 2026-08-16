@@ -133,13 +133,41 @@ async function createSourceFixture(files: Record<string, string>) {
 
 describe("source security auditor", () => {
   it.each([
-    ["updater", 'import { autoUpdater } from "electron-updater";', "forbidden_import"],
-    ["updater helper", 'import updateElectronApp from "update-electron-app";', "forbidden_import"],
-    ["analytics", 'const analytics = require("posthog-js");', "forbidden_import"],
-    ["generic external URL", "void shell.openExternal(targetUrl);", "unrestricted_external_open"],
-    ["web security disabled", "const options = { webSecurity: false };", "insecure_web_preference"],
-    ["Node enabled", "const options = { nodeIntegration: true };", "insecure_web_preference"],
-    ["isolation disabled", "const options = { contextIsolation: false };", "insecure_web_preference"],
+    [
+      "updater",
+      'import { autoUpdater } from "electron-updater";',
+      "forbidden_import",
+    ],
+    [
+      "updater helper",
+      'import updateElectronApp from "update-electron-app";',
+      "forbidden_import",
+    ],
+    [
+      "analytics",
+      'const analytics = require("posthog-js");',
+      "forbidden_import",
+    ],
+    [
+      "generic external URL",
+      "void shell.openExternal(targetUrl);",
+      "unrestricted_external_open",
+    ],
+    [
+      "web security disabled",
+      "const options = { webSecurity: false };",
+      "insecure_web_preference",
+    ],
+    [
+      "Node enabled",
+      "const options = { nodeIntegration: true };",
+      "insecure_web_preference",
+    ],
+    [
+      "isolation disabled",
+      "const options = { contextIsolation: false };",
+      "insecure_web_preference",
+    ],
     ["content logging", "console.error(note.body);", "production_console_log"],
   ])("rejects %s in application source", async (_name, source, rule) => {
     const root = await createSourceFixture({ "src/main/unsafe.ts": source });
@@ -150,6 +178,86 @@ describe("source security auditor", () => {
     expect(result.failures).toContainEqual({
       file: "src/main/unsafe.ts",
       rule,
+    });
+  });
+
+  it.each([
+    [
+      "dynamic updater template import",
+      "void import(`electron-updater`);",
+      "forbidden_import",
+    ],
+    [
+      "updater export",
+      'export * from "electron-updater/runtime";',
+      "forbidden_import",
+    ],
+    [
+      "analytics template require",
+      "require(`posthog-js`);",
+      "forbidden_import",
+    ],
+    [
+      "aliased Electron shell",
+      'import { shell as electronShell } from "electron"; electronShell.openExternal(target);',
+      "unrestricted_external_open",
+    ],
+    [
+      "computed external open",
+      'shell["openExternal"](target);',
+      "unrestricted_external_open",
+    ],
+    [
+      "template-computed external open",
+      "shell[`openExternal`](target);",
+      "unrestricted_external_open",
+    ],
+    [
+      "destructured external open",
+      "const { openExternal: open } = shell; open(target);",
+      "unrestricted_external_open",
+    ],
+    [
+      "aliased external open",
+      "const open = shell.openExternal; open(target);",
+      "unrestricted_external_open",
+    ],
+    [
+      "computed console",
+      'console["error"](note.body);',
+      "production_console_log",
+    ],
+    ["bare console identifier", "consume(console);", "production_console_log"],
+  ])("rejects %s through AST inspection", async (_name, source, rule) => {
+    const root = await createSourceFixture({ "src/main/unsafe.ts": source });
+
+    const result = await verifySource(root);
+
+    expect(result.failures).toContainEqual({
+      file: "src/main/unsafe.ts",
+      rule,
+    });
+  });
+
+  it.each([
+    [
+      "comments",
+      '// console.error(note.body); shell.openExternal(target); import("electron-updater");',
+    ],
+    [
+      "inert strings",
+      'const examples = ["console.error(x)", "shell.openExternal(x)", "import(\\"electron-updater\\")"];',
+    ],
+    [
+      "unrelated nearby import",
+      'import safe from "safe-package"; const example = "posthog-js"; void safe;',
+    ],
+  ])("allows %s that are not executable findings", async (_name, source) => {
+    const root = await createSourceFixture({ "src/main/safe.ts": source });
+
+    await expect(verifySource(root)).resolves.toMatchObject({
+      ok: true,
+      failures: [],
     });
   });
 
@@ -170,12 +278,113 @@ describe("source security auditor", () => {
     });
   });
 
-  it("permits only the fixed Accessibility Settings external-open adapter", async () => {
+  it.each([
+    [
+      "reviewed names",
+      'import { shell } from "electron";',
+      'import { ACCESSIBILITY_SETTINGS_URL } from "./permissions/permissionManager";',
+      "shell.openExternal(ACCESSIBILITY_SETTINGS_URL)",
+    ],
+    [
+      "reviewed import aliases",
+      'import { shell as electronShell } from "electron";',
+      'import { ACCESSIBILITY_SETTINGS_URL as settingsUrl } from "./permissions/permissionManager";',
+      "electronShell.openExternal(settingsUrl)",
+    ],
+  ])(
+    "permits only the fixed Accessibility Settings external-open adapter with %s",
+    async (_name, shellImport, urlImport, call) => {
+      const root = await createSourceFixture({
+        "src/main/index.ts": [
+          shellImport,
+          urlImport,
+          `const adapter = () => ${call};`,
+        ].join("\n"),
+      });
+
+      await expect(verifySource(root)).resolves.toMatchObject({
+        ok: true,
+        failures: [],
+      });
+    },
+  );
+
+  it.each([
+    [
+      "shadowed shell receiver",
+      'import { shell } from "electron";',
+      'import { ACCESSIBILITY_SETTINGS_URL } from "./permissions/permissionManager";',
+      "const adapter = (shell: { openExternal(value: string): void }) => shell.openExternal(ACCESSIBILITY_SETTINGS_URL);",
+    ],
+    [
+      "shadowed URL argument",
+      'import { shell } from "electron";',
+      'import { ACCESSIBILITY_SETTINGS_URL } from "./permissions/permissionManager";',
+      "const adapter = (ACCESSIBILITY_SETTINGS_URL: string) => shell.openExternal(ACCESSIBILITY_SETTINGS_URL);",
+    ],
+    [
+      "Electron path spoof",
+      'import { shell } from "electron/runtime";',
+      'import { ACCESSIBILITY_SETTINGS_URL } from "./permissions/permissionManager";',
+      "shell.openExternal(ACCESSIBILITY_SETTINGS_URL);",
+    ],
+    [
+      "permission module suffix spoof",
+      'import { shell } from "electron";',
+      'import { ACCESSIBILITY_SETTINGS_URL } from "./spoof/permissions/permissionManager";',
+      "shell.openExternal(ACCESSIBILITY_SETTINGS_URL);",
+    ],
+    [
+      "computed reviewed call",
+      'import { shell } from "electron";',
+      'import { ACCESSIBILITY_SETTINGS_URL } from "./permissions/permissionManager";',
+      'shell["openExternal"](ACCESSIBILITY_SETTINGS_URL);',
+    ],
+  ])("rejects the Accessibility exception when %s", async (_name, ...lines) => {
     const root = await createSourceFixture({
-      "src/main/index.ts": [
-        'import { shell } from "electron";',
-        'import { ACCESSIBILITY_SETTINGS_URL } from "./permissions/permissionManager";',
-        "const adapter = () => shell.openExternal(ACCESSIBILITY_SETTINGS_URL);",
+      "src/main/index.ts": lines.join("\n"),
+    });
+
+    const result = await verifySource(root);
+
+    expect(result.failures).toContainEqual({
+      file: "src/main/index.ts",
+      rule: "unrestricted_external_open",
+    });
+  });
+
+  it.each([
+    ["nodeIntegration true", "nodeIntegration: true"],
+    ["nodeIntegration dynamic", "nodeIntegration: disabled"],
+    ["nodeIntegration shorthand", "nodeIntegration"],
+    ["contextIsolation false", "contextIsolation: false"],
+    ["contextIsolation dynamic", "contextIsolation: enabled"],
+    ["contextIsolation shorthand", "contextIsolation"],
+    ["webSecurity false", "webSecurity: false"],
+    ["webSecurity dynamic", "webSecurity: enabled"],
+    ["webSecurity shorthand", "webSecurity"],
+    ["computed nodeIntegration", '["nodeIntegration"]: true'],
+    ["computed contextIsolation", "[`contextIsolation`]: false"],
+    ["computed webSecurity", '["webSecurity"]: false'],
+  ])("rejects unsafe web preference %s", async (_name, property) => {
+    const root = await createSourceFixture({
+      "src/main/unsafe.ts": `const disabled = false; const enabled = true; const nodeIntegration = false; const contextIsolation = true; const webSecurity = true; const options = { ${property} };`,
+    });
+
+    const result = await verifySource(root);
+
+    expect(result.failures).toContainEqual({
+      file: "src/main/unsafe.ts",
+      rule: "insecure_web_preference",
+    });
+  });
+
+  it("allows only literal-safe web preference properties", async () => {
+    const root = await createSourceFixture({
+      "src/main/safe.ts": [
+        "const one = { nodeIntegration: false, contextIsolation: true, webSecurity: true };",
+        'const two = { ["nodeIntegration"]: false, [`contextIsolation`]: true };',
+        "void one; void two;",
       ].join("\n"),
     });
 
@@ -186,7 +395,8 @@ describe("source security auditor", () => {
   });
 
   it("scans application source only and treats tests as negative fixture data", async () => {
-    const unsafe = 'import updater from "electron-updater"; console.log(noteBody);';
+    const unsafe =
+      'import updater from "electron-updater"; console.log(noteBody);';
     const root = await createSourceFixture({
       "src/main/safe.ts": "export const safe = true;",
       "src/main/safe.test.ts": unsafe,

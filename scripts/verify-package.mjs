@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFile as execFileCallback } from "node:child_process";
-import { access, readFile, readdir } from "node:fs/promises";
+import { access, readdir } from "node:fs/promises";
 import { basename, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
@@ -9,8 +9,8 @@ import { pathToFileURL } from "node:url";
 import { extractFile, listPackage } from "@electron/asar";
 import { parse as parseJavaScriptAst } from "acorn";
 import { parse as parseHtmlDocument } from "parse5";
-import { SyntaxKind } from "typescript/unstable/ast";
-import { createScanner } from "typescript/unstable/ast/scanner";
+import * as ts from "typescript/unstable/ast";
+import { API as TypeScriptApi } from "typescript/unstable/sync";
 
 const execFile = promisify(execFileCallback);
 const REQUIRED_ARCHITECTURES = ["arm64", "x86_64"];
@@ -301,10 +301,10 @@ const FORBIDDEN_IMPORTS = new Set([
   "posthog-js",
   "rudder-sdk-js",
 ]);
-const INSECURE_WEB_PREFERENCES = new Map([
-  ["webSecurity", false],
-  ["nodeIntegration", true],
-  ["contextIsolation", false],
+const SECURE_WEB_PREFERENCES = new Map([
+  ["nodeIntegration", ts.SyntaxKind.FalseKeyword],
+  ["contextIsolation", ts.SyntaxKind.TrueKeyword],
+  ["webSecurity", ts.SyntaxKind.TrueKeyword],
 ]);
 
 function forbiddenImport(moduleName) {
@@ -314,109 +314,183 @@ function forbiddenImport(moduleName) {
   );
 }
 
-function scanSourceTokens(content) {
-  const scanner = createScanner(true, undefined, content);
-  const tokens = [];
-  while (true) {
-    const kind = scanner.scan();
-    if (kind === SyntaxKind.EndOfFile) break;
-    tokens.push({
-      kind,
-      text: scanner.getTokenText(),
-      value: scanner.getTokenValue(),
-    });
+function staticString(node, checker, seenSymbols = new Set()) {
+  if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+    return node.text;
   }
-  return tokens;
-}
+  if (ts.isTemplateExpression(node)) {
+    let value = node.head.text;
+    for (const span of node.templateSpans) {
+      const expression = staticString(span.expression, checker, seenSymbols);
+      if (expression === undefined) return undefined;
+      value += expression + span.literal.text;
+    }
+    return value;
+  }
+  if (ts.isParenthesizedExpression(node)) {
+    return staticString(node.expression, checker, seenSymbols);
+  }
+  if (!ts.isIdentifier(node)) return undefined;
 
-function tokenText(token) {
-  if (!token) return "";
-  return token.kind === SyntaxKind.StringLiteral ? token.value : token.text;
-}
-
-function follows(tokens, index, expected) {
-  return expected.every(
-    (text, offset) => tokenText(tokens[index + offset]) === text,
-  );
-}
-
-function hasFixedAccessibilityImport(tokens) {
-  return tokens.some((token, index) => {
+  const symbol = checker.getSymbolAtLocation(node);
+  if (symbol === undefined || seenSymbols.has(symbol.id)) return undefined;
+  seenSymbols.add(symbol.id);
+  for (const declarationHandle of symbol.declarations) {
+    const declaration = declarationHandle.resolve();
     if (
-      token.kind !== SyntaxKind.StringLiteral ||
-      !tokenText(token).endsWith("/permissions/permissionManager")
+      declaration &&
+      ts.isVariableDeclaration(declaration) &&
+      declaration.initializer
     ) {
-      return false;
+      return staticString(declaration.initializer, checker, seenSymbols);
     }
-    let start = index - 1;
-    while (start >= 0 && ![";", "import"].includes(tokenText(tokens[start]))) {
-      start -= 1;
-    }
-    const declaration = tokens.slice(Math.max(0, start), index).map(tokenText);
+  }
+  return undefined;
+}
+
+function propertyNameText(name, checker) {
+  if (
+    ts.isIdentifier(name) ||
+    ts.isStringLiteral(name) ||
+    ts.isNoSubstitutionTemplateLiteral(name)
+  ) {
+    return name.text;
+  }
+  if (ts.isComputedPropertyName(name)) {
+    return staticString(name.expression, checker);
+  }
+  return undefined;
+}
+
+function importedBinding(symbol, importedName, moduleName) {
+  if (symbol === undefined) return false;
+  return symbol.declarations.some((handle) => {
+    const declaration = handle.resolve();
+    if (!declaration || !ts.isImportSpecifier(declaration)) return false;
+    const sourceName = declaration.propertyName?.text ?? declaration.name.text;
+    const importDeclaration = declaration.parent?.parent?.parent;
     return (
-      declaration[0] === "import" &&
-      declaration.includes("from") &&
-      declaration.includes("ACCESSIBILITY_SETTINGS_URL")
+      sourceName === importedName &&
+      importDeclaration &&
+      ts.isImportDeclaration(importDeclaration) &&
+      ts.isStringLiteral(importDeclaration.moduleSpecifier) &&
+      importDeclaration.moduleSpecifier.text === moduleName
     );
   });
 }
 
-function importedString(tokens, index) {
-  const token = tokens[index];
-  if (token?.kind !== SyntaxKind.StringLiteral) return false;
-  const nearby = tokens.slice(Math.max(0, index - 8), index).map(tokenText);
+function reviewedExternalOpen(relativePath, propertyAccess, checker) {
+  if (relativePath !== "src/main/index.ts") return false;
+  if (!ts.isIdentifier(propertyAccess.expression)) return false;
+  const call = propertyAccess.parent;
+  if (
+    !ts.isCallExpression(call) ||
+    call.expression !== propertyAccess ||
+    call.arguments.length !== 1 ||
+    !ts.isIdentifier(call.arguments[0])
+  ) {
+    return false;
+  }
   return (
-    nearby.includes("import") ||
-    nearby.includes("from") ||
-    nearby.some(
-      (text, nearbyIndex) =>
-        text === "require" && nearby[nearbyIndex + 1] === "(",
+    importedBinding(
+      checker.getSymbolAtLocation(propertyAccess.expression),
+      "shell",
+      "electron",
+    ) &&
+    importedBinding(
+      checker.getSymbolAtLocation(call.arguments[0]),
+      "ACCESSIBILITY_SETTINGS_URL",
+      "./permissions/permissionManager",
     )
   );
 }
 
-function inspectApplicationSource(relativePath, content) {
-  const tokens = scanSourceTokens(content);
-  const rules = new Set();
-  const fixedAccessibilityImport = hasFixedAccessibilityImport(tokens);
+function moduleReference(node, checker) {
+  if (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) {
+    return node.moduleSpecifier
+      ? staticString(node.moduleSpecifier, checker)
+      : undefined;
+  }
+  if (ts.isExternalModuleReference(node)) {
+    return staticString(node.expression, checker);
+  }
+  if (!ts.isCallExpression(node) || node.arguments.length === 0) {
+    return undefined;
+  }
+  const dynamicImport = node.expression.kind === ts.SyntaxKind.ImportKeyword;
+  const commonJsRequire =
+    ts.isIdentifier(node.expression) && node.expression.text === "require";
+  if (!dynamicImport && !commonJsRequire) return undefined;
+  return staticString(node.arguments[0], checker);
+}
 
-  for (let index = 0; index < tokens.length; index += 1) {
-    const token = tokens[index];
-    const text = tokenText(token);
+function hasUnsafeWebPreference(objectLiteral, checker) {
+  for (const property of objectLiteral.properties) {
+    if (!property.name) continue;
+    const name = propertyNameText(property.name, checker);
+    const expected = SECURE_WEB_PREFERENCES.get(name);
+    if (expected === undefined) continue;
     if (
-      token.kind === SyntaxKind.StringLiteral &&
-      importedString(tokens, index) &&
-      forbiddenImport(text)
+      !ts.isPropertyAssignment(property) ||
+      property.initializer.kind !== expected
     ) {
-      rules.add("forbidden_import");
-    }
-    if (follows(tokens, index, ["shell", ".", "openExternal", "("])) {
-      const fixedAdapter =
-        relativePath === "src/main/index.ts" &&
-        tokenText(tokens[index + 4]) === "ACCESSIBILITY_SETTINGS_URL" &&
-        tokenText(tokens[index + 5]) === ")" &&
-        fixedAccessibilityImport;
-      if (!fixedAdapter) rules.add("unrestricted_external_open");
-    }
-    if (
-      text === "console" &&
-      tokenText(tokens[index + 1]) === "." &&
-      tokenText(tokens[index + 3]) === "("
-    ) {
-      rules.add("production_console_log");
-    }
-    const expected = INSECURE_WEB_PREFERENCES.get(text);
-    if (expected !== undefined) {
-      const operator = tokenText(tokens[index + 1]);
-      const actual = tokenText(tokens[index + 2]);
-      if (
-        [":", "="].includes(operator) &&
-        actual === String(expected)
-      ) {
-        rules.add("insecure_web_preference");
-      }
+      return true;
     }
   }
+  return false;
+}
+
+function inspectApplicationSource(relativePath, sourceFile, checker) {
+  const rules = new Set();
+
+  const visit = (node) => {
+    const importedModule = moduleReference(node, checker);
+    if (importedModule !== undefined && forbiddenImport(importedModule)) {
+      rules.add("forbidden_import");
+    }
+
+    if (ts.isIdentifier(node) && node.text === "console") {
+      rules.add("production_console_log");
+    }
+
+    if (
+      ts.isObjectLiteralExpression(node) &&
+      hasUnsafeWebPreference(node, checker)
+    ) {
+      rules.add("insecure_web_preference");
+    }
+
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      node.name.text === "openExternal"
+    ) {
+      if (!reviewedExternalOpen(relativePath, node, checker)) {
+        rules.add("unrestricted_external_open");
+      }
+    } else if (
+      ts.isElementAccessExpression(node) &&
+      staticString(node.argumentExpression, checker) === "openExternal"
+    ) {
+      rules.add("unrestricted_external_open");
+    } else if (
+      ts.isComputedPropertyName(node) &&
+      staticString(node.expression, checker) === "openExternal"
+    ) {
+      rules.add("unrestricted_external_open");
+    } else if (ts.isIdentifier(node) && node.text === "openExternal") {
+      const property = node.parent;
+      if (
+        !ts.isPropertyAccessExpression(property) ||
+        property.name !== node ||
+        !reviewedExternalOpen(relativePath, property, checker)
+      ) {
+        rules.add("unrestricted_external_open");
+      }
+    }
+
+    node.forEachChild(visit);
+  };
+  visit(sourceFile);
   return [...rules].sort();
 }
 
@@ -436,12 +510,33 @@ export async function verifySource(root = process.cwd()) {
     applicationSourcePath(path),
   );
   const failures = [];
-  for (const path of files) {
-    const relativePath = relative(absoluteRoot, path).split(sep).join("/");
-    const content = await readFile(path, "utf8");
-    for (const rule of inspectApplicationSource(relativePath, content)) {
-      failures.push({ file: relativePath, rule });
+  const api = new TypeScriptApi();
+  let snapshot;
+  try {
+    snapshot = api.updateSnapshot({ openFiles: files });
+    for (const path of files) {
+      const relativePath = relative(absoluteRoot, path).split(sep).join("/");
+      const project = snapshot.getDefaultProjectForFile(path);
+      const sourceFile = project?.program.getSourceFile(path);
+      if (project === undefined || sourceFile === undefined) {
+        failures.push({ file: relativePath, rule: "source_audit_failed" });
+        continue;
+      }
+      if (project.program.getSyntacticDiagnostics(path).length > 0) {
+        failures.push({ file: relativePath, rule: "invalid_source_syntax" });
+        continue;
+      }
+      for (const rule of inspectApplicationSource(
+        relativePath,
+        sourceFile,
+        project.checker,
+      )) {
+        failures.push({ file: relativePath, rule });
+      }
     }
+  } finally {
+    snapshot?.dispose();
+    api.close();
   }
   return {
     ok: failures.length === 0,

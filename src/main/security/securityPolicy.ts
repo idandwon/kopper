@@ -73,6 +73,40 @@ function developmentNetworkOrigins(rendererUrl: URL): ReadonlySet<string> {
   return new Set([rendererUrl.origin, websocket.origin]);
 }
 
+function isImageDataUrl(requested: URL): boolean {
+  const comma = requested.href.indexOf(",");
+  if (comma < 0) return false;
+  const metadata = requested.href.slice("data:".length, comma);
+  const mimeType = metadata.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  return /^image\/[a-z0-9.+-]+$/u.test(mimeType);
+}
+
+function isTrustedBlob(requested: URL, rendererUrl: URL): boolean {
+  const embedded = requested.href.slice("blob:".length);
+  if (!app.isPackaged) {
+    if (!["http:", "https:"].includes(rendererUrl.protocol)) return false;
+    try {
+      return new URL(embedded).origin === rendererUrl.origin;
+    } catch {
+      return false;
+    }
+  }
+
+  if (rendererUrl.protocol !== "file:") return false;
+  if (/^null\/[^/?#]+$/u.test(embedded)) return true;
+  try {
+    const blobOrigin = new URL(embedded);
+    return (
+      blobOrigin.protocol === "file:" &&
+      blobOrigin.hostname === "" &&
+      blobOrigin.username === "" &&
+      blobOrigin.password === ""
+    );
+  } catch {
+    return false;
+  }
+}
+
 function isRequestAllowed(requestUrl: string, rendererUrl: URL): boolean {
   let requested: URL;
   try {
@@ -82,16 +116,11 @@ function isRequestAllowed(requestUrl: string, rendererUrl: URL): boolean {
   }
 
   if (isRendererFile(requested, rendererUrl)) return true;
-  if (requested.protocol === "data:") return true;
+  if (requested.protocol === "data:") return isImageDataUrl(requested);
   if (requested.href === "about:blank") return true;
   if (!app.isPackaged && requested.protocol === "devtools:") return true;
-
   if (requested.protocol === "blob:") {
-    try {
-      return isRequestAllowed(requested.href.slice("blob:".length), rendererUrl);
-    } catch {
-      return false;
-    }
+    return isTrustedBlob(requested, rendererUrl);
   }
 
   return developmentNetworkOrigins(rendererUrl).has(requested.origin);
@@ -114,7 +143,10 @@ export function installSecurityPolicy(
 
   const navigationListeners = new Map<
     BrowserWindow,
-    (event: Electron.Event, navigationUrl: string) => void
+    {
+      navigation: (event: Electron.Event, navigationUrl: string) => void;
+      destroyed: () => void;
+    }
   >();
   let disposed = false;
 
@@ -128,9 +160,26 @@ export function installSecurityPolicy(
       event.preventDefault();
       options.log?.("navigation-blocked");
     };
-    navigationListeners.set(window, navigationListener);
-    window.webContents.on("will-navigate", navigationListener);
-    window.webContents.setWindowOpenHandler(() => {
+    const webContents = window.webContents;
+    const destroyedListener = () => {
+      const listeners = navigationListeners.get(window);
+      if (
+        listeners?.navigation !== navigationListener ||
+        listeners.destroyed !== destroyedListener
+      ) {
+        return;
+      }
+      webContents.removeListener("will-navigate", navigationListener);
+      webContents.removeListener("destroyed", destroyedListener);
+      navigationListeners.delete(window);
+    };
+    navigationListeners.set(window, {
+      navigation: navigationListener,
+      destroyed: destroyedListener,
+    });
+    webContents.on("will-navigate", navigationListener);
+    webContents.on("destroyed", destroyedListener);
+    webContents.setWindowOpenHandler(() => {
       options.log?.("popup-blocked");
       return { action: "deny" };
     });
@@ -155,8 +204,9 @@ export function installSecurityPolicy(
     if (disposed) return;
     disposed = true;
     unsubscribeWindowCreated();
-    for (const [window, listener] of navigationListeners) {
-      window.webContents.removeListener("will-navigate", listener);
+    for (const [window, listeners] of navigationListeners) {
+      window.webContents.removeListener("will-navigate", listeners.navigation);
+      window.webContents.removeListener("destroyed", listeners.destroyed);
     }
     navigationListeners.clear();
     session.setPermissionRequestHandler(null);

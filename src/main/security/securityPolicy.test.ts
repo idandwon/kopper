@@ -6,9 +6,7 @@ vi.mock("electron", () => ({
   app: electron,
 }));
 
-import {
-  installSecurityPolicy,
-} from "./securityPolicy";
+import { installSecurityPolicy } from "./securityPolicy";
 
 type NavigationListener = (
   event: { preventDefault(): void },
@@ -21,14 +19,23 @@ type RequestListener = (
 
 class FakeWindow {
   navigationListeners = new Set<NavigationListener>();
+  destroyedListeners = new Set<() => void>();
   openHandler: ((details: { url: string }) => { action: string }) | undefined;
   readonly webContents = {
-    on: vi.fn((_event: "will-navigate", listener: NavigationListener) => {
-      this.navigationListeners.add(listener);
+    on: vi.fn((event: string, listener: NavigationListener | (() => void)) => {
+      if (event === "will-navigate") {
+        this.navigationListeners.add(listener as NavigationListener);
+      } else if (event === "destroyed") {
+        this.destroyedListeners.add(listener as () => void);
+      }
     }),
     removeListener: vi.fn(
-      (_event: "will-navigate", listener: NavigationListener) => {
-        this.navigationListeners.delete(listener);
+      (event: string, listener: NavigationListener | (() => void)) => {
+        if (event === "will-navigate") {
+          this.navigationListeners.delete(listener as NavigationListener);
+        } else if (event === "destroyed") {
+          this.destroyedListeners.delete(listener as () => void);
+        }
       },
     ),
     setWindowOpenHandler: vi.fn(
@@ -37,6 +44,10 @@ class FakeWindow {
       },
     ),
   };
+
+  destroyWebContents() {
+    for (const listener of [...this.destroyedListeners]) listener();
+  }
 }
 
 class FakeWindows {
@@ -67,7 +78,11 @@ class FakeWindows {
 
 function fakeSession() {
   let permissionRequest:
-    | ((_webContents: unknown, permission: string, callback: (allowed: boolean) => void) => void)
+    | ((
+        _webContents: unknown,
+        permission: string,
+        callback: (allowed: boolean) => void,
+      ) => void)
     | null;
   let permissionCheck:
     | ((_webContents: unknown, permission: string) => boolean)
@@ -155,12 +170,8 @@ describe("installSecurityPolicy", () => {
     expect(
       navigate(window, "http://127.0.0.1:5173/editor#note-1"),
     ).not.toHaveBeenCalled();
-    expect(
-      navigate(window, "http://localhost:5173/"),
-    ).toHaveBeenCalledOnce();
-    expect(
-      navigate(window, "https://127.0.0.1:5173/"),
-    ).toHaveBeenCalledOnce();
+    expect(navigate(window, "http://localhost:5173/")).toHaveBeenCalledOnce();
+    expect(navigate(window, "https://127.0.0.1:5173/")).toHaveBeenCalledOnce();
   });
 
   it("denies every popup without opening an external URL", () => {
@@ -225,9 +236,11 @@ describe("installSecurityPolicy", () => {
     const windows = new FakeWindows("file:///app/out/renderer/index.html");
     installSecurityPolicy(session as never, windows as never);
 
-    expect(session.request("file:///app/out/renderer/assets/index.js")).toEqual({
-      cancel: false,
-    });
+    expect(session.request("file:///app/out/renderer/assets/index.js")).toEqual(
+      {
+        cancel: false,
+      },
+    );
     expect(session.request("data:image/png;base64,AA==")).toEqual({
       cancel: false,
     });
@@ -235,6 +248,83 @@ describe("installSecurityPolicy", () => {
       cancel: true,
     });
     expect(session.request("devtools://devtools/bundled/index.html")).toEqual({
+      cancel: true,
+    });
+  });
+
+  it.each([
+    "data:text/html,<script>alert(1)</script>",
+    "data:text/javascript,alert(1)",
+    "data:application/javascript,alert(1)",
+    "data:text/plain,private-note",
+    "data:,private-note",
+  ])("rejects non-image data request %s", (url) => {
+    const session = fakeSession();
+    const windows = new FakeWindows("file:///app/out/renderer/index.html");
+    installSecurityPolicy(session as never, windows as never);
+
+    expect(session.request(url)).toEqual({ cancel: true });
+  });
+
+  it("defines trusted packaged blob forms and rejects remote blob origins", () => {
+    const session = fakeSession();
+    const windows = new FakeWindows("file:///app/out/renderer/index.html");
+    installSecurityPolicy(session as never, windows as never);
+
+    expect(
+      session.request("blob:file:///4d96d9da-7536-4f2b-aafd-98642290a709"),
+    ).toEqual({
+      cancel: false,
+    });
+    expect(
+      session.request("blob:null/4d96d9da-7536-4f2b-aafd-98642290a709"),
+    ).toEqual({
+      cancel: false,
+    });
+    expect(
+      session.request(
+        "blob:https://example.invalid/4d96d9da-7536-4f2b-aafd-98642290a709",
+      ),
+    ).toEqual({
+      cancel: true,
+    });
+    expect(
+      session.request(
+        "blob:http://127.0.0.1:5173/4d96d9da-7536-4f2b-aafd-98642290a709",
+      ),
+    ).toEqual({
+      cancel: true,
+    });
+  });
+
+  it("allows development blobs only from the exact renderer origin", () => {
+    electron.isPackaged = false;
+    const session = fakeSession();
+    const windows = new FakeWindows("http://127.0.0.1:5173/");
+    installSecurityPolicy(session as never, windows as never);
+
+    expect(
+      session.request(
+        "blob:http://127.0.0.1:5173/4d96d9da-7536-4f2b-aafd-98642290a709",
+      ),
+    ).toEqual({
+      cancel: false,
+    });
+    expect(
+      session.request(
+        "blob:http://localhost:5173/4d96d9da-7536-4f2b-aafd-98642290a709",
+      ),
+    ).toEqual({
+      cancel: true,
+    });
+    expect(
+      session.request("blob:null/4d96d9da-7536-4f2b-aafd-98642290a709"),
+    ).toEqual({
+      cancel: true,
+    });
+    expect(
+      session.request("blob:file:///4d96d9da-7536-4f2b-aafd-98642290a709"),
+    ).toEqual({
       cancel: true,
     });
   });
@@ -248,7 +338,9 @@ describe("installSecurityPolicy", () => {
     expect(session.request("http://127.0.0.1:5173/src/main.tsx")).toEqual({
       cancel: false,
     });
-    expect(session.request("ws://127.0.0.1:5173/hmr")).toEqual({ cancel: false });
+    expect(session.request("ws://127.0.0.1:5173/hmr")).toEqual({
+      cancel: false,
+    });
     expect(session.request("devtools://devtools/bundled/index.html")).toEqual({
       cancel: false,
     });
@@ -272,7 +364,9 @@ describe("installSecurityPolicy", () => {
 
     navigate(window, `https://example.invalid/${sensitive.join("/")}`);
     session.request(`https://example.invalid/${sensitive.join("/")}`);
-    window.openHandler?.({ url: `https://example.invalid/${sensitive.join("/")}` });
+    window.openHandler?.({
+      url: `https://example.invalid/${sensitive.join("/")}`,
+    });
 
     expect(log.mock.calls).toEqual([
       ["navigation-blocked"],
@@ -282,6 +376,33 @@ describe("installSecurityPolicy", () => {
     expect(JSON.stringify(log.mock.calls)).not.toContain(sensitive.join("/"));
     for (const value of sensitive) {
       expect(JSON.stringify(log.mock.calls)).not.toContain(value);
+    }
+  });
+
+  it("releases each dynamic window listener when its web contents is destroyed", () => {
+    const session = fakeSession();
+    const windows = new FakeWindows("file:///app/out/renderer/index.html");
+    const cleanup = installSecurityPolicy(session as never, windows as never);
+    const editors = Array.from({ length: 20 }, () => windows.create());
+
+    for (const editor of editors) editor.destroyWebContents();
+    cleanup();
+
+    for (const editor of editors) {
+      expect(editor.navigationListeners).toHaveLength(0);
+      expect(editor.destroyedListeners).toHaveLength(0);
+      expect(editor.webContents.removeListener).toHaveBeenCalledTimes(2);
+      expect(editor.webContents.removeListener).toHaveBeenCalledWith(
+        "will-navigate",
+        expect.any(Function),
+      );
+      expect(editor.webContents.removeListener).toHaveBeenCalledWith(
+        "destroyed",
+        expect.any(Function),
+      );
+      expect(editor.openHandler?.({ url: "https://example.invalid" })).toEqual({
+        action: "deny",
+      });
     }
   });
 
@@ -295,7 +416,7 @@ describe("installSecurityPolicy", () => {
     cleanup();
     const afterCleanup = windows.create();
 
-    expect(existing.webContents.removeListener).toHaveBeenCalledOnce();
+    expect(existing.webContents.removeListener).toHaveBeenCalledTimes(2);
     expect(session.setPermissionRequestHandler).toHaveBeenLastCalledWith(null);
     expect(session.setPermissionCheckHandler).toHaveBeenLastCalledWith(null);
     expect(session.webRequest.onBeforeRequest).toHaveBeenLastCalledWith(null);

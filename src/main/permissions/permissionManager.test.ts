@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  ACCESSIBILITY_SETTINGS_URL,
   PermissionManager,
   type PermissionManagerAdapters,
 } from "./permissionManager";
@@ -12,7 +11,7 @@ function adapters(
   return {
     platform: "darwin",
     isTrustedAccessibilityClient: vi.fn(() => false),
-    openExternal: vi.fn(async () => undefined),
+    openAccessibilitySettings: vi.fn(async () => undefined),
     ...overrides,
   };
 }
@@ -56,13 +55,13 @@ describe("PermissionManager", () => {
     expect(manager.check(false)).toBe("granted");
   });
 
-  it("opens only the fixed Accessibility settings URL", async () => {
+  it("delegates only to the fixed Accessibility settings adapter", async () => {
     const dependencies = adapters();
     const manager = new PermissionManager(dependencies);
 
     await expect(manager.openSettings()).resolves.toBeUndefined();
-    expect(dependencies.openExternal).toHaveBeenCalledExactlyOnceWith(
-      ACCESSIBILITY_SETTINGS_URL,
-    );
+    expect(
+      dependencies.openAccessibilitySettings,
+    ).toHaveBeenCalledExactlyOnceWith();
   });
 });

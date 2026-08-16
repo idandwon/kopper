@@ -9,7 +9,7 @@ export const ACCESSIBILITY_SETTINGS_URL =
 export interface PermissionManagerAdapters {
   platform: string;
   isTrustedAccessibilityClient(prompt: boolean): boolean;
-  openExternal(url: string): Promise<void>;
+  openAccessibilitySettings(): Promise<void>;
 }
 
 export class PermissionManager {
@@ -32,6 +32,6 @@ export class PermissionManager {
   }
 
   async openSettings(): Promise<void> {
-    await this.adapters.openExternal(ACCESSIBILITY_SETTINGS_URL);
+    await this.adapters.openAccessibilitySettings();
   }
 }
