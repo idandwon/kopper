@@ -94,6 +94,26 @@ describe("publishDocument", () => {
     expect(live.webContents.send).toHaveBeenCalledTimes(1);
   });
 
+  it("continues document publication after a target throws or is destroyed during send", () => {
+    const throwing = publishWindow();
+    throwing.webContents.send.mockImplementation(() => {
+      throw new Error("destroyed during send");
+    });
+    const destroyedDuringCheck = publishWindow();
+    destroyedDuringCheck.isDestroyed.mockImplementation(() => {
+      throw new Error("destroyed during check");
+    });
+    const later = publishWindow();
+
+    expect(() =>
+      publishDocument([throwing, destroyedDuringCheck, later], document),
+    ).not.toThrow();
+    expect(later.webContents.send).toHaveBeenCalledWith(
+      IPC_CHANNELS.documentChanged,
+      document,
+    );
+  });
+
   it("publishes only validated capture outcomes to every live window", () => {
     const first = captureWindow();
     const second = captureWindow();
@@ -113,6 +133,24 @@ describe("publishDocument", () => {
     expect(() =>
       publishCaptureOutcome([first], { status: "captured", noteId: "bad" }),
     ).toThrow();
+  });
+
+  it("continues capture publication after a target throws", () => {
+    const throwing = captureWindow();
+    throwing.webContents.send.mockImplementation(() => {
+      throw new Error("destroyed during send");
+    });
+    const later = captureWindow();
+    const outcome = {
+      status: "captured",
+      noteId: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
+    } as const;
+
+    expect(() => publishCaptureOutcome([throwing, later], outcome)).not.toThrow();
+    expect(later.webContents.send).toHaveBeenCalledWith(
+      IPC_CHANNELS.captureOutcome,
+      outcome,
+    );
   });
 
   it("publishes only validated native appearance booleans to live windows", () => {

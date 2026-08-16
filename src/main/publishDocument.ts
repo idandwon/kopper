@@ -28,8 +28,12 @@ export function publishDocument(
   document: KopperDocument,
 ): void {
   for (const window of windows) {
-    if (window.isDestroyed() || window.webContents.isDestroyed()) continue;
-    window.webContents.send(IPC_CHANNELS.documentChanged, document);
+    try {
+      if (window.isDestroyed() || window.webContents.isDestroyed()) continue;
+      window.webContents.send(IPC_CHANNELS.documentChanged, document);
+    } catch {
+      // A window may be destroyed between the lifecycle check and send.
+    }
   }
 }
 
@@ -50,8 +54,12 @@ export function publishCaptureOutcome(
 ): void {
   const outcome = CaptureOutcomeSchema.parse(input);
   for (const window of windows) {
-    if (window.isDestroyed() || window.webContents.isDestroyed()) continue;
-    window.webContents.send(IPC_CHANNELS.captureOutcome, outcome);
+    try {
+      if (window.isDestroyed() || window.webContents.isDestroyed()) continue;
+      window.webContents.send(IPC_CHANNELS.captureOutcome, outcome);
+    } catch {
+      // Continue to other windows after a destruction race or send failure.
+    }
   }
 }
 

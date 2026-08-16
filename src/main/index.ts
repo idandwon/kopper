@@ -47,7 +47,7 @@ void app.whenReady().then(async () => {
   const repository = new NoteRepository(
     join(app.getPath("userData"), STORE_FILE_NAME),
   );
-  await repository.load();
+  const loadResult = await repository.load();
 
   const publish = (document: ReturnType<NoteRepository["snapshot"]>) => {
     publishDocument(BrowserWindow.getAllWindows(), document);
@@ -64,7 +64,10 @@ void app.whenReady().then(async () => {
   );
   const documentFiles = new DocumentFiles(repository, dialog, {
     operationCoordinator,
-    externalReplacementSucceeded: () => commandService.clearUndoHistory(),
+    externalReplacementSucceeded: async () => {
+      commandService.clearUndoHistory();
+      await captureRuntime?.setRepositoryHealthy(true);
+    },
   });
   const themeFiles = new ThemeFiles(dialog);
   const permissionManager = new PermissionManager({
@@ -87,8 +90,14 @@ void app.whenReady().then(async () => {
   const captureCoordinator = new CaptureCoordinator(
     selectionCapture,
     commandService,
-    { activeSectionId: () => repository.snapshot().activeSectionId },
-    { createId: randomUUID, publish: publishCapture },
+    { currentResult: () => repository.currentResult() },
+    {
+      createId: randomUUID,
+      publish: publishCapture,
+      repositoryBecameUnhealthy: () => {
+        void captureRuntime?.setRepositoryHealthy(false);
+      },
+    },
   );
   captureRuntime = new CaptureRuntime(
     permissionManager,
@@ -137,7 +146,7 @@ void app.whenReady().then(async () => {
     },
   );
   createMainWindow();
-  await captureRuntime.start();
+  await captureRuntime.start(loadResult.ok);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

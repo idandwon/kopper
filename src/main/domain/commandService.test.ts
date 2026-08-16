@@ -94,6 +94,22 @@ function makeService(initial = makeDocument()) {
 }
 
 describe("CommandService", () => {
+  it("returns persisted success when document publication throws", async () => {
+    const { service, replace, publish } = makeService();
+    publish.mockImplementation(() => {
+      throw new Error("window destroyed during send");
+    });
+
+    await expect(service.execute(edit("After"))).resolves.toEqual({
+      ok: true,
+      value: expect.objectContaining({
+        notes: [expect.objectContaining({ body: "After" })],
+      }),
+    });
+    expect(replace).toHaveBeenCalledOnce();
+    expect(publish).toHaveBeenCalledOnce();
+  });
+
   it("persists a valid command before publishing its acknowledged snapshot", async () => {
     const { service, replace, publish } = makeService();
 
@@ -384,6 +400,76 @@ describe("CommandService", () => {
       activeThemeId: customTheme.id,
     });
     expect(undone.value.customThemes).toEqual([customTheme]);
+  });
+
+  it("resolves the active section inside the shared transaction after a queued activation", async () => {
+    const initial = makeDocument();
+    initial.sections.push({
+      id: "later",
+      title: "Later",
+      order: 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    });
+    const { service, replace, persist } = makeService(initial);
+    let releaseActivation: (() => void) | undefined;
+    const activationGate = new Promise<void>((resolve) => {
+      releaseActivation = resolve;
+    });
+    replace.mockImplementationOnce(async (next) => {
+      await activationGate;
+      return persist(next);
+    });
+
+    const activation = service.execute({
+      type: "section.activate",
+      sectionId: "later",
+    });
+    const capture = service.addCapturedNote({
+      id: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
+      body: "Captured after activation",
+    });
+    await vi.waitFor(() => expect(replace).toHaveBeenCalledOnce());
+    releaseActivation?.();
+
+    await expect(activation).resolves.toMatchObject({ ok: true });
+    await expect(capture).resolves.toMatchObject({ ok: true });
+    expect(replace).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        notes: expect.arrayContaining([
+          expect.objectContaining({
+            sectionId: "later",
+            body: "Captured after activation",
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it("uses the latest valid active section after a queued active-section deletion", async () => {
+    const initial = makeSectionDeleteDocument();
+    initial.activeSectionId = "later";
+    const { service } = makeService(initial);
+
+    const deletion = service.execute({
+      type: "section.delete",
+      sectionId: "later",
+    });
+    const capture = service.addCapturedNote({
+      id: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
+      body: "Captured after deletion",
+    });
+
+    await expect(deletion).resolves.toMatchObject({ ok: true });
+    const result = await capture;
+    expect(result).toMatchObject({ ok: true });
+    if (!result.ok) return;
+    expect(result.value.notes).toContainEqual(
+      expect.objectContaining({
+        sectionId: "inbox",
+        body: "Captured after deletion",
+      }),
+    );
   });
 
   it("serializes execute and undo requests even when persistence is delayed", async () => {

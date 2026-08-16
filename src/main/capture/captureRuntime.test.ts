@@ -31,13 +31,33 @@ function setup(options: {
 
 describe("CaptureRuntime", () => {
   it("performs one passive startup check and creates the monitor only after granted", async () => {
-    const { runtime, check, factory, created } = setup({ check: () => "granted" });
-    await runtime.start();
+    const { runtime, check, factory, created } = setup({
+      check: () => "granted",
+    });
+    await runtime.start(true);
+
     expect(check).toHaveBeenCalledExactlyOnceWith(false);
     expect(factory).toHaveBeenCalledOnce();
     expect(created.start).toHaveBeenCalledOnce();
-    await runtime.start();
+    await runtime.start(true);
     expect(check).toHaveBeenCalledOnce();
+  });
+
+  it("does not check permission or create a monitor until a failed repository load recovers", async () => {
+    const { runtime, check, factory, created } = setup({
+      check: () => "granted",
+    });
+
+    await runtime.start(false);
+    await runtime.onPermissionObserved("granted");
+    expect(check).not.toHaveBeenCalled();
+    expect(factory).not.toHaveBeenCalled();
+
+    await runtime.setRepositoryHealthy(true);
+
+    expect(check).toHaveBeenCalledExactlyOnceWith(false);
+    expect(factory).toHaveBeenCalledOnce();
+    expect(created.start).toHaveBeenCalledOnce();
   });
 
   it("stays disabled when startup check rejects and waits for explicit observation", async () => {
@@ -87,6 +107,40 @@ describe("CaptureRuntime", () => {
     expect(current.stop).toHaveBeenCalledOnce();
   });
 
+  it("stops and restarts for a running denied-to-granted burst", async () => {
+    const first = monitor();
+    const second = monitor();
+    const factory = vi
+      .fn<() => Promise<CaptureMonitor>>()
+      .mockResolvedValueOnce(first)
+      .mockResolvedValueOnce(second);
+    const { runtime } = setup({ factory });
+    await runtime.onPermissionObserved("granted");
+
+    const denied = runtime.onPermissionObserved("denied");
+    const granted = runtime.onPermissionObserved("granted");
+    await Promise.all([denied, granted]);
+
+    expect(first.stop).toHaveBeenCalledOnce();
+    expect(second.start).toHaveBeenCalledOnce();
+  });
+
+  it("stops immediately and prevents in-flight start after repository health is lost", async () => {
+    const pending = deferred<CaptureMonitor>();
+    const stale = monitor();
+    const { runtime, factory } = setup({ factory: () => pending.promise });
+    const granting = runtime.onPermissionObserved("granted");
+    await vi.waitFor(() => expect(factory).toHaveBeenCalledOnce());
+
+    await runtime.setRepositoryHealthy(false);
+
+    pending.resolve(stale);
+    await granting;
+
+    expect(stale.start).not.toHaveBeenCalled();
+    expect(stale.stop).toHaveBeenCalledOnce();
+  });
+
   it("dispose stops once and prevents start after an async factory resolves", async () => {
     const pending = deferred<CaptureMonitor>();
     const created = monitor();
@@ -98,6 +152,19 @@ describe("CaptureRuntime", () => {
     expect(created.start).not.toHaveBeenCalled();
     runtime.dispose();
     await runtime.onPermissionObserved("granted");
+    expect(created.start).not.toHaveBeenCalled();
+  });
+
+  it("does not start after a queued grant when dispose happens first", async () => {
+    const created = monitor();
+    const { runtime, factory } = setup({ factory: async () => created });
+
+    const denied = runtime.onPermissionObserved("denied");
+    const granted = runtime.onPermissionObserved("granted");
+    runtime.dispose();
+    await Promise.all([denied, granted]);
+
+    expect(factory).not.toHaveBeenCalled();
     expect(created.start).not.toHaveBeenCalled();
   });
 

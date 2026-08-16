@@ -30,6 +30,11 @@ export interface CommandServiceOptions {
   publish(document: KopperDocument): void;
 }
 
+export interface CapturedNoteInput {
+  id: string;
+  body: string;
+}
+
 const nothingToUndo = (): Result<KopperDocument, KopperError> => ({
   ok: false,
   error: {
@@ -54,6 +59,23 @@ export class CommandService {
     return this.operationCoordinator.run(() => this.executeNow(command));
   }
 
+  addCapturedNote(
+    input: CapturedNoteInput,
+  ): Promise<Result<KopperDocument, KopperError>> {
+    return this.operationCoordinator.run(() => {
+      const current = this.repository.snapshot();
+      return this.executeNow(
+        {
+          type: "note.add",
+          id: input.id,
+          sectionId: current.activeSectionId,
+          body: input.body,
+        },
+        current,
+      );
+    });
+  }
+
   undo(): Promise<Result<KopperDocument, KopperError>> {
     return this.operationCoordinator.run(() => this.undoNow());
   }
@@ -64,8 +86,8 @@ export class CommandService {
 
   private async executeNow(
     command: DocumentCommand,
+    current: KopperDocument = this.repository.snapshot(),
   ): Promise<Result<KopperDocument, KopperError>> {
-    const current = this.repository.snapshot();
     const applied = applyDocumentCommand(current, command, {
       now: this.options.now,
       createId: this.options.createId,
@@ -84,7 +106,7 @@ export class CommandService {
       this.undoStack.length = 0;
     }
 
-    this.options.publish(persisted.value);
+    this.publishSafely(persisted.value);
     return persisted;
   }
 
@@ -109,7 +131,15 @@ export class CommandService {
     if (!persisted.ok) return persisted;
 
     this.undoStack.pop();
-    this.options.publish(persisted.value);
+    this.publishSafely(persisted.value);
     return persisted;
+  }
+
+  private publishSafely(document: KopperDocument): void {
+    try {
+      this.options.publish(document);
+    } catch {
+      // Persistence acknowledgement is authoritative if a renderer disappears.
+    }
   }
 }

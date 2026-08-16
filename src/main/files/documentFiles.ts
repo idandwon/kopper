@@ -62,7 +62,7 @@ export interface DocumentFilesOptions {
   fileSystem?: DocumentFileSystem;
   now?: () => number;
   operationCoordinator?: MainOperationRunner;
-  externalReplacementSucceeded?: () => void;
+  externalReplacementSucceeded?: () => void | Promise<void>;
 }
 
 export class DocumentFiles {
@@ -70,7 +70,7 @@ export class DocumentFiles {
   private readonly fileSystem: DocumentFileSystem;
   private readonly now: () => number;
   private readonly operationCoordinator: MainOperationRunner;
-  private readonly externalReplacementSucceeded: () => void;
+  private readonly externalReplacementSucceeded: () => void | Promise<void>;
 
   constructor(
     private readonly repository: NoteRepository,
@@ -177,7 +177,7 @@ export class DocumentFiles {
       }
 
       const replaced = await this.repository.replace(pending.document);
-      if (replaced.ok) this.externalReplacementSucceeded();
+      if (replaced.ok) await this.externalReplacementSucceeded();
       return replaced;
     });
   }
@@ -212,7 +212,7 @@ export class DocumentFiles {
   createNewStore(): Promise<Result<KopperDocument, KopperError>> {
     return this.operationCoordinator.run(async () => {
       const replaced = await this.repository.createNewStore();
-      if (replaced.ok) this.externalReplacementSucceeded();
+      if (replaced.ok) await this.externalReplacementSucceeded();
       return replaced;
     });
   }

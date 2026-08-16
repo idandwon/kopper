@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { KopperDocument } from "../../shared/domain/document";
+import {
+  createEmptyDocument,
+  type KopperDocument,
+} from "../../shared/domain/document";
 import type { KopperError, Result } from "../../shared/domain/errors";
 import type { CaptureOutcome } from "../../shared/ipc/contract";
 import { CaptureCoordinator } from "./captureCoordinator";
@@ -19,36 +22,54 @@ function deferred<T>() {
 
 function makeCoordinator(overrides: {
   capture?: () => Promise<Result<string, KopperError>>;
-  execute?: (command: never) => Promise<Result<KopperDocument, KopperError>>;
-  activeSectionId?: () => string;
+  addCapturedNote?: (input: {
+    id: string;
+    body: string;
+  }) => Promise<Result<KopperDocument, KopperError>>;
+  currentResult?: () => Result<KopperDocument, KopperError>;
   createId?: () => string;
   publish?: (outcome: CaptureOutcome) => void;
+  repositoryBecameUnhealthy?: () => void;
 } = {}) {
   const defaultCapture = async (): Promise<Result<string, KopperError>> => ({
     ok: true,
     value: "exact text",
   });
-  const defaultExecute = async (): Promise<Result<KopperDocument, KopperError>> => ({
+  const defaultAddCapturedNote = async (): Promise<
+    Result<KopperDocument, KopperError>
+  > => ({
     ok: true,
-    value: {} as KopperDocument,
+    value: createEmptyDocument(),
   });
   const capture = vi.fn(overrides.capture ?? defaultCapture);
-  const execute = vi.fn(overrides.execute ?? defaultExecute);
-  const activeSectionId = vi.fn(overrides.activeSectionId ?? (() => "inbox"));
-  const createId = vi.fn(overrides.createId ?? (() => "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5"));
+  const addCapturedNote = vi.fn(
+    overrides.addCapturedNote ?? defaultAddCapturedNote,
+  );
+  const currentResult = vi.fn(
+    overrides.currentResult ??
+      (() => ({ ok: true as const, value: createEmptyDocument() })),
+  );
+  const createId = vi.fn(
+    overrides.createId ??
+      (() => "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5"),
+  );
   const publish = vi.fn(overrides.publish ?? (() => undefined));
+  const repositoryBecameUnhealthy = vi.fn(
+    overrides.repositoryBecameUnhealthy ?? (() => undefined),
+  );
   return {
     coordinator: new CaptureCoordinator(
       { capture },
-      { execute },
-      { activeSectionId },
-      { createId, publish },
+      { addCapturedNote },
+      { currentResult },
+      { createId, publish, repositoryBecameUnhealthy },
     ),
     capture,
-    execute,
-    activeSectionId,
+    addCapturedNote,
+    currentResult,
     createId,
     publish,
+    repositoryBecameUnhealthy,
   };
 }
 
@@ -57,32 +78,45 @@ describe("CaptureCoordinator", () => {
     const firstCapture = deferred<Result<string, KopperError>>();
     const firstWrite = deferred<Result<KopperDocument, KopperError>>();
     const captures = [firstCapture.promise, Promise.resolve({ ok: true as const, value: "second" })];
-    const writes = [firstWrite.promise, Promise.resolve({ ok: true as const, value: {} as KopperDocument })];
-    const { coordinator, capture, execute, publish } = makeCoordinator({
+    const writes = [
+      firstWrite.promise,
+      Promise.resolve({
+        ok: true as const,
+        value: createEmptyDocument(),
+      }),
+    ];
+    const { coordinator, capture, addCapturedNote, publish } = makeCoordinator({
       capture: () => captures.shift()!,
-      execute: () => writes.shift()!,
+      addCapturedNote: () => writes.shift()!,
     });
 
     const first = coordinator.requestCapture();
     const second = coordinator.requestCapture();
     await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(1));
     firstCapture.resolve({ ok: true, value: "first" });
-    await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(addCapturedNote).toHaveBeenCalledTimes(1));
     expect(capture).toHaveBeenCalledTimes(1);
-    firstWrite.resolve({ ok: true, value: {} as KopperDocument });
+    firstWrite.resolve({ ok: true, value: createEmptyDocument() });
     await expect(first).resolves.toMatchObject({ status: "captured" });
     expect(publish).toHaveBeenCalled();
     await expect(second).resolves.toMatchObject({ status: "captured" });
     expect(capture).toHaveBeenCalledTimes(2);
   });
 
-  it("creates one UUID, snapshots the active section just before note.add, and publishes after acknowledgement", async () => {
+  it("creates one UUID and delegates active-section resolution to the command transaction", async () => {
     const order: string[] = [];
-    const { coordinator, execute, createId, publish } = makeCoordinator({
-      activeSectionId: () => { order.push("section"); return "current-section"; },
-      createId: () => { order.push("id"); return "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5"; },
-      execute: async () => { order.push("persisted"); return { ok: true, value: {} as KopperDocument }; },
-      publish: () => { order.push("published"); },
+    const { coordinator, addCapturedNote, createId, publish } = makeCoordinator({
+      createId: () => {
+        order.push("id");
+        return "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5";
+      },
+      addCapturedNote: async () => {
+        order.push("persisted");
+        return { ok: true, value: createEmptyDocument() };
+      },
+      publish: () => {
+        order.push("published");
+      },
     });
 
     await expect(coordinator.requestCapture()).resolves.toEqual({
@@ -90,14 +124,15 @@ describe("CaptureCoordinator", () => {
       noteId: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
     });
     expect(createId).toHaveBeenCalledOnce();
-    expect(execute).toHaveBeenCalledWith({
-      type: "note.add",
+    expect(addCapturedNote).toHaveBeenCalledWith({
       id: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
-      sectionId: "current-section",
       body: "exact text",
     });
-    expect(order).toEqual(["id", "section", "persisted", "published"]);
-    expect(publish).toHaveBeenCalledWith({ status: "captured", noteId: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5" });
+    expect(order).toEqual(["id", "persisted", "published"]);
+    expect(publish).toHaveBeenCalledWith({
+      status: "captured",
+      noteId: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
+    });
   });
 
   it("maps nothing selected to empty and capture failures to failed without commands", async () => {
@@ -106,7 +141,7 @@ describe("CaptureCoordinator", () => {
       timeout,
       { code: "permission_denied", message: "denied", retryable: true, recoveryAction: "open_settings" },
     ];
-    const { coordinator, execute, publish } = makeCoordinator({
+    const { coordinator, addCapturedNote, publish } = makeCoordinator({
       capture: async () => ({ ok: false, error: failures.shift()! }),
     });
 
@@ -116,7 +151,7 @@ describe("CaptureCoordinator", () => {
       status: "failed",
       error: { code: "permission_denied", message: "denied", retryable: true, recoveryAction: "open_settings" },
     });
-    expect(execute).not.toHaveBeenCalled();
+    expect(addCapturedNote).not.toHaveBeenCalled();
     expect(publish).toHaveBeenCalledTimes(3);
   });
 
@@ -129,7 +164,7 @@ describe("CaptureCoordinator", () => {
         if (attempt === 1) throw new Error("secret selected text");
         return { ok: true, value: "private note" };
       },
-      execute: async () => ({ ok: false, error: writeError }),
+      addCapturedNote: async () => ({ ok: false, error: writeError }),
     });
 
     await expect(coordinator.requestCapture()).resolves.toEqual({
@@ -138,8 +173,85 @@ describe("CaptureCoordinator", () => {
     });
     await expect(coordinator.requestCapture()).resolves.toEqual({
       status: "failed",
-      error: { code: "write_failed", message: "Captured text could not be saved.", retryable: true, recoveryAction: "retry" },
+      error: {
+        code: "write_failed",
+        message: "Captured text could not be saved.",
+        retryable: true,
+      },
     });
     expect(JSON.stringify(publish.mock.calls)).not.toMatch(/secret|private note/);
+  });
+
+  it("does not invoke selection or commands while the repository is in recovery", async () => {
+    const repositoryError: KopperError = {
+      code: "invalid_document",
+      message: "private malformed bytes detail",
+      retryable: false,
+      recoveryAction: "choose_file",
+    };
+    const {
+      coordinator,
+      capture,
+      addCapturedNote,
+      repositoryBecameUnhealthy,
+      publish,
+    } = makeCoordinator({
+      currentResult: () => ({ ok: false, error: repositoryError }),
+    });
+
+    await expect(coordinator.requestCapture()).resolves.toEqual({
+      status: "failed",
+      error: {
+        code: "capture_failed",
+        message: "Kopper cannot capture until its document store is available.",
+        retryable: false,
+        recoveryAction: "choose_file",
+      },
+    });
+    expect(capture).not.toHaveBeenCalled();
+    expect(addCapturedNote).not.toHaveBeenCalled();
+    expect(repositoryBecameUnhealthy).toHaveBeenCalledOnce();
+    expect(JSON.stringify(publish.mock.calls)).not.toContain("private");
+  });
+
+  it("keeps captured success when outcome publication throws", async () => {
+    const publish = vi.fn(() => {
+      throw new Error("window destroyed during send");
+    });
+    const { coordinator, addCapturedNote } = makeCoordinator({ publish });
+
+    await expect(coordinator.requestCapture()).resolves.toEqual({
+      status: "captured",
+      noteId: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
+    });
+    expect(addCapturedNote).toHaveBeenCalledOnce();
+    expect(publish).toHaveBeenCalledOnce();
+  });
+
+  it("preserves retryability and recovery action while sanitizing write failures", async () => {
+    const repositoryBecameUnhealthy = vi.fn();
+    const { coordinator } = makeCoordinator({
+      addCapturedNote: async () => ({
+        ok: false,
+        error: {
+          code: "write_failed",
+          message: "/private/store uncertain detail",
+          retryable: false,
+          recoveryAction: "choose_file",
+        },
+      }),
+      repositoryBecameUnhealthy,
+    });
+
+    await expect(coordinator.requestCapture()).resolves.toEqual({
+      status: "failed",
+      error: {
+        code: "write_failed",
+        message: "Captured text could not be saved.",
+        retryable: false,
+        recoveryAction: "choose_file",
+      },
+    });
+    expect(repositoryBecameUnhealthy).toHaveBeenCalledOnce();
   });
 });

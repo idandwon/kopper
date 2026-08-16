@@ -28,6 +28,7 @@ const monitorFailure = (): CaptureOutcome => ({
 export class CaptureRuntime {
   private started = false;
   private disposed = false;
+  private repositoryHealthy = true;
   private desiredState: PermissionState = "unknown";
   private observation = 0;
   private monitor: CaptureMonitor | undefined;
@@ -40,16 +41,26 @@ export class CaptureRuntime {
     private readonly publish: (outcome: CaptureOutcome) => void,
   ) {}
 
-  async start(): Promise<void> {
+  async start(repositoryHealthy = true): Promise<void> {
     if (this.started || this.disposed) return;
     this.started = true;
-    let state: PermissionState;
-    try {
-      state = this.permission.check(false);
-    } catch {
+    this.repositoryHealthy = repositoryHealthy;
+    if (!repositoryHealthy) {
+      this.observation += 1;
       return;
     }
-    await this.onPermissionObserved(state);
+    await this.observeCurrentPermission();
+  }
+
+  async setRepositoryHealthy(healthy: boolean): Promise<void> {
+    if (this.disposed || healthy === this.repositoryHealthy) return;
+    this.repositoryHealthy = healthy;
+    this.observation += 1;
+    if (!healthy) {
+      this.stopMonitor();
+      return;
+    }
+    if (this.started) await this.observeCurrentPermission();
   }
 
   onPermissionObserved(state: PermissionState): Promise<void> {
@@ -58,10 +69,9 @@ export class CaptureRuntime {
     this.desiredState = state;
     if (stateChanged) this.observation += 1;
     const observation = this.observation;
-    if (state !== "granted") {
-      this.failurePublishedForGrantedCycle = false;
-    }
-    const operation = this.tail.then(() => this.reconcile(observation));
+    const operation = this.tail.then(() =>
+      this.reconcileObservedState(state, observation),
+    );
     this.tail = operation.then(
       () => undefined,
       () => undefined,
@@ -77,12 +87,27 @@ export class CaptureRuntime {
     this.stopMonitor();
   }
 
-  private async reconcile(observation: number): Promise<void> {
-    if (this.disposed || observation !== this.observation) return;
-    if (this.desiredState !== "granted") {
+  private async observeCurrentPermission(): Promise<void> {
+    let state: PermissionState;
+    try {
+      state = this.permission.check(false);
+    } catch {
+      return;
+    }
+    await this.onPermissionObserved(state);
+  }
+
+  private async reconcileObservedState(
+    state: PermissionState,
+    observation: number,
+  ): Promise<void> {
+    if (this.disposed) return;
+    if (state !== "granted") {
+      this.failurePublishedForGrantedCycle = false;
       this.stopMonitor();
       return;
     }
+    if (!this.isCurrentGrant(observation)) return;
     if (this.monitor !== undefined || this.failurePublishedForGrantedCycle) {
       return;
     }
@@ -116,7 +141,7 @@ export class CaptureRuntime {
       } catch {
         // Failed native startup cleanup is best effort.
       }
-      this.publishMonitorFailure();
+      if (this.isCurrentGrant(observation)) this.publishMonitorFailure();
       return;
     }
     this.monitor = monitor;
@@ -125,6 +150,7 @@ export class CaptureRuntime {
   private isCurrentGrant(observation: number): boolean {
     return (
       !this.disposed &&
+      this.repositoryHealthy &&
       observation === this.observation &&
       this.desiredState === "granted"
     );
