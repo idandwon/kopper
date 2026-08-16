@@ -308,7 +308,10 @@ describe("NoteComposer", () => {
     };
     const context = {
       ...mockedUseKopperDocument(),
-      document: { ...document, sections: [...document.sections, secondSection] },
+      document: {
+        ...document,
+        sections: [...document.sections, secondSection],
+      },
     };
     mockedUseKopperDocument.mockReturnValue(context);
     const { rerender } = render(<NoteComposer />);
@@ -325,39 +328,42 @@ describe("NoteComposer", () => {
   it.each([
     ["persisted", "Saved"],
     ["local", "Local"],
-  ])("keeps a %s draft pinned when the active section changes", (kind, value) => {
-    const secondSection = {
-      ...document.sections[0],
-      id: "later",
-      title: "Later",
-      order: 1,
-    };
-    const context = {
-      ...mockedUseKopperDocument(),
-      document: {
-        ...document,
-        sections: [...document.sections, secondSection],
-        draft:
-          kind === "persisted"
-            ? { body: value, sectionId: "inbox", updatedAt: timestamp }
-            : null,
-      },
-    };
-    mockedUseKopperDocument.mockReturnValue(context);
-    const { rerender } = render(<NoteComposer />);
-    if (kind === "local") {
-      fireEvent.change(screen.getByRole("textbox"), {
-        target: { value },
+  ])(
+    "keeps a %s draft pinned when the active section changes",
+    (kind, value) => {
+      const secondSection = {
+        ...document.sections[0],
+        id: "later",
+        title: "Later",
+        order: 1,
+      };
+      const context = {
+        ...mockedUseKopperDocument(),
+        document: {
+          ...document,
+          sections: [...document.sections, secondSection],
+          draft:
+            kind === "persisted"
+              ? { body: value, sectionId: "inbox", updatedAt: timestamp }
+              : null,
+        },
+      };
+      mockedUseKopperDocument.mockReturnValue(context);
+      const { rerender } = render(<NoteComposer />);
+      if (kind === "local") {
+        fireEvent.change(screen.getByRole("textbox"), {
+          target: { value },
+        });
+      }
+
+      mockedUseKopperDocument.mockReturnValue({
+        ...context,
+        document: { ...context.document, activeSectionId: "later" },
       });
-    }
+      rerender(<NoteComposer />);
 
-    mockedUseKopperDocument.mockReturnValue({
-      ...context,
-      document: { ...context.document, activeSectionId: "later" },
-    });
-    rerender(<NoteComposer />);
-
-    expect(screen.getByText("Inbox")).toBeInTheDocument();
-    expect(screen.getByRole("textbox")).toHaveValue(value);
-  });
+      expect(screen.getByText("Inbox")).toBeInTheDocument();
+      expect(screen.getByRole("textbox")).toHaveValue(value);
+    },
+  );
 });
