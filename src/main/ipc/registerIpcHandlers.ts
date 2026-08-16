@@ -8,9 +8,15 @@ import {
 import type { KopperDocument } from "../../shared/domain/document";
 import type { KopperError, Result } from "../../shared/domain/errors";
 import {
+  CopyNotesArgumentsSchema,
   IPC_CHANNELS,
+  parseClipboardCopyResult,
   parseDocumentResult,
 } from "../../shared/ipc/contract";
+import {
+  copyNotesToClipboard,
+  type ClipboardWriter,
+} from "../clipboard/noteClipboard";
 import type { NoteRepository } from "../persistence/noteRepository";
 
 export type IpcMainRegistrar = Pick<IpcMain, "handle" | "removeHandler">;
@@ -24,7 +30,9 @@ export interface CommandExecutor {
 
 const NoArgumentsSchema = z.tuple([]);
 
-function invalidRequest(message: string): ReturnType<typeof parseDocumentResult> {
+function invalidRequest(
+  message: string,
+): ReturnType<typeof parseDocumentResult> {
   return {
     ok: false,
     error: {
@@ -39,6 +47,11 @@ export function registerIpcHandlers(
   repository: NoteRepository,
   commandExecutor: CommandExecutor,
   ipcMain: IpcMainRegistrar,
+  clipboard: ClipboardWriter = {
+    writeText: () => {
+      throw new Error("Clipboard writer is unavailable.");
+    },
+  },
 ): () => void {
   const getDocument = (
     _event: IpcMainInvokeEvent,
@@ -87,10 +100,32 @@ export function registerIpcHandlers(
     return parseDocumentResult(await commandExecutor.undo());
   };
 
+  const copyNotes = (
+    _event: IpcMainInvokeEvent,
+    ...args: unknown[]
+  ): ReturnType<typeof parseClipboardCopyResult> => {
+    const parsed = CopyNotesArgumentsSchema.safeParse(args);
+    if (!parsed.success) {
+      return parseClipboardCopyResult(
+        invalidRequest("The clipboard request was invalid."),
+      );
+    }
+
+    return parseClipboardCopyResult(
+      copyNotesToClipboard(
+        repository,
+        clipboard,
+        parsed.data[0],
+        parsed.data[1],
+      ),
+    );
+  };
+
   const channels = [
     [IPC_CHANNELS.getDocument, getDocument],
     [IPC_CHANNELS.executeCommand, executeCommand],
     [IPC_CHANNELS.undo, undo],
+    [IPC_CHANNELS.copyNotes, copyNotes],
   ] as const;
   for (const [channel, handler] of channels) {
     ipcMain.handle(channel, handler);

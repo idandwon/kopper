@@ -45,6 +45,22 @@ describe("SearchField", () => {
     expect(screen.getByRole("textbox", { name: "Editor" })).toHaveFocus();
   });
 
+  it("does not run Cmd+K while focus is inside a dialog", () => {
+    render(
+      <>
+        <div role="dialog" aria-label="Editor dialog">
+          <button type="button">Dialog action</button>
+        </div>
+        <ControlledSearch />
+      </>,
+    );
+    screen.getByRole("button", { name: "Dialog action" }).focus();
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+
+    expect(screen.getByRole("button", { name: "Dialog action" })).toHaveFocus();
+  });
+
   it("clears a non-empty query on Escape before dismissing focus", async () => {
     const user = userEvent.setup();
     render(<ControlledSearch />);

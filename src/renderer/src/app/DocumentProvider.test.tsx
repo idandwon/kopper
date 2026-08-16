@@ -72,6 +72,7 @@ function installApi(
     getDocument: vi.fn().mockResolvedValue(initialResult),
     execute: vi.fn(),
     undo: vi.fn(),
+    copyNotes: vi.fn(),
     subscribeDocument: vi.fn((nextListener) => {
       listener = nextListener;
       return unsubscribe;
@@ -105,6 +106,7 @@ describe("DocumentProvider", () => {
       }),
       execute: vi.fn(),
       undo: vi.fn(),
+      copyNotes: vi.fn(),
       subscribeDocument: vi.fn((nextListener) => {
         callOrder.push("subscribe");
         listener = nextListener;

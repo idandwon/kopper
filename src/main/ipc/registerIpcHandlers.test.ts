@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DocumentCommand } from "../../shared/domain/commands";
 import { createEmptyDocument } from "../../shared/domain/document";
 import { IPC_CHANNELS, parseDocumentResult } from "../../shared/ipc/contract";
+import type { ClipboardWriter } from "../clipboard/noteClipboard";
 import { NoteRepository } from "../persistence/noteRepository";
 import {
   registerIpcHandlers,
@@ -45,6 +46,12 @@ class FakeIpcMain implements IpcMainRegistrar {
 }
 
 const temporaryDirectories: string[] = [];
+
+function makeClipboardWriter(): ClipboardWriter & {
+  writeText: ReturnType<typeof vi.fn<ClipboardWriter["writeText"]>>;
+} {
+  return { writeText: vi.fn<ClipboardWriter["writeText"]>() };
+}
 
 function makeCommandExecutor(): CommandExecutor & {
   execute: ReturnType<typeof vi.fn<CommandExecutor["execute"]>>;
@@ -100,9 +107,7 @@ describe("registerIpcHandlers", () => {
       parseDocumentResult(await ipcMain.invoke(IPC_CHANNELS.getDocument)),
     ).toEqual({ ok: false, error: failedLoad.error });
 
-    const recovered = createEmptyDocument(
-      new Date("2026-08-16T12:00:00.000Z"),
-    );
+    const recovered = createEmptyDocument(new Date("2026-08-16T12:00:00.000Z"));
     await expect(repository.replace(recovered)).resolves.toEqual({
       ok: true,
       value: recovered,
@@ -114,6 +119,7 @@ describe("registerIpcHandlers", () => {
       IPC_CHANNELS.getDocument,
       IPC_CHANNELS.executeCommand,
       IPC_CHANNELS.undo,
+      IPC_CHANNELS.copyNotes,
     ]);
   });
 
@@ -173,6 +179,63 @@ describe("registerIpcHandlers", () => {
     expect(commandExecutor.execute).toHaveBeenCalledTimes(1);
   });
 
+  it("runtime-validates clipboard requests and copies the current snapshot in supplied order", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "kopper-ipc-clipboard-"));
+    temporaryDirectories.push(directory);
+    const repository = new NoteRepository(join(directory, "kopper.json"));
+    const document = repository.snapshot();
+    const timestamp = "2026-08-16T12:00:00.000Z";
+    document.notes = [
+      {
+        id: "first",
+        sectionId: document.activeSectionId,
+        body: "First",
+        order: 0,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        completedAt: null,
+        previousPlacement: null,
+      },
+      {
+        id: "second",
+        sectionId: document.activeSectionId,
+        body: "Second",
+        order: 1,
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        completedAt: null,
+        previousPlacement: null,
+      },
+    ];
+    await repository.replace(document);
+    const clipboard = makeClipboardWriter();
+    const ipcMain = new FakeIpcMain();
+    registerIpcHandlers(repository, makeCommandExecutor(), ipcMain, clipboard);
+
+    await expect(
+      ipcMain.invoke(
+        IPC_CHANNELS.copyNotes,
+        ["second", "first"],
+        "markdown-list",
+      ),
+    ).resolves.toEqual({ ok: true, value: { copiedCount: 2 } });
+    expect(clipboard.writeText).toHaveBeenCalledWith("- Second\n- First");
+
+    for (const args of [
+      [[], "plain"],
+      [["first"], "html"],
+      [["missing"], "plain"],
+      [["first"], "plain", "extra"],
+    ]) {
+      const result = await ipcMain.invoke(IPC_CHANNELS.copyNotes, ...args);
+      expect(result).toMatchObject({
+        ok: false,
+        error: { code: "validation_failed" },
+      });
+    }
+    expect(clipboard.writeText).toHaveBeenCalledTimes(1);
+  });
+
   it("dispatches argument-free undo and rejects malformed undo requests", async () => {
     const repository = new NoteRepository("unused.json");
     const commandExecutor = makeCommandExecutor();
@@ -181,7 +244,10 @@ describe("registerIpcHandlers", () => {
       message: "There is no document action to undo.",
       retryable: false,
     };
-    commandExecutor.undo.mockResolvedValue({ ok: false, error: emptyUndoError });
+    commandExecutor.undo.mockResolvedValue({
+      ok: false,
+      error: emptyUndoError,
+    });
     const ipcMain = new FakeIpcMain();
     registerIpcHandlers(repository, commandExecutor, ipcMain);
 
@@ -217,6 +283,7 @@ describe("registerIpcHandlers", () => {
       IPC_CHANNELS.getDocument,
       IPC_CHANNELS.executeCommand,
       IPC_CHANNELS.undo,
+      IPC_CHANNELS.copyNotes,
     ]);
     cleanup();
     cleanup();
@@ -224,6 +291,7 @@ describe("registerIpcHandlers", () => {
       IPC_CHANNELS.getDocument,
       IPC_CHANNELS.executeCommand,
       IPC_CHANNELS.undo,
+      IPC_CHANNELS.copyNotes,
     ]);
 
     expect(() =>

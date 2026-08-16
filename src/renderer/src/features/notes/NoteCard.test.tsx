@@ -1,0 +1,129 @@
+import "@testing-library/jest-dom/vitest";
+
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import type { Note, Section } from "../../../../shared/domain/document";
+import { NoteCard, type NoteCardProps } from "./NoteCard";
+
+const timestamp = "2026-08-16T12:00:00.000Z";
+const note: Note = {
+  id: "one",
+  sectionId: "inbox",
+  body: "First body",
+  order: 0,
+  createdAt: timestamp,
+  updatedAt: timestamp,
+  completedAt: null,
+  previousPlacement: null,
+};
+const sections: Section[] = [
+  {
+    id: "inbox",
+    title: "Inbox",
+    order: 0,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  },
+];
+
+function props(overrides: Partial<NoteCardProps> = {}): NoteCardProps {
+  return {
+    note,
+    view: "active",
+    focused: true,
+    selected: true,
+    actionNoteIds: ["one", "two"],
+    actionNotes: [note, { ...note, id: "two", body: "Second body", order: 1 }],
+    sections,
+    disabled: false,
+    onSelect: vi.fn(),
+    onContextSelect: vi.fn(),
+    onMoveFocus: vi.fn(),
+    onAction: vi.fn(),
+    ...overrides,
+  };
+}
+
+afterEach(cleanup);
+
+describe("NoteCard", () => {
+  it("exposes semantic selected and focused states separately", () => {
+    const { rerender } = render(<NoteCard {...props()} />);
+    const card = screen.getByRole("option", { name: "Note: First body" });
+    expect(card).toHaveAttribute("aria-selected", "true");
+    expect(card).toHaveAttribute("data-focused", "true");
+    expect(card).toHaveAttribute("data-selected", "true");
+    expect(
+      screen.getByRole("button", { name: "Mark First body as done" }),
+    ).toBeVisible();
+
+    rerender(<NoteCard {...props({ focused: true, selected: false })} />);
+    expect(card).toHaveAttribute("aria-selected", "false");
+    expect(card).toHaveAttribute("data-focused", "true");
+    expect(card).toHaveAttribute("data-selected", "false");
+  });
+
+  it("reports click modifiers without conflating focus and selection", async () => {
+    const onSelect = vi.fn<NoteCardProps["onSelect"]>();
+    render(<NoteCard {...props({ onSelect })} />);
+    const card = screen.getByRole("option");
+
+    fireEvent.click(card, { metaKey: true });
+    expect(onSelect).toHaveBeenCalledWith({
+      id: "one",
+      additive: true,
+      extend: false,
+    });
+    fireEvent.click(card, { shiftKey: true });
+    expect(onSelect).toHaveBeenLastCalledWith({
+      id: "one",
+      additive: false,
+      extend: true,
+    });
+  });
+
+  it("supports completion, deletion, copying, merging, and focus movement shortcuts", () => {
+    const onAction = vi.fn<NoteCardProps["onAction"]>();
+    const onMoveFocus = vi.fn<NoteCardProps["onMoveFocus"]>();
+    render(<NoteCard {...props({ onAction, onMoveFocus })} />);
+    const card = screen.getByRole("option");
+
+    fireEvent.keyDown(card, { key: " " });
+    fireEvent.keyDown(card, { key: "Delete" });
+    fireEvent.keyDown(card, { key: "c", metaKey: true });
+    fireEvent.keyDown(card, { key: "c", metaKey: true, shiftKey: true });
+    fireEvent.keyDown(card, { key: "m", metaKey: true, shiftKey: true });
+    fireEvent.keyDown(card, { key: "ArrowDown", shiftKey: true });
+
+    expect(onAction.mock.calls.map(([action]) => action)).toEqual([
+      { type: "complete", noteIds: ["one", "two"] },
+      { type: "delete", noteIds: ["one", "two"] },
+      { type: "copy", noteIds: ["one", "two"], mode: "plain" },
+      {
+        type: "copy",
+        noteIds: ["one", "two"],
+        mode: "markdown-list",
+      },
+      { type: "merge", noteIds: ["one", "two"] },
+    ]);
+    expect(onMoveFocus).toHaveBeenCalledWith(1, true);
+  });
+
+  it("uses only the focused note for actions when it is not selected", () => {
+    const onAction = vi.fn<NoteCardProps["onAction"]>();
+    render(<NoteCard {...props({ selected: false, onAction })} />);
+    fireEvent.keyDown(screen.getByRole("option"), { key: "Delete" });
+    expect(onAction).toHaveBeenCalledWith({
+      type: "delete",
+      noteIds: ["one"],
+    });
+  });
+
+  it("selects an unselected card before opening its context menu", () => {
+    const onContextSelect = vi.fn<NoteCardProps["onContextSelect"]>();
+    render(<NoteCard {...props({ selected: false, onContextSelect })} />);
+    fireEvent.contextMenu(screen.getByRole("option"));
+    expect(onContextSelect).toHaveBeenCalledWith("one");
+  });
+});

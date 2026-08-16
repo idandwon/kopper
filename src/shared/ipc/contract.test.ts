@@ -3,8 +3,11 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import type { DocumentCommand } from "../domain/commands";
 import { createEmptyDocument } from "../domain/document";
 import {
+  ClipboardCopyResultSchema,
+  CopyNotesArgumentsSchema,
   DocumentResultSchema,
   IPC_CHANNELS,
+  parseClipboardCopyResult,
   parseDocumentResult,
   type KopperApi,
 } from "./contract";
@@ -31,6 +34,29 @@ describe("IPC contract", () => {
     expectTypeOf<ReturnType<KopperApi["undo"]>>().toEqualTypeOf<
       ReturnType<KopperApi["getDocument"]>
     >();
+    expectTypeOf<KopperApi["copyNotes"]>().toBeCallableWith(
+      ["second", "first"],
+      "markdown-list",
+    );
+  });
+
+  it("runtime-validates clipboard arguments and result envelopes", () => {
+    expect(CopyNotesArgumentsSchema.parse([["second", "first"], "plain"])).toEqual([
+      ["second", "first"],
+      "plain",
+    ]);
+    for (const input of [
+      [[], "plain"],
+      [["one", "one"], "plain"],
+      [["one"], "html"],
+    ]) {
+      expect(CopyNotesArgumentsSchema.safeParse(input).success).toBe(false);
+    }
+
+    expect(
+      parseClipboardCopyResult({ ok: true, value: { copiedCount: 2 } }),
+    ).toEqual({ ok: true, value: { copiedCount: 2 } });
+    expect(() => ClipboardCopyResultSchema.parse({ ok: true })).toThrow();
   });
 
   it("rejects malformed document result envelopes", () => {

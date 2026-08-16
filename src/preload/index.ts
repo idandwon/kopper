@@ -2,7 +2,9 @@ import { contextBridge, ipcRenderer } from "electron";
 
 import { KopperDocumentSchema } from "../shared/domain/document";
 import {
+  CopyNotesArgumentsSchema,
   IPC_CHANNELS,
+  parseClipboardCopyResult,
   parseDocumentResult,
   type KopperApi,
 } from "../shared/ipc/contract";
@@ -24,8 +26,21 @@ const api: KopperApi = {
     return parseDocumentResult(await ipcRenderer.invoke(IPC_CHANNELS.undo));
   },
 
+  async copyNotes(noteIds, mode) {
+    const [parsedIds, parsedMode] = CopyNotesArgumentsSchema.parse([
+      noteIds,
+      mode,
+    ]);
+    return parseClipboardCopyResult(
+      await ipcRenderer.invoke(IPC_CHANNELS.copyNotes, parsedIds, parsedMode),
+    );
+  },
+
   subscribeDocument(listener) {
-    const wrappedListener = (_event: Electron.IpcRendererEvent, input: unknown) => {
+    const wrappedListener = (
+      _event: Electron.IpcRendererEvent,
+      input: unknown,
+    ) => {
       listener(KopperDocumentSchema.parse(input));
     };
 
@@ -35,10 +50,7 @@ const api: KopperApi = {
     return () => {
       if (!subscribed) return;
       subscribed = false;
-      ipcRenderer.removeListener(
-        IPC_CHANNELS.documentChanged,
-        wrappedListener,
-      );
+      ipcRenderer.removeListener(IPC_CHANNELS.documentChanged, wrappedListener);
     };
   },
 };

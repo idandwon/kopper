@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -86,6 +86,9 @@ describe("SectionGroup", () => {
       <SectionGroup
         projection={{ section: document.sections[0], notes: document.notes }}
         view="active"
+        displayedIds={["one", "two"]}
+        selection={{ focusedId: null, anchorId: null, selectedIds: [] }}
+        dispatchSelection={vi.fn()}
       />,
     );
 
@@ -94,12 +97,39 @@ describe("SectionGroup", () => {
     expect(screen.getByText("First")).toBeVisible();
   });
 
+  it("preserves displayed selection order when dispatching a batch shortcut", () => {
+    render(
+      <SectionGroup
+        projection={{ section: document.sections[0], notes: document.notes }}
+        view="active"
+        displayedIds={["one", "two"]}
+        selection={{
+          focusedId: "one",
+          anchorId: "one",
+          selectedIds: ["one", "two"],
+        }}
+        dispatchSelection={vi.fn()}
+      />,
+    );
+
+    fireEvent.keyDown(screen.getByRole("option", { name: "Note: First" }), {
+      key: "Delete",
+    });
+    expect(execute).toHaveBeenCalledWith({
+      type: "note.delete",
+      noteIds: ["one", "two"],
+    });
+  });
+
   it("activates a section from its heading", async () => {
     const user = userEvent.setup();
     render(
       <SectionGroup
         projection={{ section: document.sections[0], notes: document.notes }}
         view="active"
+        displayedIds={["one", "two"]}
+        selection={{ focusedId: null, anchorId: null, selectedIds: [] }}
+        dispatchSelection={vi.fn()}
       />,
     );
 

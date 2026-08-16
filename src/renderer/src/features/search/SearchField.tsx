@@ -7,11 +7,12 @@ export interface SearchFieldProps {
   onQueryChange(query: string): void;
 }
 
-function isTextEditor(element: Element | null): boolean {
+function stopsApplicationShortcuts(element: Element | null): boolean {
   return (
     element instanceof HTMLInputElement ||
     element instanceof HTMLTextAreaElement ||
-    (element instanceof HTMLElement && element.isContentEditable)
+    (element instanceof HTMLElement &&
+      (element.isContentEditable || element.closest("[role=dialog]") !== null))
   );
 }
 
@@ -24,7 +25,7 @@ export function SearchField({ query, onQueryChange }: SearchFieldProps) {
         event.key.toLocaleLowerCase() !== "k" ||
         (!event.metaKey && !event.ctrlKey) ||
         event.altKey ||
-        isTextEditor(document.activeElement)
+        stopsApplicationShortcuts(document.activeElement)
       ) {
         return;
       }

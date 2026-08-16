@@ -1,4 +1,10 @@
-import { useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useReducer,
+  useState,
+  type ReactNode,
+} from "react";
 
 import type { KopperDocument } from "../../../shared/domain/document";
 import type { KopperError } from "../../../shared/domain/errors";
@@ -7,6 +13,10 @@ import { ScrollArea } from "../components/ui/scroll-area";
 import { AddSectionDialog } from "../features/sections/SectionManager";
 import { SectionGroup } from "../features/sections/SectionGroup";
 import { NoteComposer } from "../features/notes/NoteComposer";
+import {
+  initialSelectionState,
+  selectionReducer,
+} from "../features/notes/selectionReducer";
 import { SearchField } from "../features/search/SearchField";
 import {
   projectNotes,
@@ -111,9 +121,36 @@ function DocumentPanel({ document }: { document: KopperDocument }) {
   const { error, pendingAction, retryLastAction, undo } = useKopperDocument();
   const [query, setQuery] = useState("");
   const [view, setView] = useState<NoteProjectionView>("active");
-  const projections = projectNotes(document, query, view);
+  const [selection, dispatchSelection] = useReducer(
+    selectionReducer,
+    initialSelectionState,
+  );
+  const projections = useMemo(
+    () => projectNotes(document, query, view),
+    [document, query, view],
+  );
+  const displayedIds = useMemo(
+    () => projections.flatMap(({ notes }) => notes.map(({ id }) => id)),
+    [projections],
+  );
+  const visibleSelection = useMemo(
+    () => selectionReducer(selection, { type: "reconcile", displayedIds }),
+    [displayedIds, selection],
+  );
   const dark = document.appearance.mode === "dark";
   const busy = pendingAction !== null;
+
+  useEffect(() => {
+    dispatchSelection({ type: "reconcile", displayedIds });
+  }, [displayedIds]);
+
+  useEffect(() => {
+    if (visibleSelection.focusedId === null) return;
+    const focusedCard = Array.from(
+      globalThis.document.querySelectorAll<HTMLElement>("[data-note-id]"),
+    ).find(({ dataset }) => dataset.noteId === visibleSelection.focusedId);
+    focusedCard?.focus();
+  }, [visibleSelection.focusedId]);
 
   return (
     <div className={cn("contents", dark && "dark")}>
@@ -121,7 +158,10 @@ function DocumentPanel({ document }: { document: KopperDocument }) {
         <header className="grid gap-2 px-4 pt-4 pb-3 pl-5">
           <SearchField query={query} onQueryChange={setQuery} />
           <div className="flex items-center justify-between gap-2">
-            <div className="flex rounded-lg border border-border bg-card p-0.5" aria-label="Note lifecycle view">
+            <div
+              className="flex rounded-lg border border-border bg-card p-0.5"
+              aria-label="Note lifecycle view"
+            >
               <ViewButton view="active" current={view} onSelect={setView} />
               <ViewButton view="completed" current={view} onSelect={setView} />
             </div>
@@ -141,11 +181,7 @@ function DocumentPanel({ document }: { document: KopperDocument }) {
         </header>
 
         {error !== null && (
-          <GlobalError
-            error={error}
-            retry={retryLastAction}
-            disabled={busy}
-          />
+          <GlobalError error={error} retry={retryLastAction} disabled={busy} />
         )}
 
         <ScrollArea className="min-h-0 flex-1" aria-label="Notes by section">
@@ -155,6 +191,9 @@ function DocumentPanel({ document }: { document: KopperDocument }) {
                 key={projection.section.id}
                 projection={projection}
                 view={view}
+                displayedIds={displayedIds}
+                selection={visibleSelection}
+                dispatchSelection={dispatchSelection}
               />
             ))}
             {projections.length === 0 && (

@@ -40,6 +40,7 @@ beforeEach(() => {
 describe("preload bridge", () => {
   it("exposes only the typed Kopper API", () => {
     expect(Object.keys(exposedApi()).sort()).toEqual([
+      "copyNotes",
       "execute",
       "getDocument",
       "subscribeDocument",
@@ -95,6 +96,26 @@ describe("preload bridge", () => {
 
     electron.invoke.mockResolvedValueOnce({ ok: false });
     await expect(exposedApi().undo()).rejects.toThrow();
+  });
+
+  it("validates copy arguments and result envelopes", async () => {
+    electron.invoke.mockResolvedValueOnce({
+      ok: true,
+      value: { copiedCount: 2 },
+    });
+
+    await expect(
+      exposedApi().copyNotes(["second", "first"], "markdown-list"),
+    ).resolves.toEqual({ ok: true, value: { copiedCount: 2 } });
+    expect(electron.invoke).toHaveBeenCalledWith(
+      IPC_CHANNELS.copyNotes,
+      ["second", "first"],
+      "markdown-list",
+    );
+
+    await expect(exposedApi().copyNotes([], "plain")).rejects.toThrow();
+    electron.invoke.mockResolvedValueOnce({ ok: true });
+    await expect(exposedApi().copyNotes(["first"], "plain")).rejects.toThrow();
   });
 
   it("validates document events before notifying subscribers", () => {

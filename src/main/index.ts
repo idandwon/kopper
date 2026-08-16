@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, clipboard, ipcMain } from "electron";
 
 import { APP_NAME, STORE_FILE_NAME } from "../shared/appIdentity";
 import { IPC_CHANNELS } from "../shared/ipc/contract";
@@ -34,6 +34,7 @@ void app.whenReady().then(async () => {
     repository,
     commandService,
     ipcMain,
+    clipboard,
   );
   createMainWindow();
 

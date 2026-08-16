@@ -9,7 +9,25 @@ export const IPC_CHANNELS = {
   documentChanged: "kopper:document:changed",
   executeCommand: "kopper:command:execute",
   undo: "kopper:command:undo",
+  copyNotes: "kopper:notes:copy",
 } as const;
+
+export const NoteClipboardModeSchema = z.enum(["plain", "markdown-list"]);
+export type NoteClipboardMode = z.infer<typeof NoteClipboardModeSchema>;
+
+export const CopyNotesArgumentsSchema = z.tuple([
+  z
+    .array(z.string().min(1))
+    .min(1)
+    .refine((ids) => new Set(ids).size === ids.length),
+  NoteClipboardModeSchema,
+]);
+
+export interface ClipboardCopySuccess {
+  copiedCount: number;
+}
+
+export type ClipboardCopyResult = Result<ClipboardCopySuccess, KopperError>;
 
 const KopperErrorSchema: z.ZodType<KopperError> = z.strictObject({
   code: z.enum([
@@ -50,11 +68,31 @@ export function parseDocumentResult(
   return DocumentResultSchema.parse(input);
 }
 
+export const ClipboardCopyResultSchema: z.ZodType<ClipboardCopyResult> =
+  z.discriminatedUnion("ok", [
+    z.strictObject({
+      ok: z.literal(true),
+      value: z.strictObject({ copiedCount: z.int().nonnegative() }),
+    }),
+    z.strictObject({
+      ok: z.literal(false),
+      error: KopperErrorSchema,
+    }),
+  ]);
+
+export function parseClipboardCopyResult(input: unknown): ClipboardCopyResult {
+  return ClipboardCopyResultSchema.parse(input);
+}
+
 export interface KopperApi {
   getDocument(): Promise<Result<KopperDocument, KopperError>>;
   execute(
     command: DocumentCommand,
   ): Promise<Result<KopperDocument, KopperError>>;
   undo(): Promise<Result<KopperDocument, KopperError>>;
+  copyNotes(
+    noteIds: string[],
+    mode: NoteClipboardMode,
+  ): Promise<ClipboardCopyResult>;
   subscribeDocument(listener: (document: KopperDocument) => void): () => void;
 }
