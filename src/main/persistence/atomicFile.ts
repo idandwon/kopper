@@ -13,6 +13,23 @@ interface AtomicFileSystem {
 
 export type AtomicFileSystemOverrides = Partial<AtomicFileSystem>;
 
+export type AtomicReplaceStage = "before_rename" | "after_rename";
+
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : "Unknown filesystem error.";
+}
+
+export class AtomicReplaceError extends Error {
+  readonly name = "AtomicReplaceError";
+
+  constructor(
+    readonly stage: AtomicReplaceStage,
+    readonly cause: unknown,
+  ) {
+    super(describeError(cause));
+  }
+}
+
 const nodeFileSystem: AtomicFileSystem = {
   open: openFile,
   rename: renameFile,
@@ -59,6 +76,7 @@ export async function atomicReplace(
 ): Promise<void> {
   const fileSystem: AtomicFileSystem = { ...nodeFileSystem, ...overrides };
   const temporaryPath = `${path}.tmp-${process.pid}`;
+  let renameCommitted = false;
 
   try {
     const temporaryFile = await createTemporaryFile(temporaryPath, fileSystem);
@@ -71,6 +89,7 @@ export async function atomicReplace(
     }
 
     await fileSystem.rename(temporaryPath, path);
+    renameCommitted = true;
 
     const parentDirectory = await fileSystem.open(dirname(path), "r");
     try {
@@ -79,7 +98,18 @@ export async function atomicReplace(
       await parentDirectory.close();
     }
   } catch (error) {
-    await removeTemporaryFile(temporaryPath, fileSystem);
-    throw error;
+    try {
+      await removeTemporaryFile(temporaryPath, fileSystem);
+    } catch (cleanupError) {
+      throw new AtomicReplaceError(
+        renameCommitted ? "after_rename" : "before_rename",
+        cleanupError,
+      );
+    }
+
+    throw new AtomicReplaceError(
+      renameCommitted ? "after_rename" : "before_rename",
+      error,
+    );
   }
 }

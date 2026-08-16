@@ -1,16 +1,11 @@
 import type { IpcMain, IpcMainInvokeEvent } from "electron";
 import { z } from "zod";
 
-import type { KopperDocument } from "../../shared/domain/document";
-import type { KopperError, Result } from "../../shared/domain/errors";
 import {
   IPC_CHANNELS,
   parseDocumentResult,
 } from "../../shared/ipc/contract";
-import type {
-  NoteRepository,
-  RepositoryLoadResult,
-} from "../persistence/noteRepository";
+import type { NoteRepository } from "../persistence/noteRepository";
 
 export type IpcMainRegistrar = Pick<IpcMain, "handle" | "removeHandler">;
 
@@ -27,21 +22,9 @@ function invalidRequest(): ReturnType<typeof parseDocumentResult> {
   };
 }
 
-function getDocumentResult(
-  repository: NoteRepository,
-  initialLoadResult: RepositoryLoadResult,
-): Result<KopperDocument, KopperError> {
-  if (!initialLoadResult.ok) {
-    return { ok: false, error: structuredClone(initialLoadResult.error) };
-  }
-
-  return { ok: true, value: repository.snapshot() };
-}
-
 export function registerIpcHandlers(
   repository: NoteRepository,
   ipcMain: IpcMainRegistrar,
-  initialLoadResult: RepositoryLoadResult,
 ): () => void {
   const getDocument = (
     _event: IpcMainInvokeEvent,
@@ -51,7 +34,7 @@ export function registerIpcHandlers(
       return parseDocumentResult(invalidRequest());
     }
 
-    return parseDocumentResult(getDocumentResult(repository, initialLoadResult));
+    return parseDocumentResult(repository.currentResult());
   };
 
   ipcMain.handle(IPC_CHANNELS.getDocument, getDocument);

@@ -131,6 +131,65 @@ describe("useDocument", () => {
     );
   });
 
+  it("maps a rejected bridge request to a stable read error", async () => {
+    const api = installApi(documentWith()).api;
+    vi.mocked(api.getDocument).mockRejectedValue(
+      new Error("internal preload validation details"),
+    );
+
+    const { result } = renderHook(() => useDocument());
+
+    await waitFor(() =>
+      expect(result.current).toEqual({
+        status: "error",
+        error: {
+          code: "read_failed",
+          message: "The Kopper document could not be read.",
+          retryable: true,
+          recoveryAction: "retry",
+        },
+      }),
+    );
+  });
+
+  it("does not let a rejected initial request overwrite a newer subscription", async () => {
+    let rejectLoad: ((error: Error) => void) | undefined;
+    const { api, emit } = installApi(documentWith());
+    vi.mocked(api.getDocument).mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectLoad = reject;
+        }),
+    );
+    const subscribed = documentWith("Newer subscription snapshot");
+
+    const { result } = renderHook(() => useDocument());
+    act(() => emit(subscribed));
+    act(() => rejectLoad?.(new Error("late bridge rejection")));
+
+    await waitFor(() =>
+      expect(result.current).toEqual({ status: "ready", document: subscribed }),
+    );
+  });
+
+  it("handles a late bridge rejection after unmount", async () => {
+    let rejectLoad: ((error: Error) => void) | undefined;
+    const { api, unsubscribe } = installApi(documentWith());
+    vi.mocked(api.getDocument).mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectLoad = reject;
+        }),
+    );
+    const { unmount } = renderHook(() => useDocument());
+
+    unmount();
+    rejectLoad?.(new Error("late bridge rejection after unmount"));
+    await Promise.resolve();
+
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
+
   it("returns the structured repository error without retrying", async () => {
     const error = {
       code: "read_failed" as const,

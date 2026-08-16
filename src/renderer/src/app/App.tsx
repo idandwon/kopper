@@ -6,15 +6,11 @@ import { ScrollArea } from "../components/ui/scroll-area";
 import { cn } from "../lib/utils";
 import { useDocument } from "./useDocument";
 
-function noteSectionId(note: Note): string {
-  return note.completedAt === null
-    ? note.sectionId
-    : (note.previousPlacement?.sectionId ?? note.sectionId);
-}
-
 function notesInSection(document: KopperDocument, section: Section): Note[] {
   return document.notes
-    .filter((note) => noteSectionId(note) === section.id)
+    .filter(
+      (note) => note.completedAt === null && note.sectionId === section.id,
+    )
     .sort((left, right) => {
       const leftOrder = left.previousPlacement?.order ?? left.order;
       const rightOrder = right.previousPlacement?.order ?? right.order;

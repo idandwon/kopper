@@ -4,7 +4,11 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createEmptyDocument, type KopperDocument } from "../../shared/domain/document";
+import {
+  createEmptyDocument,
+  type KopperDocument,
+} from "../../shared/domain/document";
+import { AtomicReplaceError } from "./atomicFile";
 import { NoteRepository } from "./noteRepository";
 
 const timestamp = "2026-08-16T12:00:00.000Z";
@@ -65,8 +69,10 @@ describe("NoteRepository", () => {
         code: "invalid_document",
         recoveryAction: "choose_file",
       }),
-      raw: Buffer.from("{broken"),
     });
+    expect(result).not.toHaveProperty("raw");
+    const current = repository.currentResult();
+    expect(current).toEqual(result);
     expect(await readFile(storePath, "utf8")).toBe("{broken");
   });
 
@@ -83,8 +89,10 @@ describe("NoteRepository", () => {
         code: "invalid_document",
         recoveryAction: "choose_file",
       }),
-      raw: Buffer.from(malformed),
     });
+    expect(result).not.toHaveProperty("raw");
+    const current = repository.currentResult();
+    expect(current).toEqual(result);
     expect(await readFile(storePath, "utf8")).toBe(malformed);
   });
 
@@ -116,6 +124,125 @@ describe("NoteRepository", () => {
       error: expect.objectContaining({ code: "write_failed", retryable: true }),
     });
     expect(repository.snapshot()).toEqual(before);
+  });
+
+  it("serializes overlapping validation, writes, and snapshot updates", async () => {
+    const initial = createEmptyDocument(new Date(timestamp));
+    await writeFile(storePath, `${JSON.stringify(initial, null, 2)}\n`, "utf8");
+
+    let releaseFirstWrite: (() => void) | undefined;
+    const firstWriteReleased = new Promise<void>((resolve) => {
+      releaseFirstWrite = resolve;
+    });
+    let signalFirstWriteStarted: (() => void) | undefined;
+    const firstWriteStarted = new Promise<void>((resolve) => {
+      signalFirstWriteStarted = resolve;
+    });
+    const writer = vi.fn(async (path: string, contents: string) => {
+      if (writer.mock.calls.length === 1) {
+        signalFirstWriteStarted?.();
+        await firstWriteReleased;
+      }
+      await writeFile(path, contents, "utf8");
+    });
+    const repository = new NoteRepository(storePath, writer);
+    expect((await repository.load()).ok).toBe(true);
+    const first = changedDocument(repository.snapshot());
+    const second: KopperDocument = {
+      ...first,
+      window: {
+        pinned: false,
+        bounds: { x: 10, y: 20, width: 380, height: 640 },
+      },
+    };
+
+    const firstReplacement = repository.replace(first);
+    await firstWriteStarted;
+    const secondReplacement = repository.replace(second);
+    await Promise.resolve();
+
+    expect(writer).toHaveBeenCalledTimes(1);
+    releaseFirstWrite?.();
+    await expect(firstReplacement).resolves.toEqual({ ok: true, value: first });
+    await expect(secondReplacement).resolves.toEqual({ ok: true, value: second });
+    expect(writer).toHaveBeenCalledTimes(2);
+    expect(repository.snapshot()).toEqual(second);
+    expect(JSON.parse(await readFile(storePath, "utf8"))).toEqual(second);
+  });
+
+  it("reconciles a committed destination after a post-rename error", async () => {
+    const initial = createEmptyDocument(new Date(timestamp));
+    await writeFile(storePath, `${JSON.stringify(initial, null, 2)}\n`, "utf8");
+    const writer = vi.fn(async (path: string, contents: string) => {
+      await writeFile(path, contents, "utf8");
+      throw new AtomicReplaceError(
+        "after_rename",
+        new Error("directory sync failed"),
+      );
+    });
+    const repository = new NoteRepository(storePath, writer);
+    expect((await repository.load()).ok).toBe(true);
+    const next = changedDocument(repository.snapshot());
+
+    await expect(repository.replace(next)).resolves.toEqual({
+      ok: true,
+      value: next,
+    });
+    expect(repository.snapshot()).toEqual(next);
+    const current = repository.currentResult();
+    expect(current).toEqual({ ok: true, value: next });
+  });
+
+  it("latches a non-retryable write error when post-rename reconciliation mismatches", async () => {
+    const initial = createEmptyDocument(new Date(timestamp));
+    await writeFile(storePath, `${JSON.stringify(initial, null, 2)}\n`, "utf8");
+    const mismatched: KopperDocument = {
+      ...initial,
+      window: {
+        pinned: false,
+        bounds: { x: 10, y: 20, width: 380, height: 640 },
+      },
+    };
+    const writer = vi
+      .fn<(path: string, contents: string) => Promise<void>>()
+      .mockImplementationOnce(async (path) => {
+        await writeFile(path, `${JSON.stringify(mismatched, null, 2)}\n`, "utf8");
+        throw new AtomicReplaceError(
+          "after_rename",
+          new Error("directory sync failed"),
+        );
+      })
+      .mockImplementation(async (path, contents) => {
+        await writeFile(path, contents, "utf8");
+      });
+    const repository = new NoteRepository(storePath, writer);
+    expect((await repository.load()).ok).toBe(true);
+    const intended = changedDocument(repository.snapshot());
+
+    const uncertain = await repository.replace(intended);
+    expect(uncertain).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: "write_failed",
+        retryable: false,
+      }),
+    });
+    const current = repository.currentResult();
+    expect(current).toEqual(uncertain);
+
+    await expect(repository.replace(intended)).resolves.toEqual(uncertain);
+    expect(writer).toHaveBeenCalledTimes(1);
+
+    await expect(repository.load()).resolves.toEqual({
+      ok: true,
+      value: mismatched,
+      created: false,
+    });
+    await expect(repository.replace(intended)).resolves.toEqual({
+      ok: true,
+      value: intended,
+    });
+    expect(writer).toHaveBeenCalledTimes(2);
   });
 
   it("validates a replacement before invoking the atomic writer", async () => {

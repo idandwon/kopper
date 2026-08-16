@@ -22,15 +22,30 @@ export function useDocument(): DocumentState {
       setState({ status: "ready", document });
     });
 
-    void window.kopper.getDocument().then((result) => {
-      if (!mounted || receivedSubscribedSnapshot) return;
+    void window.kopper.getDocument().then(
+      (result) => {
+        if (!mounted || receivedSubscribedSnapshot) return;
 
-      setState(
-        result.ok
-          ? { status: "ready", document: result.value }
-          : { status: "error", error: result.error },
-      );
-    });
+        setState(
+          result.ok
+            ? { status: "ready", document: result.value }
+            : { status: "error", error: result.error },
+        );
+      },
+      () => {
+        if (!mounted || receivedSubscribedSnapshot) return;
+
+        setState({
+          status: "error",
+          error: {
+            code: "read_failed",
+            message: "The Kopper document could not be read.",
+            retryable: true,
+            recoveryAction: "retry",
+          },
+        });
+      },
+    );
 
     return () => {
       mounted = false;

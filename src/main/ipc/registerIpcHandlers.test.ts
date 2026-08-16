@@ -1,11 +1,13 @@
 import type { IpcMainInvokeEvent } from "electron";
-import { describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { createEmptyDocument } from "../../shared/domain/document";
 import { IPC_CHANNELS, parseDocumentResult } from "../../shared/ipc/contract";
-import {
-  NoteRepository,
-  type RepositoryLoadResult,
-} from "../persistence/noteRepository";
+import { NoteRepository } from "../persistence/noteRepository";
 import {
   registerIpcHandlers,
   type IpcMainRegistrar,
@@ -40,15 +42,21 @@ class FakeIpcMain implements IpcMainRegistrar {
   }
 }
 
-function successfulLoad(repository: NoteRepository): RepositoryLoadResult {
-  return { ok: true, value: repository.snapshot(), created: false };
-}
+const temporaryDirectories: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    temporaryDirectories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true })),
+  );
+});
 
 describe("registerIpcHandlers", () => {
   it("returns cloned snapshots after a successful initial load", async () => {
     const repository = new NoteRepository("unused.json");
     const ipcMain = new FakeIpcMain();
-    registerIpcHandlers(repository, ipcMain, successfulLoad(repository));
+    registerIpcHandlers(repository, ipcMain);
 
     const first = parseDocumentResult(
       await ipcMain.invoke(IPC_CHANNELS.getDocument),
@@ -63,32 +71,40 @@ describe("registerIpcHandlers", () => {
     expect(second.ok && second.value.sections[0].title).toBe("Inbox");
   });
 
-  it("preserves a structured initial load error without exposing a snapshot", async () => {
-    const repository = new NoteRepository("unused.json");
-    const snapshot = vi.spyOn(repository, "snapshot");
+  it("observes malformed-load recovery without handler re-registration", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "kopper-ipc-"));
+    temporaryDirectories.push(directory);
+    const path = join(directory, "kopper.json");
+    await writeFile(path, "{broken", "utf8");
+    const repository = new NoteRepository(path);
+    const failedLoad = await repository.load();
+    expect(failedLoad.ok).toBe(false);
+    if (failedLoad.ok) return;
+
     const ipcMain = new FakeIpcMain();
-    const initialLoadResult: RepositoryLoadResult = {
-      ok: false,
-      error: {
-        code: "invalid_document",
-        message: "The Kopper document is not valid JSON.",
-        retryable: false,
-        recoveryAction: "choose_file",
-      },
-      raw: Buffer.from("{broken"),
-    };
-    registerIpcHandlers(repository, ipcMain, initialLoadResult);
+    registerIpcHandlers(repository, ipcMain);
 
     expect(
       parseDocumentResult(await ipcMain.invoke(IPC_CHANNELS.getDocument)),
-    ).toEqual({ ok: false, error: initialLoadResult.error });
-    expect(snapshot).not.toHaveBeenCalled();
+    ).toEqual({ ok: false, error: failedLoad.error });
+
+    const recovered = createEmptyDocument(
+      new Date("2026-08-16T12:00:00.000Z"),
+    );
+    await expect(repository.replace(recovered)).resolves.toEqual({
+      ok: true,
+      value: recovered,
+    });
+    expect(
+      parseDocumentResult(await ipcMain.invoke(IPC_CHANNELS.getDocument)),
+    ).toEqual({ ok: true, value: recovered });
+    expect([...ipcMain.handlers.keys()]).toEqual([IPC_CHANNELS.getDocument]);
   });
 
   it("returns a structured validation error for unexpected handler input", async () => {
     const repository = new NoteRepository("unused.json");
     const ipcMain = new FakeIpcMain();
-    registerIpcHandlers(repository, ipcMain, successfulLoad(repository));
+    registerIpcHandlers(repository, ipcMain);
 
     expect(
       parseDocumentResult(
@@ -107,26 +123,20 @@ describe("registerIpcHandlers", () => {
   it("removes only registered handlers and can register again after cleanup", () => {
     const repository = new NoteRepository("unused.json");
     const ipcMain = new FakeIpcMain();
-    const cleanup = registerIpcHandlers(
-      repository,
-      ipcMain,
-      successfulLoad(repository),
-    );
+    const cleanup = registerIpcHandlers(repository, ipcMain);
 
     expect([...ipcMain.handlers.keys()]).toEqual([IPC_CHANNELS.getDocument]);
     cleanup();
     cleanup();
     expect(ipcMain.removedChannels).toEqual([IPC_CHANNELS.getDocument]);
 
-    expect(() =>
-      registerIpcHandlers(repository, ipcMain, successfulLoad(repository)),
-    ).not.toThrow();
+    expect(() => registerIpcHandlers(repository, ipcMain)).not.toThrow();
   });
 
   it("returns runtime-valid envelopes", async () => {
     const repository = new NoteRepository("unused.json");
     const ipcMain = new FakeIpcMain();
-    registerIpcHandlers(repository, ipcMain, successfulLoad(repository));
+    registerIpcHandlers(repository, ipcMain);
 
     const result = await ipcMain.invoke(IPC_CHANNELS.getDocument);
     expect(() => parseDocumentResult(result)).not.toThrow();

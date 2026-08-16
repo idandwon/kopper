@@ -2,6 +2,7 @@ import {
   chmod,
   lstat,
   mkdtemp,
+  open,
   readFile,
   readdir,
   rm,
@@ -75,11 +76,48 @@ describe("atomicReplace", () => {
       },
     };
 
-    await expect(atomicReplace(path, "next", failingRenameFs)).rejects.toThrow(
-      "rename failed",
-    );
+    await expect(atomicReplace(path, "next", failingRenameFs)).rejects.toMatchObject({
+      name: "AtomicReplaceError",
+      stage: "before_rename",
+      message: "rename failed",
+    });
 
     expect(await readFile(path, "utf8")).toBe("current");
+    expect(await readdir(directory)).toEqual(["kopper.json"]);
+  });
+
+  it("marks parent-directory sync failures as occurring after rename", async () => {
+    const directory = await makeTemporaryDirectory();
+    const path = join(directory, "kopper.json");
+    await writeFile(path, "current");
+    const openWithFailingDirectorySync = (async (
+      target: Parameters<typeof open>[0],
+      flags: Parameters<typeof open>[1],
+      mode?: Parameters<typeof open>[2],
+    ) => {
+      if (target === directory) {
+        return {
+          sync: async () => {
+            throw new Error("directory sync failed");
+          },
+          close: async () => undefined,
+        };
+      }
+
+      return open(target, flags, mode);
+    }) as typeof open;
+
+    await expect(
+      atomicReplace(path, "next", { open: openWithFailingDirectorySync }),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        name: "AtomicReplaceError",
+        stage: "after_rename",
+        message: "directory sync failed",
+      }),
+    );
+
+    expect(await readFile(path, "utf8")).toBe("next");
     expect(await readdir(directory)).toEqual(["kopper.json"]);
   });
 });

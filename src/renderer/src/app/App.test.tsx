@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KopperDocument } from "../../../shared/domain/document";
@@ -69,6 +69,29 @@ describe("Oxide Ledger App", () => {
       screen.getByRole("textbox", { name: "Add a note or prompt" }),
     ).toBeDisabled();
     expect(screen.getByText("Lifecycle: captured to completed")).toBeInTheDocument();
+  });
+
+  it("excludes completed notes from active sections and counts", () => {
+    const withCompleted = structuredClone(document);
+    withCompleted.notes.push({
+      id: "note-2",
+      sectionId: "inbox",
+      body: "Completed note",
+      order: 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      completedAt: timestamp,
+      previousPlacement: { sectionId: "inbox", order: 1 },
+    });
+    mockedUseDocument.mockReturnValue({
+      status: "ready",
+      document: withCompleted,
+    });
+
+    const { container } = render(<App />);
+
+    expect(within(container).queryByText("Completed note")).not.toBeInTheDocument();
+    expect(within(container).getByLabelText("1 notes")).toHaveTextContent("01");
   });
 
   it("renders a labeled loading progress region", () => {

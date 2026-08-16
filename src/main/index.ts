@@ -14,13 +14,9 @@ void app.whenReady().then(async () => {
   const repository = new NoteRepository(
     join(app.getPath("userData"), STORE_FILE_NAME),
   );
-  const initialLoadResult = await repository.load();
+  await repository.load();
 
-  cleanupIpcHandlers = registerIpcHandlers(
-    repository,
-    ipcMain,
-    initialLoadResult,
-  );
+  cleanupIpcHandlers = registerIpcHandlers(repository, ipcMain);
   createMainWindow();
 
   app.on("activate", () => {
