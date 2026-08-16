@@ -79,6 +79,11 @@ function fileApiMocks(): Pick<
   | "continueWithoutCapture"
   | "onAccessibilityPermissionChanged"
   | "onCaptureOutcome"
+  | "requestCapture"
+  | "validateShortcuts"
+  | "saveShortcuts"
+  | "setPinned"
+  | "onOpenSettings"
 > {
   return {
     openEditorWindow: vi.fn(),
@@ -98,6 +103,11 @@ function fileApiMocks(): Pick<
     continueWithoutCapture: vi.fn(),
     onAccessibilityPermissionChanged: vi.fn(() => vi.fn()),
     onCaptureOutcome: vi.fn(() => vi.fn()),
+    requestCapture: vi.fn(),
+    validateShortcuts: vi.fn(),
+    saveShortcuts: vi.fn(),
+    setPinned: vi.fn(),
+    onOpenSettings: vi.fn(() => vi.fn()),
   };
 }
 

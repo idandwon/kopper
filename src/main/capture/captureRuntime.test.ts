@@ -30,6 +30,52 @@ function setup(options: {
 }
 
 describe("CaptureRuntime", () => {
+  it("controls a configurable capture binding from permission and store health", async () => {
+    const check = vi.fn(() => "granted" as const);
+    const binding = {
+      setCaptureEnabled: vi.fn(async () => ({
+        ok: true as const,
+        value: undefined,
+      })),
+    };
+    const runtime = new CaptureRuntime({ check }, binding, vi.fn());
+
+    await runtime.start(true);
+    expect(binding.setCaptureEnabled).toHaveBeenCalledWith(true);
+    expect(runtime.isCaptureAvailable()).toBe(true);
+    await runtime.setRepositoryHealthy(false);
+    expect(binding.setCaptureEnabled).toHaveBeenLastCalledWith(false);
+    expect(runtime.isCaptureAvailable()).toBe(false);
+  });
+
+  it("retries a persisted binding after a fixed shortcut conflict", async () => {
+    const binding = {
+      setCaptureEnabled: vi
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false as const,
+          error: {
+            code: "shortcut_conflict" as const,
+            message: "conflict",
+            retryable: false,
+          },
+        })
+        .mockResolvedValueOnce({ ok: true as const, value: undefined }),
+    };
+    const runtime = new CaptureRuntime(
+      { check: () => "granted" },
+      binding,
+      vi.fn(),
+    );
+    await runtime.start(true);
+    expect(runtime.isCaptureAvailable()).toBe(false);
+
+    await runtime.retryCaptureBinding();
+
+    expect(binding.setCaptureEnabled).toHaveBeenCalledTimes(2);
+    expect(runtime.isCaptureAvailable()).toBe(true);
+  });
+
   it("performs one passive startup check and creates the monitor only after granted", async () => {
     const { runtime, check, factory, created } = setup({
       check: () => "granted",

@@ -48,22 +48,37 @@ export interface WindowBounds {
   height: number;
 }
 
+export type CaptureShortcut =
+  | { kind: "double-modifier"; modifier: "shift" }
+  | { kind: "accelerator"; accelerator: string };
+
+export interface ShortcutPreferences {
+  capture: CaptureShortcut;
+  togglePanel: string;
+}
+
+export interface WindowPreferences {
+  pinned: boolean;
+  bounds: WindowBounds | null;
+}
+
+export const DEFAULT_SHORTCUT_PREFERENCES: ShortcutPreferences = {
+  capture: { kind: "double-modifier", modifier: "shift" },
+  togglePanel: "CommandOrControl+Shift+Space",
+};
+
+export const DEFAULT_WINDOW_PREFERENCES: WindowPreferences = {
+  pinned: false,
+  bounds: null,
+};
+
 export interface KopperDocument {
   schemaVersion: 1;
   sections: Section[];
   notes: Note[];
   activeSectionId: string;
-  shortcuts: {
-    capture: {
-      kind: "double-modifier";
-      modifier: "shift";
-    };
-    togglePanel: string;
-  };
-  window: {
-    pinned: boolean;
-    bounds: WindowBounds | null;
-  };
+  shortcuts: ShortcutPreferences;
+  window: WindowPreferences;
   appearance: {
     mode: AppearanceMode;
     activeThemeId: string;
@@ -114,25 +129,37 @@ export const ThemeDefinitionSchema: z.ZodType<ThemeDefinition> = z.strictObject(
   dark: CompleteThemeModeSchema,
 });
 
-const WindowBoundsSchema: z.ZodType<WindowBounds> = z.strictObject({
+export const WindowBoundsSchema: z.ZodType<WindowBounds> = z.strictObject({
   x: z.int(),
   y: z.int(),
   width: z.int().min(340),
   height: z.int().min(480),
 });
 
+export const CaptureShortcutSchema: z.ZodType<CaptureShortcut> =
+  z.discriminatedUnion("kind", [
+    z.strictObject({
+      kind: z.literal("double-modifier"),
+      modifier: z.literal("shift"),
+    }),
+    z.strictObject({
+      kind: z.literal("accelerator"),
+      accelerator: z.string().trim().min(1),
+    }),
+  ]);
+
+export const ShortcutPreferencesSchema: z.ZodType<ShortcutPreferences> =
+  z.strictObject({
+    capture: CaptureShortcutSchema,
+    togglePanel: z.string().trim().min(1),
+  });
+
 export const KopperDocumentSchema: z.ZodType<KopperDocument> = z.strictObject({
   schemaVersion: z.literal(1),
   sections: z.array(SectionSchema).min(1),
   notes: z.array(NoteSchema),
   activeSectionId: identifierSchema,
-  shortcuts: z.strictObject({
-    capture: z.strictObject({
-      kind: z.literal("double-modifier"),
-      modifier: z.literal("shift"),
-    }),
-    togglePanel: z.string().min(1),
-  }),
+  shortcuts: ShortcutPreferencesSchema,
   window: z.strictObject({
     pinned: z.boolean(),
     bounds: WindowBoundsSchema.nullable(),
@@ -186,11 +213,8 @@ export function createEmptyDocument(now: Date = new Date()): KopperDocument {
     ],
     notes: [],
     activeSectionId: inboxId,
-    shortcuts: {
-      capture: { kind: "double-modifier", modifier: "shift" },
-      togglePanel: "CommandOrControl+Shift+Space",
-    },
-    window: { pinned: false, bounds: null },
+    shortcuts: structuredClone(DEFAULT_SHORTCUT_PREFERENCES),
+    window: structuredClone(DEFAULT_WINDOW_PREFERENCES),
     appearance: { mode: "system", activeThemeId: "builtin:oxide-ledger" },
     customThemes: [],
     draft: null,

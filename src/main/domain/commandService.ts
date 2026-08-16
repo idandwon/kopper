@@ -119,6 +119,8 @@ export class CommandService {
     restored.draft = structuredClone(current.draft);
     restored.appearance = structuredClone(current.appearance);
     restored.customThemes = structuredClone(current.customThemes);
+    restored.shortcuts = structuredClone(current.shortcuts);
+    restored.window = structuredClone(current.window);
     if (
       restored.sections.some(
         (section) => section.id === current.activeSectionId,

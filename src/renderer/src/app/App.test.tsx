@@ -63,6 +63,9 @@ vi.mock("../features/settings/AppearanceSettings", () => ({
 vi.mock("../features/settings/DataSettings", () => ({
   DataSettings: () => <div>Data controls</div>,
 }));
+vi.mock("../features/settings/ShortcutSettings", () => ({
+  ShortcutSettings: () => <div>Shortcut controls</div>,
+}));
 
 const timestamp = "2026-08-16T12:00:00.000Z";
 const document: KopperDocument = {
@@ -146,6 +149,7 @@ beforeEach(() => {
       captureOutcomeListener = listener;
       return vi.fn();
     }),
+    onOpenSettings: vi.fn(() => vi.fn()),
     openEditorWindow: vi.fn(),
     copyNotes: vi.fn(),
   } as never;

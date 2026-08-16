@@ -52,7 +52,7 @@ describe("IPC contract", () => {
     );
   });
 
-  it("strictly validates capture outcomes without exposing a request method", () => {
+  it("strictly validates capture outcomes and the dedicated request method", () => {
     const captured = {
       status: "captured",
       noteId: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
@@ -76,7 +76,7 @@ describe("IPC contract", () => {
       expect(CaptureOutcomeSchema.safeParse(malformed).success).toBe(false);
     }
     expectTypeOf<KopperApi["onCaptureOutcome"]>().toBeFunction();
-    expectTypeOf<KopperApi>().not.toHaveProperty("requestCapture");
+    expectTypeOf<KopperApi["requestCapture"]>().toBeFunction();
   });
 
   it("runtime-validates clipboard arguments and result envelopes", () => {

@@ -59,10 +59,15 @@ describe("preload bridge", () => {
       "onAccessibilityPermissionChanged",
       "onCaptureOutcome",
       "onNativeAppearanceChanged",
+      "onOpenSettings",
       "openAccessibilitySettings",
       "openEditorWindow",
+      "requestCapture",
+      "saveShortcuts",
+      "setPinned",
       "subscribeDocument",
       "undo",
+      "validateShortcuts",
     ]);
   });
 
@@ -319,6 +324,49 @@ describe("preload bridge", () => {
     await expect(exposedApi().getAccessibilitySession()).rejects.toThrow();
     electron.invoke.mockResolvedValueOnce({ ok: true, value: {} });
     await expect(exposedApi().openAccessibilitySettings()).rejects.toThrow();
+  });
+
+  it("validates dedicated capture, shortcut, pin, and settings-event bridges", async () => {
+    const document = createEmptyDocument(new Date("2026-08-16T12:00:00.000Z"));
+    const preferences = document.shortcuts;
+    electron.invoke
+      .mockResolvedValueOnce({ status: "empty" })
+      .mockResolvedValueOnce({ ok: true, value: { valid: true } })
+      .mockResolvedValueOnce({ ok: true, value: document })
+      .mockResolvedValueOnce({ ok: true, value: document });
+
+    await expect(exposedApi().requestCapture()).resolves.toEqual({ status: "empty" });
+    await expect(exposedApi().validateShortcuts(preferences)).resolves.toEqual({
+      ok: true,
+      value: { valid: true },
+    });
+    await expect(exposedApi().saveShortcuts(preferences)).resolves.toEqual({
+      ok: true,
+      value: document,
+    });
+    await expect(exposedApi().setPinned(true)).resolves.toEqual({
+      ok: true,
+      value: document,
+    });
+    expect(electron.invoke.mock.calls).toEqual([
+      [IPC_CHANNELS.requestCapture],
+      [IPC_CHANNELS.validateShortcuts, preferences],
+      [IPC_CHANNELS.saveShortcuts, preferences],
+      [IPC_CHANNELS.setPinned, true],
+    ]);
+
+    const listener = vi.fn();
+    const unsubscribe = exposedApi().onOpenSettings(listener);
+    const wrapped = electron.on.mock.calls[0]?.[1] as () => void;
+    expect(electron.on).toHaveBeenCalledWith(IPC_CHANNELS.openSettings, wrapped);
+    wrapped();
+    expect(listener).toHaveBeenCalledOnce();
+    unsubscribe();
+    unsubscribe();
+    expect(electron.removeListener).toHaveBeenCalledExactlyOnceWith(
+      IPC_CHANNELS.openSettings,
+      wrapped,
+    );
   });
 
   it("validates permission events and unsubscribes exactly its listener", () => {

@@ -3,8 +3,10 @@ import { z } from "zod";
 import type { DocumentCommand } from "../domain/commands";
 import {
   KopperDocumentSchema,
+  ShortcutPreferencesSchema,
   ThemeDefinitionSchema,
   type KopperDocument,
+  type ShortcutPreferences,
   type ThemeDefinition,
 } from "../domain/document";
 import type { KopperError, Result } from "../domain/errors";
@@ -36,6 +38,11 @@ export const IPC_CHANNELS = {
   continueWithoutCapture: "kopper:onboarding:continue-without-capture",
   accessibilityPermissionChanged: "kopper:permission:changed",
   captureOutcome: "kopper:capture:outcome",
+  requestCapture: "kopper:capture:request",
+  validateShortcuts: "kopper:shortcuts:validate",
+  saveShortcuts: "kopper:shortcuts:save",
+  setPinned: "kopper:window:pin",
+  openSettings: "kopper:settings:open",
 } as const;
 
 export const NoteClipboardModeSchema = z.enum(["plain", "markdown-list"]);
@@ -292,6 +299,20 @@ export const PermissionActionResultSchema: z.ZodType<
 
 export const SingleIdentifierArgumentsSchema = z.tuple([z.string().min(1)]);
 export const ImportTokenArgumentsSchema = z.tuple([z.uuid()]);
+export const ShortcutPreferencesArgumentsSchema = z.tuple([
+  ShortcutPreferencesSchema,
+]);
+export const SetPinnedArgumentsSchema = z.tuple([z.boolean()]);
+
+export const ShortcutValidationResultSchema: z.ZodType<
+  Result<{ valid: true }, KopperError>
+> = z.discriminatedUnion("ok", [
+  z.strictObject({
+    ok: z.literal(true),
+    value: z.strictObject({ valid: z.literal(true) }),
+  }),
+  z.strictObject({ ok: z.literal(false), error: KopperErrorSchema }),
+]);
 
 export interface KopperApi {
   getDocument(): Promise<Result<KopperDocument, KopperError>>;
@@ -338,5 +359,14 @@ export interface KopperApi {
     listener: (state: PermissionState) => void,
   ): () => void;
   onCaptureOutcome(listener: (outcome: CaptureOutcome) => void): () => void;
+  requestCapture(): Promise<CaptureOutcome>;
+  validateShortcuts(
+    preferences: ShortcutPreferences,
+  ): Promise<Result<{ valid: true }, KopperError>>;
+  saveShortcuts(
+    preferences: ShortcutPreferences,
+  ): Promise<Result<KopperDocument, KopperError>>;
+  setPinned(pinned: boolean): Promise<Result<KopperDocument, KopperError>>;
+  onOpenSettings(listener: () => void): () => void;
   subscribeDocument(listener: (document: KopperDocument) => void): () => void;
 }

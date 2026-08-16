@@ -402,6 +402,39 @@ describe("CommandService", () => {
     expect(undone.value.customThemes).toEqual([customTheme]);
   });
 
+  it("keeps the latest shortcut and window preferences when undoing a note edit", async () => {
+    const { service } = makeService();
+    const capture = {
+      kind: "accelerator" as const,
+      accelerator: "CommandOrControl+Alt+C",
+    };
+
+    await service.execute(edit("Edited"));
+    await service.execute({ type: "shortcuts.setCapture", capture });
+    await service.execute({
+      type: "shortcuts.setTogglePanel",
+      accelerator: "CommandOrControl+Alt+K",
+    });
+    await service.execute({ type: "window.setPinned", pinned: true });
+    await service.execute({
+      type: "window.setBounds",
+      bounds: { x: 20, y: 30, width: 380, height: 640 },
+    });
+
+    const undone = await service.undo();
+    expect(undone).toEqual({ ok: true, value: expect.any(Object) });
+    if (!undone.ok) return;
+    expect(undone.value.notes[0].body).toBe("Before");
+    expect(undone.value.shortcuts).toEqual({
+      capture,
+      togglePanel: "CommandOrControl+Alt+K",
+    });
+    expect(undone.value.window).toEqual({
+      pinned: true,
+      bounds: { x: 20, y: 30, width: 380, height: 640 },
+    });
+  });
+
   it("resolves the active section inside the shared transaction after a queued activation", async () => {
     const initial = makeDocument();
     initial.sections.push({

@@ -110,19 +110,16 @@ test("renders a valid seeded store through the secure bridge", async ({
   const { page } = await launchKopper(`${JSON.stringify(document, null, 2)}\n`);
 
   await expect(page).toHaveTitle("Kopper");
-  if (
-    !(await page
-      .getByRole("searchbox", { name: "Search notes" })
-      .isVisible())
-  ) {
-    await page
-      .getByRole("button", { name: "Continue without capture" })
-      .click();
+  const search = page.getByRole("searchbox", { name: "Search notes" });
+  const continueWithoutCapture = page.getByRole("button", {
+    name: "Continue without capture",
+  });
+  await expect(search.or(continueWithoutCapture)).toBeVisible();
+  if (await continueWithoutCapture.isVisible()) {
+    await continueWithoutCapture.click();
   }
   await expect(page.getByText("Seeded startup note")).toBeVisible();
-  await expect(
-    page.getByRole("searchbox", { name: "Search notes" }),
-  ).toBeVisible();
+  await expect(search).toBeVisible();
   await expect(page.evaluate(() => typeof window.process)).resolves.toBe(
     "undefined",
   );

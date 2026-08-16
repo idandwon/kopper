@@ -7,6 +7,7 @@ import {
 } from "../../shared/domain/commands";
 import type {
   KopperDocument,
+  ShortcutPreferences,
   ThemeDefinition,
 } from "../../shared/domain/document";
 import type { KopperError, Result } from "../../shared/domain/errors";
@@ -24,12 +25,16 @@ import {
   PermissionActionResultSchema,
   PermissionPromptArgumentsSchema,
   PermissionResultSchema,
+  SetPinnedArgumentsSchema,
+  ShortcutPreferencesArgumentsSchema,
+  ShortcutValidationResultSchema,
   SingleIdentifierArgumentsSchema,
   ThemeExportResultSchema,
   ThemeImportResultSchema,
   parseClipboardCopyResult,
   parseDocumentResult,
   type DataImportPreview,
+  type CaptureOutcome,
   type FileOperationResult,
   type ThemeImportPreview,
 } from "../../shared/ipc/contract";
@@ -71,6 +76,14 @@ export interface IpcPermissionManager {
   openSettings(): Promise<void>;
 }
 
+export interface IpcPreferenceService {
+  validateShortcuts(preferences: ShortcutPreferences): Result<void, KopperError>;
+  setShortcuts(
+    preferences: ShortcutPreferences,
+  ): Promise<Result<KopperDocument, KopperError>>;
+  setPinned(pinned: boolean): Promise<Result<KopperDocument, KopperError>>;
+}
+
 export interface IpcServices {
   files?: IpcFileOperations;
   themeFiles?: IpcThemeFiles;
@@ -82,6 +95,8 @@ export interface IpcServices {
   onPermissionObserved?(state: PermissionState): void;
   getAccessibilitySession?(): { continuedWithoutCapture: boolean };
   continueWithoutCapture?(): void | Promise<void>;
+  preferenceService?: IpcPreferenceService;
+  requestCapture?(): Promise<CaptureOutcome>;
 }
 
 const NoArgumentsSchema = z.tuple([]);
@@ -133,7 +148,11 @@ export function registerIpcHandlers(
       );
     }
     const parsedCommand = DocumentCommandSchema.safeParse(args[0]);
-    if (!parsedCommand.success) {
+    if (
+      !parsedCommand.success ||
+      parsedCommand.data.type.startsWith("shortcuts.") ||
+      parsedCommand.data.type.startsWith("window.")
+    ) {
       return parseDocumentResult(
         invalidRequest("The document command was invalid."),
       );
@@ -466,6 +485,73 @@ export function registerIpcHandlers(
     }
   };
 
+  const requestCapture = async (
+    _event: IpcMainInvokeEvent,
+    ...args: unknown[]
+  ) => {
+    if (
+      !NoArgumentsSchema.safeParse(args).success ||
+      services.requestCapture === undefined
+    ) {
+      return {
+        status: "failed" as const,
+        error: {
+          code: "permission_denied" as const,
+          message: "Capture is unavailable.",
+          retryable: true,
+          recoveryAction: "open_settings" as const,
+        },
+      };
+    }
+    return services.requestCapture();
+  };
+
+  const validateShortcuts = (
+    _event: IpcMainInvokeEvent,
+    ...args: unknown[]
+  ) => {
+    const parsed = ShortcutPreferencesArgumentsSchema.safeParse(args);
+    if (!parsed.success || services.preferenceService === undefined) {
+      return ShortcutValidationResultSchema.parse(
+        unavailable("The shortcut validation request was invalid."),
+      );
+    }
+    const result = services.preferenceService.validateShortcuts(parsed.data[0]);
+    return ShortcutValidationResultSchema.parse(
+      result.ok ? { ok: true, value: { valid: true } } : result,
+    );
+  };
+
+  const saveShortcuts = async (
+    _event: IpcMainInvokeEvent,
+    ...args: unknown[]
+  ) => {
+    const parsed = ShortcutPreferencesArgumentsSchema.safeParse(args);
+    if (!parsed.success || services.preferenceService === undefined) {
+      return DocumentResultSchema.parse(
+        unavailable("The shortcut save request was invalid."),
+      );
+    }
+    return DocumentResultSchema.parse(
+      await services.preferenceService.setShortcuts(parsed.data[0]),
+    );
+  };
+
+  const setPinned = async (
+    _event: IpcMainInvokeEvent,
+    ...args: unknown[]
+  ) => {
+    const parsed = SetPinnedArgumentsSchema.safeParse(args);
+    if (!parsed.success || services.preferenceService === undefined) {
+      return DocumentResultSchema.parse(
+        unavailable("The pin request was invalid."),
+      );
+    }
+    return DocumentResultSchema.parse(
+      await services.preferenceService.setPinned(parsed.data[0]),
+    );
+  };
+
   const channels = [
     [IPC_CHANNELS.getDocument, getDocument],
     [IPC_CHANNELS.executeCommand, executeCommand],
@@ -485,6 +571,10 @@ export function registerIpcHandlers(
     [IPC_CHANNELS.getAccessibilitySession, getAccessibilitySession],
     [IPC_CHANNELS.openAccessibilitySettings, openAccessibilitySettings],
     [IPC_CHANNELS.continueWithoutCapture, continueWithoutCapture],
+    [IPC_CHANNELS.requestCapture, requestCapture],
+    [IPC_CHANNELS.validateShortcuts, validateShortcuts],
+    [IPC_CHANNELS.saveShortcuts, saveShortcuts],
+    [IPC_CHANNELS.setPinned, setPinned],
   ] as const;
   for (const [channel, handler] of channels) {
     ipcMain.handle(channel, handler);

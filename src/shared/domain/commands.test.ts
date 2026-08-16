@@ -117,6 +117,10 @@ describe("DocumentCommandSchema", () => {
     { type: "appearance.setMode", mode: "sepia" },
     { type: "appearance.setActiveTheme", themeId: "" },
     { type: "appearance.deleteCustomTheme", themeId: "" },
+    { type: "shortcuts.setCapture", capture: { kind: "accelerator", accelerator: "" } },
+    { type: "shortcuts.setTogglePanel", accelerator: "" },
+    { type: "window.setPinned", pinned: "yes" },
+    { type: "window.setBounds", bounds: { x: 0, y: 0, width: 339, height: 480 } },
   ])("rejects invalid command input %#", (command) => {
     expect(DocumentCommandSchema.safeParse(command).success).toBe(false);
     expectValidationFailure(command);
@@ -131,6 +135,43 @@ describe("DocumentCommandSchema", () => {
         body: "Captured",
       }).success,
     ).toBe(true);
+  });
+});
+
+describe("shortcut and window preference commands", () => {
+  it("strictly applies every privileged preference command without making it undoable", () => {
+    let document = makeDocument();
+    const capture = {
+      kind: "accelerator" as const,
+      accelerator: "CommandOrControl+Alt+C",
+    };
+    document = apply(document, { type: "shortcuts.setCapture", capture });
+    document = apply(document, {
+      type: "shortcuts.setTogglePanel",
+      accelerator: " CommandOrControl+Alt+K ",
+    });
+    document = apply(document, { type: "window.setPinned", pinned: true });
+    document = apply(document, {
+      type: "window.setBounds",
+      bounds: { x: 20, y: 30, width: 380, height: 640 },
+    });
+
+    expect(document.shortcuts).toEqual({
+      capture,
+      togglePanel: "CommandOrControl+Alt+K",
+    });
+    expect(document.window).toEqual({
+      pinned: true,
+      bounds: { x: 20, y: 30, width: 380, height: 640 },
+    });
+    for (const type of [
+      "shortcuts.setCapture",
+      "shortcuts.setTogglePanel",
+      "window.setPinned",
+      "window.setBounds",
+    ] as const) {
+      expect(isUndoable({ type } as DocumentCommand)).toBe(false);
+    }
   });
 });
 

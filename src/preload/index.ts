@@ -17,6 +17,9 @@ import {
   PermissionActionResultSchema,
   PermissionPromptArgumentsSchema,
   PermissionResultSchema,
+  SetPinnedArgumentsSchema,
+  ShortcutPreferencesArgumentsSchema,
+  ShortcutValidationResultSchema,
   SingleIdentifierArgumentsSchema,
   ThemeExportResultSchema,
   ThemeImportResultSchema,
@@ -182,6 +185,44 @@ const api: KopperApi = {
       if (!subscribed) return;
       subscribed = false;
       ipcRenderer.removeListener(IPC_CHANNELS.captureOutcome, wrappedListener);
+    };
+  },
+
+  async requestCapture() {
+    return CaptureOutcomeSchema.parse(
+      await ipcRenderer.invoke(IPC_CHANNELS.requestCapture),
+    );
+  },
+
+  async validateShortcuts(preferences) {
+    const [parsed] = ShortcutPreferencesArgumentsSchema.parse([preferences]);
+    return ShortcutValidationResultSchema.parse(
+      await ipcRenderer.invoke(IPC_CHANNELS.validateShortcuts, parsed),
+    );
+  },
+
+  async saveShortcuts(preferences) {
+    const [parsed] = ShortcutPreferencesArgumentsSchema.parse([preferences]);
+    return parseDocumentResult(
+      await ipcRenderer.invoke(IPC_CHANNELS.saveShortcuts, parsed),
+    );
+  },
+
+  async setPinned(pinned) {
+    const [parsed] = SetPinnedArgumentsSchema.parse([pinned]);
+    return parseDocumentResult(
+      await ipcRenderer.invoke(IPC_CHANNELS.setPinned, parsed),
+    );
+  },
+
+  onOpenSettings(listener) {
+    const wrappedListener = () => listener();
+    ipcRenderer.on(IPC_CHANNELS.openSettings, wrappedListener);
+    let subscribed = true;
+    return () => {
+      if (!subscribed) return;
+      subscribed = false;
+      ipcRenderer.removeListener(IPC_CHANNELS.openSettings, wrappedListener);
     };
   },
 

@@ -3,6 +3,7 @@ import { readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 
 import {
+  createEmptyDocument,
   parseDocument,
   type KopperDocument,
 } from "../../shared/domain/document";
@@ -63,6 +64,10 @@ export interface DocumentFilesOptions {
   now?: () => number;
   operationCoordinator?: MainOperationRunner;
   externalReplacementSucceeded?: () => void | Promise<void>;
+  replaceDocument?: (
+    document: KopperDocument,
+    persist: () => Promise<Result<KopperDocument, KopperError>>,
+  ) => Promise<Result<KopperDocument, KopperError>>;
 }
 
 export class DocumentFiles {
@@ -71,6 +76,7 @@ export class DocumentFiles {
   private readonly now: () => number;
   private readonly operationCoordinator: MainOperationRunner;
   private readonly externalReplacementSucceeded: () => void | Promise<void>;
+  private readonly replaceDocument?: DocumentFilesOptions["replaceDocument"];
 
   constructor(
     private readonly repository: NoteRepository,
@@ -83,6 +89,7 @@ export class DocumentFiles {
       options.operationCoordinator ?? new MainOperationCoordinator();
     this.externalReplacementSucceeded =
       options.externalReplacementSucceeded ?? (() => undefined);
+    this.replaceDocument = options.replaceDocument;
   }
 
   activePath(): string {
@@ -165,21 +172,19 @@ export class DocumentFiles {
   }
 
   confirmImport(token: string): Promise<Result<KopperDocument, KopperError>> {
-    return this.operationCoordinator.run(async () => {
-      const pending = this.pendingImports.get(token);
-      this.pendingImports.delete(token);
-      if (pending !== undefined) clearTimeout(pending.expirationTimer);
-      if (pending === undefined || pending.expiresAt <= this.now()) {
-        return failure(
+    const pending = this.pendingImports.get(token);
+    this.pendingImports.delete(token);
+    if (pending !== undefined) clearTimeout(pending.expirationTimer);
+    if (pending === undefined || pending.expiresAt <= this.now()) {
+      return Promise.resolve(
+        failure(
           "validation_failed",
           "The import preview is unknown or has expired.",
-        );
-      }
+        ),
+      );
+    }
 
-      const replaced = await this.repository.replace(pending.document);
-      if (replaced.ok) await this.externalReplacementSucceeded();
-      return replaced;
-    });
+    return this.replaceExternalDocument(pending.document);
   }
 
   async exportRecoveryBytes(): Promise<FileOperationResult> {
@@ -210,11 +215,24 @@ export class DocumentFiles {
   }
 
   createNewStore(): Promise<Result<KopperDocument, KopperError>> {
-    return this.operationCoordinator.run(async () => {
-      const replaced = await this.repository.createNewStore();
+    return this.replaceExternalDocument(createEmptyDocument());
+  }
+
+  private replaceExternalDocument(
+    document: KopperDocument,
+  ): Promise<Result<KopperDocument, KopperError>> {
+    const persist = () => this.repository.replace(document);
+    const operation = async () => {
+      const replaced =
+        this.replaceDocument === undefined
+          ? await persist()
+          : await this.replaceDocument(document, persist);
       if (replaced.ok) await this.externalReplacementSucceeded();
       return replaced;
-    });
+    };
+    return this.replaceDocument === undefined
+      ? this.operationCoordinator.run(operation)
+      : operation();
   }
 
   private removeExpiredImports(): void {

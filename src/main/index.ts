@@ -6,6 +6,7 @@ import {
   BrowserWindow,
   clipboard,
   dialog,
+  globalShortcut,
   ipcMain,
   nativeImage,
   nativeTheme,
@@ -14,44 +15,67 @@ import {
 } from "electron";
 
 import { APP_NAME, STORE_FILE_NAME } from "../shared/appIdentity";
+import {
+  DEFAULT_SHORTCUT_PREFERENCES,
+  DEFAULT_WINDOW_PREFERENCES,
+} from "../shared/domain/document";
+import type { CaptureOutcome } from "../shared/ipc/contract";
+import { IPC_CHANNELS } from "../shared/ipc/contract";
 import { CaptureCoordinator } from "./capture/captureCoordinator";
 import { CaptureRuntime } from "./capture/captureRuntime";
 import { SelectionCapture } from "./capture/selectionCapture";
-import {
-  createMainWindow,
-  openExpandedEditorWindow,
-} from "./createMainWindow";
-import { DocumentFiles } from "./files/documentFiles";
 import { CommandService } from "./domain/commandService";
 import { MainOperationCoordinator } from "./domain/mainOperationCoordinator";
+import { DocumentFiles } from "./files/documentFiles";
 import { registerIpcHandlers } from "./ipc/registerIpcHandlers";
-import { PermissionManager } from "./permissions/permissionManager";
-import { createGlobalKeyboardMonitor } from "./shortcuts/globalKeyboardMonitor";
 import { registerNativeAppearance } from "./nativeAppearance";
+import { PermissionManager } from "./permissions/permissionManager";
 import { NoteRepository } from "./persistence/noteRepository";
+import { PreferenceService } from "./preferences/preferenceService";
 import {
   publishCaptureOutcome,
   publishDocument,
   publishNativeAppearance,
   publishPermissionState,
 } from "./publishDocument";
+import { createGlobalKeyboardMonitor } from "./shortcuts/globalKeyboardMonitor";
+import { ShortcutManager } from "./shortcuts/shortcutManager";
 import { ThemeFiles } from "./theme/themeFiles";
+import { WindowManager } from "./window/windowManager";
 
 app.setName(APP_NAME);
 
 let cleanupIpcHandlers: (() => void) | undefined;
 let cleanupNativeAppearance: (() => void) | undefined;
 let captureRuntime: CaptureRuntime | undefined;
+let shortcutManager: ShortcutManager | undefined;
+let windowManager: WindowManager | undefined;
+
+const unavailableCapture = (): CaptureOutcome => ({
+  status: "failed",
+  error: {
+    code: "permission_denied",
+    message: "Capture is unavailable until Accessibility access is granted.",
+    retryable: true,
+    recoveryAction: "open_settings",
+  },
+});
 
 void app.whenReady().then(async () => {
   const repository = new NoteRepository(
     join(app.getPath("userData"), STORE_FILE_NAME),
   );
   const loadResult = await repository.load();
+  const initialDocument = loadResult.ok ? loadResult.value : undefined;
 
   const publish = (document: ReturnType<NoteRepository["snapshot"]>) => {
     publishDocument(BrowserWindow.getAllWindows(), document);
   };
+  const publishCapture = (outcome: CaptureOutcome) => {
+    publishCaptureOutcome(BrowserWindow.getAllWindows(), outcome);
+    if (outcome.status === "captured") windowManager?.acknowledgeCapture();
+  };
+
   const operationCoordinator = new MainOperationCoordinator();
   const commandService = new CommandService(
     repository,
@@ -62,23 +86,12 @@ void app.whenReady().then(async () => {
     },
     operationCoordinator,
   );
-  const documentFiles = new DocumentFiles(repository, dialog, {
-    operationCoordinator,
-    externalReplacementSucceeded: async () => {
-      commandService.clearUndoHistory();
-      await captureRuntime?.setRepositoryHealthy(true);
-    },
-  });
-  const themeFiles = new ThemeFiles(dialog);
   const permissionManager = new PermissionManager({
     platform: process.platform,
     isTrustedAccessibilityClient: (prompt) =>
       systemPreferences.isTrustedAccessibilityClient(prompt),
     openExternal: (url) => shell.openExternal(url),
   });
-  const publishCapture = (outcome: unknown) => {
-    publishCaptureOutcome(BrowserWindow.getAllWindows(), outcome);
-  };
   const selectionCapture = new SelectionCapture({
     clipboard,
     nativeImage,
@@ -99,17 +112,82 @@ void app.whenReady().then(async () => {
       },
     },
   );
-  captureRuntime = new CaptureRuntime(
-    permissionManager,
+  const requestCapture = async (): Promise<CaptureOutcome> => {
+    if (!captureRuntime?.isCaptureAvailable()) {
+      const outcome = unavailableCapture();
+      publishCapture(outcome);
+      return outcome;
+    }
+    return captureCoordinator.requestCapture();
+  };
+
+  windowManager = new WindowManager({
+    initialBounds:
+      initialDocument?.window.bounds ?? DEFAULT_WINDOW_PREFERENCES.bounds,
+    pinned: initialDocument?.window.pinned ?? DEFAULT_WINDOW_PREFERENCES.pinned,
+    requestCapture: () => {
+      void requestCapture();
+    },
+    openSettings: () => {
+      windowManager?.sendToMain(IPC_CHANNELS.openSettings);
+    },
+  });
+
+  shortcutManager = new ShortcutManager(
+    globalShortcut,
     () =>
       createGlobalKeyboardMonitor({
         onCapture: () => {
-          void captureCoordinator.requestCapture();
+          void requestCapture();
         },
       }),
+    {
+      onCapture: () => {
+        void requestCapture();
+      },
+      onTogglePanel: () => windowManager?.toggle(),
+    },
+  );
+  const preferenceService = new PreferenceService(
+    repository,
+    shortcutManager,
+    windowManager,
+    operationCoordinator,
+    {
+      publish,
+      preferencesCommitted: () => captureRuntime?.retryCaptureBinding(),
+    },
+  );
+  windowManager.setBoundsPersistence((bounds) => {
+    void preferenceService.setBounds(bounds);
+  });
+
+  const startupPreferences =
+    initialDocument ?? {
+      ...repository.snapshot(),
+      shortcuts: structuredClone(DEFAULT_SHORTCUT_PREFERENCES),
+      window: structuredClone(DEFAULT_WINDOW_PREFERENCES),
+    };
+  const documentFiles = new DocumentFiles(repository, dialog, {
+    operationCoordinator,
+    replaceDocument: (document, persist) =>
+      preferenceService.replaceDocument(document, persist),
+    externalReplacementSucceeded: async () => {
+      commandService.clearUndoHistory();
+      await captureRuntime?.setRepositoryHealthy(true);
+      await captureRuntime?.retryCaptureBinding();
+    },
+  });
+  const themeFiles = new ThemeFiles(dialog);
+
+  captureRuntime = new CaptureRuntime(
+    permissionManager,
+    shortcutManager,
     publishCapture,
   );
   const onboardingSession = { continuedWithoutCapture: false };
+  const completeOnboarding = () => windowManager?.completeOnboarding();
+
   cleanupIpcHandlers = registerIpcHandlers(
     repository,
     commandService,
@@ -119,23 +197,34 @@ void app.whenReady().then(async () => {
       files: documentFiles,
       themeFiles,
       permissionManager,
+      preferenceService,
+      requestCapture,
       getNativeAppearance: () => nativeTheme.shouldUseDarkColors,
-      openEditorWindow: openExpandedEditorWindow,
+      openEditorWindow: (noteId) =>
+        windowManager?.openExpandedEditorWindow(noteId),
       publish,
       publishPermission: (state) => {
         publishPermissionState(BrowserWindow.getAllWindows(), state);
       },
       onPermissionObserved: (state) => {
         void captureRuntime?.onPermissionObserved(state);
+        if (state === "granted") completeOnboarding();
       },
       getAccessibilitySession: () => ({
         continuedWithoutCapture: onboardingSession.continuedWithoutCapture,
       }),
       continueWithoutCapture: () => {
         onboardingSession.continuedWithoutCapture = true;
+        completeOnboarding();
       },
     },
   );
+  windowManager.createMainWindow();
+  const startupNative = await preferenceService.applyStartup(startupPreferences);
+  if (!startupNative.ok) {
+    publishCapture({ status: "failed", error: startupNative.error });
+  }
+
   cleanupNativeAppearance = registerNativeAppearance(
     nativeTheme,
     (shouldUseDarkColors) => {
@@ -145,19 +234,23 @@ void app.whenReady().then(async () => {
       );
     },
   );
-  createMainWindow();
   await captureRuntime.start(loadResult.ok);
+  if (captureRuntime.isCaptureAvailable()) completeOnboarding();
 
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow();
-    }
-  });
+  app.on("activate", () => windowManager?.show());
+});
+
+app.on("before-quit", () => {
+  windowManager?.beginQuit();
 });
 
 app.on("will-quit", () => {
   captureRuntime?.dispose();
   captureRuntime = undefined;
+  shortcutManager?.dispose();
+  shortcutManager = undefined;
+  windowManager?.dispose();
+  windowManager = undefined;
   cleanupIpcHandlers?.();
   cleanupIpcHandlers = undefined;
   cleanupNativeAppearance?.();
@@ -165,6 +258,5 @@ app.on("will-quit", () => {
 });
 
 app.on("window-all-closed", () => {
-  // The macOS WindowManager task replaces this temporary lifecycle with menu-bar hiding.
-  app.quit();
+  // Kopper remains available from its status item until the user explicitly quits.
 });

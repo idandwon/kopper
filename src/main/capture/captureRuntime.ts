@@ -13,6 +13,10 @@ export interface CaptureMonitor {
 
 export type CaptureMonitorFactory = () => Promise<CaptureMonitor>;
 
+export interface CaptureBinding {
+  setCaptureEnabled(enabled: boolean): Promise<Result<void, KopperError>>;
+}
+
 const monitorError = (): KopperError => ({
   code: "permission_denied",
   message: "Kopper could not start global keyboard capture.",
@@ -29,6 +33,7 @@ export class CaptureRuntime {
   private started = false;
   private disposed = false;
   private repositoryHealthy = true;
+  private captureAvailable = false;
   private desiredState: PermissionState = "unknown";
   private observation = 0;
   private monitor: CaptureMonitor | undefined;
@@ -37,7 +42,7 @@ export class CaptureRuntime {
 
   constructor(
     private readonly permission: CapturePermissionChecker,
-    private readonly createMonitor: CaptureMonitorFactory,
+    private readonly captureBinding: CaptureMonitorFactory | CaptureBinding,
     private readonly publish: (outcome: CaptureOutcome) => void,
   ) {}
 
@@ -58,9 +63,22 @@ export class CaptureRuntime {
     this.observation += 1;
     if (!healthy) {
       this.stopMonitor();
+      if (typeof this.captureBinding !== "function") {
+        await this.captureBinding.setCaptureEnabled(false);
+      }
       return;
     }
     if (this.started) await this.observeCurrentPermission();
+  }
+
+  isCaptureAvailable(): boolean {
+    return this.captureAvailable;
+  }
+
+  async retryCaptureBinding(): Promise<void> {
+    if (this.disposed || !this.started || !this.repositoryHealthy) return;
+    this.failurePublishedForGrantedCycle = false;
+    await this.observeCurrentPermission();
   }
 
   onPermissionObserved(state: PermissionState): Promise<void> {
@@ -84,7 +102,11 @@ export class CaptureRuntime {
     this.disposed = true;
     this.observation += 1;
     this.desiredState = "unknown";
+    this.captureAvailable = false;
     this.stopMonitor();
+    if (typeof this.captureBinding !== "function") {
+      void this.captureBinding.setCaptureEnabled(false);
+    }
   }
 
   private async observeCurrentPermission(): Promise<void> {
@@ -103,18 +125,35 @@ export class CaptureRuntime {
   ): Promise<void> {
     if (this.disposed) return;
     if (state !== "granted") {
+      this.captureAvailable = false;
       this.failurePublishedForGrantedCycle = false;
       this.stopMonitor();
+      if (typeof this.captureBinding !== "function") {
+        await this.captureBinding.setCaptureEnabled(false);
+      }
       return;
     }
     if (!this.isCurrentGrant(observation)) return;
-    if (this.monitor !== undefined || this.failurePublishedForGrantedCycle) {
+    if (this.failurePublishedForGrantedCycle) return;
+
+    if (typeof this.captureBinding !== "function") {
+      const enabled = await this.captureBinding.setCaptureEnabled(true);
+      if (!enabled.ok && this.isCurrentGrant(observation)) {
+        this.captureAvailable = false;
+        this.publishMonitorFailure();
+      } else if (this.isCurrentGrant(observation)) {
+        this.captureAvailable = true;
+      } else {
+        this.captureAvailable = false;
+        await this.captureBinding.setCaptureEnabled(false);
+      }
       return;
     }
+    if (this.monitor !== undefined) return;
 
     let monitor: CaptureMonitor;
     try {
-      monitor = await this.createMonitor();
+      monitor = await this.captureBinding();
     } catch {
       if (this.isCurrentGrant(observation)) this.publishMonitorFailure();
       return;
@@ -145,6 +184,7 @@ export class CaptureRuntime {
       return;
     }
     this.monitor = monitor;
+    this.captureAvailable = true;
   }
 
   private isCurrentGrant(observation: number): boolean {
@@ -167,6 +207,7 @@ export class CaptureRuntime {
   }
 
   private stopMonitor(): void {
+    this.captureAvailable = false;
     const monitor = this.monitor;
     this.monitor = undefined;
     if (monitor === undefined) return;

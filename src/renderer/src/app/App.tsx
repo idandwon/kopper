@@ -38,6 +38,7 @@ import { AccessibilityPermissionGate } from "../features/onboarding/Accessibilit
 import { RecoveryScreen } from "../features/recovery/RecoveryScreen";
 import { AppearanceSettings } from "../features/settings/AppearanceSettings";
 import { DataSettings } from "../features/settings/DataSettings";
+import { ShortcutSettings } from "../features/settings/ShortcutSettings";
 import {
   initialSelectionState,
   selectionReducer,
@@ -152,6 +153,7 @@ function DocumentPanel({
   const [query, setQuery] = useState("");
   const [view, setView] = useState<NoteProjectionView>("active");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState("appearance");
   const [captureHighlightedNoteId, setCaptureHighlightedNoteId] = useState<
     string | null
   >(null);
@@ -217,6 +219,13 @@ function DocumentPanel({
   }, [displayedIds, fallbackFocusedId]);
 
   useEffect(() => {
+    return window.kopper.onOpenSettings(() => {
+      setSettingsTab("shortcuts");
+      setSettingsOpen(true);
+    });
+  }, []);
+
+  useEffect(() => {
     if (visibleSelection.focusedId === null) return;
     const focusedCard = Array.from(
       globalThis.document.querySelectorAll<HTMLElement>("[data-note-id]"),
@@ -246,7 +255,10 @@ function DocumentPanel({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>Settings…</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => {
+                    setSettingsTab("appearance");
+                    setSettingsOpen(true);
+                  }}>Settings…</DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
               <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
@@ -256,10 +268,11 @@ function DocumentPanel({
                 }}>
                   <SheetHeader>
                     <SheetTitle>Settings</SheetTitle>
-                    <SheetDescription>Appearance and local data controls.</SheetDescription>
+                    <SheetDescription>Shortcuts, appearance, and local data controls.</SheetDescription>
                   </SheetHeader>
-                  <Tabs defaultValue="appearance" className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
-                    <TabsList aria-label="Settings sections"><TabsTrigger value="appearance">Appearance</TabsTrigger><TabsTrigger value="data">Data</TabsTrigger></TabsList>
+                  <Tabs value={settingsTab} onValueChange={setSettingsTab} className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+                    <TabsList aria-label="Settings sections"><TabsTrigger value="shortcuts">Shortcuts</TabsTrigger><TabsTrigger value="appearance">Appearance</TabsTrigger><TabsTrigger value="data">Data</TabsTrigger></TabsList>
+                    <TabsContent value="shortcuts"><ShortcutSettings captureUnavailable={captureUnavailable} /></TabsContent>
                     <TabsContent value="appearance"><AppearanceSettings /></TabsContent>
                     <TabsContent value="data"><DataSettings /></TabsContent>
                   </Tabs>

@@ -2,11 +2,15 @@ import { z } from "zod";
 
 import {
   parseDocument,
+  CaptureShortcutSchema,
   ThemeDefinitionSchema,
+  WindowBoundsSchema,
+  type CaptureShortcut,
   type KopperDocument,
   type Note,
   type Section,
   type ThemeDefinition,
+  type WindowBounds,
 } from "./document";
 import type { KopperError, Result } from "./errors";
 import {
@@ -46,7 +50,11 @@ export type DocumentCommand =
   | { type: "appearance.setMode"; mode: "system" | "light" | "dark" }
   | { type: "appearance.setActiveTheme"; themeId: string }
   | { type: "appearance.upsertCustomTheme"; theme: ThemeDefinition }
-  | { type: "appearance.deleteCustomTheme"; themeId: string };
+  | { type: "appearance.deleteCustomTheme"; themeId: string }
+  | { type: "shortcuts.setCapture"; capture: CaptureShortcut }
+  | { type: "shortcuts.setTogglePanel"; accelerator: string }
+  | { type: "window.setPinned"; pinned: boolean }
+  | { type: "window.setBounds"; bounds: WindowBounds | null };
 
 export interface CommandContext {
   now(): string;
@@ -141,6 +149,22 @@ export const DocumentCommandSchema: z.ZodType<DocumentCommand> =
       type: z.literal("appearance.deleteCustomTheme"),
       themeId: identifierSchema,
     }),
+    z.strictObject({
+      type: z.literal("shortcuts.setCapture"),
+      capture: CaptureShortcutSchema,
+    }),
+    z.strictObject({
+      type: z.literal("shortcuts.setTogglePanel"),
+      accelerator: z.string().trim().min(1),
+    }),
+    z.strictObject({
+      type: z.literal("window.setPinned"),
+      pinned: z.boolean(),
+    }),
+    z.strictObject({
+      type: z.literal("window.setBounds"),
+      bounds: WindowBoundsSchema.nullable(),
+    }),
   ]);
 
 type NoteCommand = Extract<DocumentCommand, { type: `note.${string}` }>;
@@ -150,6 +174,11 @@ type AppearanceCommand = Extract<
   DocumentCommand,
   { type: `appearance.${string}` }
 >;
+type ShortcutCommand = Extract<
+  DocumentCommand,
+  { type: `shortcuts.${string}` }
+>;
+type WindowCommand = Extract<DocumentCommand, { type: `window.${string}` }>;
 
 function validationError(message: string): Result<never, KopperError> {
   return {
@@ -575,6 +604,26 @@ function applyDraftCommand(
   }
 }
 
+function applyPreferenceCommand(
+  document: KopperDocument,
+  command: ShortcutCommand | WindowCommand,
+): Result<void, KopperError> {
+  switch (command.type) {
+    case "shortcuts.setCapture":
+      document.shortcuts.capture = structuredClone(command.capture);
+      return { ok: true, value: undefined };
+    case "shortcuts.setTogglePanel":
+      document.shortcuts.togglePanel = command.accelerator.trim();
+      return { ok: true, value: undefined };
+    case "window.setPinned":
+      document.window.pinned = command.pinned;
+      return { ok: true, value: undefined };
+    case "window.setBounds":
+      document.window.bounds = structuredClone(command.bounds);
+      return { ok: true, value: undefined };
+  }
+}
+
 function applyAppearanceCommand(
   document: KopperDocument,
   command: AppearanceCommand,
@@ -640,7 +689,12 @@ export function applyDocumentCommand(
       ? applySectionCommand(next, parsed as SectionCommand, context)
       : parsed.type.startsWith("draft.")
         ? applyDraftCommand(next, parsed as DraftCommand, context)
-        : applyAppearanceCommand(next, parsed as AppearanceCommand);
+        : parsed.type.startsWith("appearance.")
+          ? applyAppearanceCommand(next, parsed as AppearanceCommand)
+          : applyPreferenceCommand(
+              next,
+              parsed as ShortcutCommand | WindowCommand,
+            );
   if (!transition.ok) return transition;
 
   return parseDocument(next);

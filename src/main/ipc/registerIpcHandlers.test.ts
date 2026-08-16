@@ -54,7 +54,8 @@ const registeredChannels = Object.values(IPC_CHANNELS).filter(
     channel !== IPC_CHANNELS.documentChanged &&
     channel !== IPC_CHANNELS.nativeAppearanceChanged &&
     channel !== IPC_CHANNELS.accessibilityPermissionChanged &&
-    channel !== IPC_CHANNELS.captureOutcome,
+    channel !== IPC_CHANNELS.captureOutcome &&
+    channel !== IPC_CHANNELS.openSettings,
 );
 
 function makeClipboardWriter(): ClipboardWriter & {
@@ -168,6 +169,8 @@ describe("registerIpcHandlers", () => {
     for (const args of [
       [],
       [{ ...command, unexpected: true }],
+      [{ type: "shortcuts.setTogglePanel", accelerator: "Command+K" }],
+      [{ type: "window.setPinned", pinned: true }],
       [command, "extra"],
     ]) {
       await expect(
@@ -630,6 +633,48 @@ describe("registerIpcHandlers", () => {
       },
     });
     expect(commandExecutor.undo).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes capture and privileged preferences only through dedicated strict services", async () => {
+    const repository = new NoteRepository("unused.json");
+    const document = repository.snapshot();
+    const preferenceService = {
+      validateShortcuts: vi.fn(() => ({ ok: true as const, value: undefined })),
+      setShortcuts: vi.fn(async () => ({ ok: true as const, value: document })),
+      setPinned: vi.fn(async () => ({ ok: true as const, value: document })),
+    };
+    const requestCapture = vi.fn(async () => ({ status: "empty" as const }));
+    const ipcMain = new FakeIpcMain();
+    registerIpcHandlers(
+      repository,
+      makeCommandExecutor(),
+      ipcMain,
+      makeClipboardWriter(),
+      { preferenceService, requestCapture },
+    );
+
+    await expect(ipcMain.invoke(IPC_CHANNELS.requestCapture)).resolves.toEqual({
+      status: "empty",
+    });
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.validateShortcuts, document.shortcuts),
+    ).resolves.toEqual({ ok: true, value: { valid: true } });
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.saveShortcuts, document.shortcuts),
+    ).resolves.toEqual({ ok: true, value: document });
+    await expect(ipcMain.invoke(IPC_CHANNELS.setPinned, true)).resolves.toEqual({
+      ok: true,
+      value: document,
+    });
+
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.saveShortcuts, { capture: "raw" }),
+    ).resolves.toMatchObject({ ok: false, error: { code: "validation_failed" } });
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.setPinned, "yes"),
+    ).resolves.toMatchObject({ ok: false, error: { code: "validation_failed" } });
+    expect(preferenceService.setShortcuts).toHaveBeenCalledOnce();
+    expect(preferenceService.setPinned).toHaveBeenCalledOnce();
   });
 
   it("removes only registered handlers and can register again after cleanup", () => {
