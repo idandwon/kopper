@@ -17,9 +17,6 @@ importers:
       culori:
         specifier: ^4.0.2
         version: 4.0.2
-      electron:
-        specifier: ^43.4.0
-        version: 43.4.0
       radix-ui:
         specifier: ^1.6.7
         version: 1.6.7(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -38,6 +35,9 @@ importers:
       tailwind-merge:
         specifier: ^3.6.0
         version: 3.6.0
+      uiohook-napi:
+        specifier: ^1.5.5
+        version: 1.5.5
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -69,6 +69,9 @@ importers:
       '@types/react-dom':
         specifier: ^19.2.4
         version: 19.2.4(@types/react@19.2.18)
+      electron:
+        specifier: ^43.4.0
+        version: 43.4.0
       electron-builder:
         specifier: ^26.15.3
         version: 26.15.3(electron-builder-squirrel-windows@26.15.3)
@@ -2955,6 +2958,10 @@ packages:
   node-api-version@0.2.1:
     resolution: {integrity: sha512-2xP/IGGMmmSQpI1+O/k72jF/ykvZ89JeuKX3TLJAYPDVLUalrshrLHkeVcCCZqG/eEa635cr8IBYzgnDvM2O8Q==}
 
+  node-gyp-build@4.8.4:
+    resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
+    hasBin: true
+
   node-gyp@12.4.0:
     resolution: {integrity: sha512-OMcPNvqTCFUnNaBlmdgq+lfNqY7gTiSmNRDjY3uAXRyudeKZEZxu3CLtjMQrx4zZxCX2b/mpNqTtwuCJgXhHkw==}
     engines: {node: ^20.17.0 || >=22.9.0}
@@ -3416,6 +3423,10 @@ packages:
     resolution: {integrity: sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==}
     engines: {node: '>=16.20.0'}
     hasBin: true
+
+  uiohook-napi@1.5.5:
+    resolution: {integrity: sha512-oSlTdnECw2GBfsJPTbBQBeE4v/EXP0EZmX6BJq5nzH/JgFaBE8JpFwEA/kLhiEP7HxQw28FViWiYgdIZzWuuJQ==}
+    engines: {node: '>= 16'}
 
   undici-types@7.18.2:
     resolution: {integrity: sha512-AsuCzffGHJybSaRrmr5eHr81mwJU3kjw6M+uprWvCXiNeN9SOGwQ3Jn8jb8m3Z6izVgknn1R0FTCEAP2QrLY/w==}
@@ -6687,6 +6698,8 @@ snapshots:
     dependencies:
       semver: 7.8.5
 
+  node-gyp-build@4.8.4: {}
+
   node-gyp@12.4.0:
     dependencies:
       env-paths: 2.2.1
@@ -7260,6 +7273,10 @@ snapshots:
       '@typescript/typescript-sunos-x64': 7.0.2
       '@typescript/typescript-win32-arm64': 7.0.2
       '@typescript/typescript-win32-x64': 7.0.2
+
+  uiohook-napi@1.5.5:
+    dependencies:
+      node-gyp-build: 4.8.4
 
   undici-types@7.18.2: {}
 
