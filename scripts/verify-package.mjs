@@ -44,7 +44,8 @@ async function findFiles(root, predicate) {
     for (const entry of entries) {
       const path = join(directory, entry.name);
       if (entry.isDirectory()) await visit(path);
-      else if (entry.isFile() && predicate(entry.name, path)) matches.push(path);
+      else if (entry.isFile() && predicate(entry.name, path))
+        matches.push(path);
     }
   };
   await visit(root);
@@ -63,7 +64,12 @@ async function findNativeBinaries(uiohookPath) {
 }
 
 async function findUpdaterConfigurations(resourcesPath) {
-  const names = ["app-update.yml", "app-update.yaml", "dev-app-update.yml", "dev-app-update.yaml"];
+  const names = [
+    "app-update.yml",
+    "app-update.yaml",
+    "dev-app-update.yml",
+    "dev-app-update.yaml",
+  ];
   const present = [];
   for (const name of names) {
     try {
@@ -77,11 +83,10 @@ async function findUpdaterConfigurations(resourcesPath) {
 }
 
 async function readArchitectures(binaryPath) {
-  const { stdout } = await execFile(
-    "/usr/bin/lipo",
-    ["-archs", binaryPath],
-    { encoding: "utf8", maxBuffer: 64 * 1024 },
-  );
+  const { stdout } = await execFile("/usr/bin/lipo", ["-archs", binaryPath], {
+    encoding: "utf8",
+    maxBuffer: 64 * 1024,
+  });
   return stdout.trim().split(/\s+/).filter(Boolean);
 }
 
@@ -255,7 +260,8 @@ function inspectHtml(content) {
     const commentEnd = content.lastIndexOf("-->", match.index);
     if (commentStart > commentEnd) {
       const closingComment = content.indexOf("-->", openingTag.lastIndex);
-      openingTag.lastIndex = closingComment === -1 ? content.length : closingComment + 3;
+      openingTag.lastIndex =
+        closingComment === -1 ? content.length : closingComment + 3;
       continue;
     }
 
@@ -265,7 +271,9 @@ function inspectHtml(content) {
     closingTag.lastIndex = tag.end;
     const closingMatch = closingTag.exec(content);
     const scriptEnd = closingMatch?.index ?? content.length;
-    const afterScript = closingMatch ? readTag(content, closingTag.lastIndex).end : content.length;
+    const afterScript = closingMatch
+      ? readTag(content, closingTag.lastIndex).end
+      : content.length;
     openingTag.lastIndex = afterScript;
 
     if (attributes.has("src")) {
@@ -323,7 +331,10 @@ export async function verifyPackage(appPath, injectedPorts = {}) {
     info = await ports.readInfoPlist(join(contentsPath, "Info.plist"));
   } catch {
     failures.push(
-      failure("unreadable_info_plist", "Info.plist could not be read with plutil."),
+      failure(
+        "unreadable_info_plist",
+        "Info.plist could not be read with plutil.",
+      ),
     );
   }
 
@@ -359,13 +370,17 @@ export async function verifyPackage(appPath, injectedPorts = {}) {
     entries = await ports.listAsarEntries(asarPath);
   } catch {
     failures.push(
-      failure("unreadable_asar", "The packaged application ASAR could not be listed."),
+      failure(
+        "unreadable_asar",
+        "The packaged application ASAR could not be listed.",
+      ),
     );
   }
 
   const updater = updaterEntries(entries);
   try {
-    updaterConfigurations = await ports.findUpdaterConfigurations(resourcesPath);
+    updaterConfigurations =
+      await ports.findUpdaterConfigurations(resourcesPath);
   } catch {
     failures.push(
       failure(
@@ -396,7 +411,9 @@ export async function verifyPackage(appPath, injectedPorts = {}) {
   );
   for (const entry of rendererEntries) {
     try {
-      const content = (await ports.readAsarEntry(asarPath, entry)).toString("utf8");
+      const content = (await ports.readAsarEntry(asarPath, entry)).toString(
+        "utf8",
+      );
       const inspection = inspectRendererSource(entry, content);
       if (inspection.parseError) {
         failures.push(
@@ -481,7 +498,9 @@ export async function verifyPackage(appPath, injectedPorts = {}) {
 
   if (nativeBinaries.length > 0) {
     try {
-      const nativeArchitectures = await ports.readArchitectures(nativeBinaries[0]);
+      const nativeArchitectures = await ports.readArchitectures(
+        nativeBinaries[0],
+      );
       if (!hasRequiredArchitectures(nativeArchitectures)) {
         failures.push(
           failure(
@@ -559,7 +578,9 @@ export async function runCli(args, injectedPorts = {}) {
         ok: false,
         app: basename(args[0]),
         checks: null,
-        failures: [failure("verification_failed", "Package verification failed.")],
+        failures: [
+          failure("verification_failed", "Package verification failed."),
+        ],
       }),
     );
     return 1;

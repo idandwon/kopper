@@ -57,7 +57,8 @@ async function createFixture(options: FixtureOptions = {}) {
   ];
   const asarFiles: Record<string, string> = {
     "/package.json": JSON.stringify({ name: "kopper", version: "0.1.0" }),
-    "/out/renderer/index.html": '<script type="module" src="./assets/index.js"></script>',
+    "/out/renderer/index.html":
+      '<script type="module" src="./assets/index.js"></script>',
     "/out/renderer/assets/index.js": "console.log('local renderer')",
     ...options.asarFiles,
   };
@@ -97,9 +98,9 @@ beforeEach(() => {
 
 afterEach(async () => {
   await Promise.all(
-    temporaryDirectories.splice(0).map((directory) =>
-      rm(directory, { recursive: true, force: true }),
-    ),
+    temporaryDirectories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true })),
   );
 });
 
@@ -111,7 +112,11 @@ describe("package verifier", () => {
   it.each([
     ["CFBundleIdentifier", "wrong.identifier", "invalid_bundle_identifier"],
     ["LSMinimumSystemVersion", "13.0", "invalid_minimum_system_version"],
-    ["NSAppleEventsUsageDescription", undefined, "missing_apple_events_usage_description"],
+    [
+      "NSAppleEventsUsageDescription",
+      undefined,
+      "missing_apple_events_usage_description",
+    ],
   ])("rejects invalid %s metadata", async (key, value, code) => {
     const fixture = await createFixture({ info: { [key]: value } });
 
@@ -122,12 +127,30 @@ describe("package verifier", () => {
   });
 
   it.each([
-    ["double-quoted HTML script", '<script src="https://cdn.example.invalid/remote.js"></script>'],
-    ["single-quoted HTML script", "<script src='http://cdn.example.invalid/remote.js'></script>"],
-    ["unquoted HTML script", "<script defer src=https://cdn.example.invalid/remote.js></script>"],
-    ["single-quoted dynamic import", "void import('https://cdn.example.invalid/module.js')"],
-    ["double-quoted dynamic import", 'void import("http://cdn.example.invalid/module.js")'],
-    ["template dynamic import", "void import(`https://cdn.example.invalid/module.js`)"],
+    [
+      "double-quoted HTML script",
+      '<script src="https://cdn.example.invalid/remote.js"></script>',
+    ],
+    [
+      "single-quoted HTML script",
+      "<script src='http://cdn.example.invalid/remote.js'></script>",
+    ],
+    [
+      "unquoted HTML script",
+      "<script defer src=https://cdn.example.invalid/remote.js></script>",
+    ],
+    [
+      "single-quoted dynamic import",
+      "void import('https://cdn.example.invalid/module.js')",
+    ],
+    [
+      "double-quoted dynamic import",
+      'void import("http://cdn.example.invalid/module.js")',
+    ],
+    [
+      "template dynamic import",
+      "void import(`https://cdn.example.invalid/module.js`)",
+    ],
     [
       "commented dynamic import",
       "void import /* webpackIgnore: true */ ('https://cdn.example.invalid/module.js')",
@@ -136,20 +159,38 @@ describe("package verifier", () => {
       "interpolated remote-prefix dynamic import",
       "void import(`https://cdn.example.invalid/${moduleName}.js`)",
     ],
-    ["single-quoted importScripts", "importScripts('https://cdn.example.invalid/worker.js')"],
-    ["double-quoted importScripts", 'importScripts("http://cdn.example.invalid/worker.js")'],
-    ["template importScripts", "importScripts(`https://cdn.example.invalid/worker.js`)"],
+    [
+      "single-quoted importScripts",
+      "importScripts('https://cdn.example.invalid/worker.js')",
+    ],
+    [
+      "double-quoted importScripts",
+      'importScripts("http://cdn.example.invalid/worker.js")',
+    ],
+    [
+      "template importScripts",
+      "importScripts(`https://cdn.example.invalid/worker.js`)",
+    ],
     [
       "later importScripts argument",
       "self.importScripts('./local.js', /* fallback */ 'https://cdn.example.invalid/worker.js')",
     ],
-    ["static side-effect import", "import 'https://cdn.example.invalid/module.js'"],
+    [
+      "static side-effect import",
+      "import 'https://cdn.example.invalid/module.js'",
+    ],
     [
       "commented static import-from",
       "import remote /* binding */ from /* source */ 'https://cdn.example.invalid/module.js'",
     ],
-    ["static export-from", "export { remote } from 'https://cdn.example.invalid/module.js'"],
-    ["static export-all", "export * from 'https://cdn.example.invalid/module.js'"],
+    [
+      "static export-from",
+      "export { remote } from 'https://cdn.example.invalid/module.js'",
+    ],
+    [
+      "static export-all",
+      "export * from 'https://cdn.example.invalid/module.js'",
+    ],
   ])("rejects a %s remote renderer source", async (name, content) => {
     const entry = name.includes("HTML")
       ? "/out/renderer/index.html"
@@ -242,25 +283,32 @@ describe("package verifier", () => {
   });
 
   it.each([
-    ["standalone renderer JavaScript", "/out/renderer/assets/index.js", "const = broken syntax"],
+    [
+      "standalone renderer JavaScript",
+      "/out/renderer/assets/index.js",
+      "const = broken syntax",
+    ],
     [
       "inline renderer JavaScript",
       "/out/renderer/index.html",
       "<script>const = broken syntax</script>",
     ],
-  ])("returns a structured failure for invalid %s", async (_name, entry, content) => {
-    const fixture = await createFixture({
-      asarFiles: { [entry]: content },
-    });
+  ])(
+    "returns a structured failure for invalid %s",
+    async (_name, entry, content) => {
+      const fixture = await createFixture({
+        asarFiles: { [entry]: content },
+      });
 
-    const result = await verifyPackage(fixture.appPath, fixture.ports);
+      const result = await verifyPackage(fixture.appPath, fixture.ports);
 
-    expect(result.ok).toBe(false);
-    expect(result.failures).toContainEqual({
-      code: "invalid_renderer_javascript",
-      message: "A renderer JavaScript source could not be parsed.",
-    });
-  });
+      expect(result.ok).toBe(false);
+      expect(result.failures).toContainEqual({
+        code: "invalid_renderer_javascript",
+        message: "A renderer JavaScript source could not be parsed.",
+      });
+    },
+  );
 
   it("rejects a missing unpacked uiohook native module", async () => {
     const fixture = await createFixture({ nativeFiles: [] });
