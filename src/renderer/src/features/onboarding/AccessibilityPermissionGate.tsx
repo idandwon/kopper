@@ -48,15 +48,19 @@ export function AccessibilityPermissionGate({
   }, []);
 
   const checkPermission = useCallback(
-    async (prompt: boolean) => {
-      if (!prompt && passiveCheckPendingRef.current) return;
+    async (prompt: boolean): Promise<PermissionState | null> => {
+      if (!prompt && passiveCheckPendingRef.current) return null;
       const requestId = ++requestIdRef.current;
-      if (!prompt) passiveCheckPendingRef.current = true;
+      if (prompt) passiveCheckPendingRef.current = false;
+      else passiveCheckPendingRef.current = true;
       try {
         const result = await window.kopper.getAccessibilityPermission(prompt);
-        if (!mountedRef.current || requestId !== requestIdRef.current) return;
-        if (result.ok) applyPermission(result.value);
-        else setOperationError(CHECK_ERROR);
+        if (!mountedRef.current || requestId !== requestIdRef.current) return null;
+        if (result.ok) {
+          applyPermission(result.value);
+          return result.value;
+        }
+        setOperationError(CHECK_ERROR);
       } catch {
         if (mountedRef.current && requestId === requestIdRef.current) {
           setOperationError(CHECK_ERROR);
@@ -66,6 +70,7 @@ export function AccessibilityPermissionGate({
           passiveCheckPendingRef.current = false;
         }
       }
+      return null;
     },
     [applyPermission],
   );
@@ -185,6 +190,52 @@ export function AccessibilityPermissionGate({
     };
   }, [applyPermission, checkPermission]);
 
+  useEffect(() => {
+    if (
+      !sessionLoaded ||
+      !initialCheckComplete ||
+      panelEntered ||
+      permission === "granted"
+    ) {
+      return;
+    }
+
+    let active = true;
+    let intervalId: number | undefined;
+    const stopPolling = () => {
+      if (intervalId !== undefined) window.clearInterval(intervalId);
+      intervalId = undefined;
+    };
+    const startPolling = () => {
+      stopPolling();
+      if (!active || document.visibilityState !== "visible") return;
+      intervalId = window.setInterval(() => {
+        void checkPermission(false);
+      }, 750);
+    };
+    const handleVisibilityChange = () => {
+      stopPolling();
+      if (document.visibilityState !== "visible") return;
+      void checkPermission(false).then((state) => {
+        if (state !== "granted") startPolling();
+      });
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    startPolling();
+    return () => {
+      active = false;
+      stopPolling();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [
+    checkPermission,
+    initialCheckComplete,
+    panelEntered,
+    permission,
+    sessionLoaded,
+  ]);
+
   if (!sessionLoaded || !initialCheckComplete) {
     return (
       <main className="flex h-dvh items-center justify-center bg-background text-foreground">
@@ -208,7 +259,9 @@ export function AccessibilityPermissionGate({
       permission={permission}
       operationError={operationError}
       permissionEventVersion={permissionEventVersion}
-      checkPermission={checkPermission}
+      checkPermission={async (prompt) => {
+        await checkPermission(prompt);
+      }}
       openSettings={openSettings}
       continueWithoutCapture={continueWithoutCapture}
     />

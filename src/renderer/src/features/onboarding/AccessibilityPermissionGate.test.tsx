@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KopperApi } from "../../../../shared/ipc/contract";
@@ -20,6 +21,7 @@ const unsubscribe = vi.fn();
 let permissionListener:
   | Parameters<KopperApi["onAccessibilityPermissionChanged"]>[0]
   | undefined;
+let visibilityState: DocumentVisibilityState;
 
 function installApi() {
   window.kopper = {
@@ -53,12 +55,17 @@ beforeEach(() => {
   });
   unsubscribe.mockReset();
   permissionListener = undefined;
+  visibilityState = "visible";
+  vi.spyOn(document, "visibilityState", "get").mockImplementation(
+    () => visibilityState,
+  );
   installApi();
 });
 
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 function renderGate() {
@@ -105,6 +112,86 @@ describe("AccessibilityPermissionGate", () => {
     expect(getAccessibilityPermission).toHaveBeenCalledExactlyOnceWith(false);
     expect(getAccessibilitySession).toHaveBeenCalledOnce();
     expect(window.kopper.onAccessibilityPermissionChanged).toHaveBeenCalledOnce();
+  });
+
+  it("passively polls every 750 ms only while visible onboarding is incomplete", async () => {
+    vi.useFakeTimers();
+    const view = renderGate();
+    await act(async () => undefined);
+
+    expect(screen.getByRole("heading", { name: "Enable explicit text capture" })).toBeVisible();
+    expect(getAccessibilityPermission).toHaveBeenCalledTimes(1);
+
+    await act(async () => vi.advanceTimersByTime(749));
+    expect(getAccessibilityPermission).toHaveBeenCalledTimes(1);
+    await act(async () => vi.advanceTimersByTime(1));
+    expect(getAccessibilityPermission).toHaveBeenCalledTimes(2);
+
+    visibilityState = "hidden";
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    await act(async () => vi.advanceTimersByTime(1_500));
+    expect(getAccessibilityPermission).toHaveBeenCalledTimes(2);
+
+    visibilityState = "visible";
+    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+    expect(getAccessibilityPermission).toHaveBeenCalledTimes(3);
+    await act(async () => vi.advanceTimersByTime(750));
+    expect(getAccessibilityPermission).toHaveBeenCalledTimes(4);
+
+    view.unmount();
+    await act(async () => vi.advanceTimersByTime(1_500));
+    expect(getAccessibilityPermission).toHaveBeenCalledTimes(4);
+    expect(getAccessibilityPermission.mock.calls.every(([prompt]) => !prompt)).toBe(true);
+  });
+
+  it("does not check while initially hidden and checks immediately on visibility return", async () => {
+    vi.useFakeTimers();
+    visibilityState = "hidden";
+    renderGate();
+    await act(async () => undefined);
+
+    await act(async () => vi.advanceTimersByTime(1_500));
+    expect(getAccessibilityPermission).not.toHaveBeenCalled();
+
+    visibilityState = "visible";
+    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+    expect(getAccessibilityPermission).toHaveBeenCalledExactlyOnceWith(false);
+    expect(screen.getByRole("heading", { name: "Enable explicit text capture" })).toBeVisible();
+  });
+
+  it("keeps exactly one passive interval in StrictMode and stops it on grant", async () => {
+    vi.useFakeTimers();
+    render(
+      <StrictMode>
+        <AccessibilityPermissionGate renderPanel={() => <h1>Normal panel</h1>} />
+      </StrictMode>,
+    );
+    await act(async () => undefined);
+    getAccessibilityPermission.mockClear();
+
+    await act(async () => vi.advanceTimersByTime(750));
+    expect(getAccessibilityPermission).toHaveBeenCalledExactlyOnceWith(false);
+
+    act(() => permissionListener?.("granted"));
+    expect(screen.getByRole("heading", { name: "Normal panel" })).toBeVisible();
+    await act(async () => vi.advanceTimersByTime(1_500));
+    expect(getAccessibilityPermission).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops passive polling after Continue is acknowledged", async () => {
+    vi.useFakeTimers();
+    renderGate();
+    await act(async () => undefined);
+
+    await act(async () => {
+      screen
+        .getByRole("button", { name: "Continue without capture" })
+        .click();
+    });
+    expect(screen.getByRole("heading", { name: "Normal panel" })).toBeVisible();
+
+    await act(async () => vi.advanceTimersByTime(1_500));
+    expect(getAccessibilityPermission).toHaveBeenCalledExactlyOnceWith(false);
   });
 
   it("honors a consumed main dismissal on renderer remount and stays truthful through events", async () => {
@@ -201,6 +288,7 @@ describe("AccessibilityPermissionGate", () => {
     await screen.findByRole("heading", { name: "Enable explicit text capture" });
 
     await user.click(screen.getByRole("button", { name: "Enable Capture" }));
+    expect(getAccessibilityPermission).toHaveBeenLastCalledWith(true);
     expect(screen.getByRole("button", { name: "Enable Capture" })).toBeDisabled();
     act(() => permissionListener?.("denied"));
     expect(screen.getByRole("button", { name: "Enable Capture" })).toBeEnabled();
