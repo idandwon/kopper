@@ -207,7 +207,9 @@ describe("DocumentProvider", () => {
     expect(result.current.error).toEqual(retryableError);
 
     await act(async () => {
-      await expect(result.current.execute(edit("Succeeded"))).resolves.toBe(true);
+      await expect(result.current.execute(edit("Succeeded"))).resolves.toBe(
+        true,
+      );
     });
     expect(result.current.document).toEqual(changed);
     expect(result.current.error).toBeNull();
@@ -254,11 +256,9 @@ describe("DocumentProvider", () => {
       await result.current.retryLastAction();
     });
 
-    expect(vi.mocked(api.execute).mock.calls.map(([command]) => command)).toEqual([
-      olderCommand,
-      newerCommand,
-      newerCommand,
-    ]);
+    expect(
+      vi.mocked(api.execute).mock.calls.map(([command]) => command),
+    ).toEqual([olderCommand, newerCommand, newerCommand]);
     expect(vi.mocked(api.execute).mock.calls[2]?.[0]).toBe(newerCommand);
   });
 

@@ -206,20 +206,26 @@ describe("CommandService", () => {
       command: { type: "section.delete", sectionId: "later" },
       initial: makeSectionDeleteDocument,
     },
-  ])("pushes and correctly undoes a snapshot for $command.type", async (testCase) => {
-    const initial = testCase.initial();
-    const { service, replace, publish } = makeService(initial);
+  ])(
+    "pushes and correctly undoes a snapshot for $command.type",
+    async (testCase) => {
+      const initial = testCase.initial();
+      const { service, replace, publish } = makeService(initial);
 
-    await expect(service.execute(testCase.command)).resolves.toEqual({
-      ok: true,
-      value: expect.not.objectContaining(initial),
-    });
-    await expect(service.undo()).resolves.toEqual({ ok: true, value: initial });
+      await expect(service.execute(testCase.command)).resolves.toEqual({
+        ok: true,
+        value: expect.not.objectContaining(initial),
+      });
+      await expect(service.undo()).resolves.toEqual({
+        ok: true,
+        value: initial,
+      });
 
-    expect(replace).toHaveBeenCalledTimes(2);
-    expect(replace).toHaveBeenLastCalledWith(initial);
-    expect(publish).toHaveBeenLastCalledWith(initial);
-  });
+      expect(replace).toHaveBeenCalledTimes(2);
+      expect(replace).toHaveBeenLastCalledWith(initial);
+      expect(publish).toHaveBeenLastCalledWith(initial);
+    },
+  );
 
   it("keeps only the latest 20 successful undoable snapshots", async () => {
     const { service } = makeService();
@@ -265,7 +271,11 @@ describe("CommandService", () => {
     const initial = makeDocument();
     const { service } = makeService(initial);
 
-    await service.execute({ type: "note.add", sectionId: "inbox", body: "New" });
+    await service.execute({
+      type: "note.add",
+      sectionId: "inbox",
+      body: "New",
+    });
     await service.execute({ type: "section.add", title: "Later" });
     await service.execute({
       type: "section.rename",
@@ -273,7 +283,11 @@ describe("CommandService", () => {
       title: "Renamed",
     });
     await service.execute({ type: "section.activate", sectionId: "inbox" });
-    await service.execute({ type: "draft.set", sectionId: "inbox", body: "Draft" });
+    await service.execute({
+      type: "draft.set",
+      sectionId: "inbox",
+      body: "Draft",
+    });
     await service.execute({ type: "draft.clear" });
 
     await expect(service.undo()).resolves.toEqual({
@@ -358,7 +372,10 @@ describe("CommandService", () => {
     await vi.waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
 
     releaseFirst?.();
-    await expect(first).resolves.toEqual({ ok: true, value: expect.any(Object) });
+    await expect(first).resolves.toEqual({
+      ok: true,
+      value: expect.any(Object),
+    });
     await expect(second).resolves.toEqual({
       ok: true,
       value: expect.objectContaining({
