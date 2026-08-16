@@ -105,7 +105,7 @@ const NoteSchema: z.ZodType<Note> = z.strictObject({
   previousPlacement: NotePlacementSchema.nullable(),
 });
 
-const ThemeDefinitionSchema: z.ZodType<ThemeDefinition> = z.strictObject({
+export const ThemeDefinitionSchema: z.ZodType<ThemeDefinition> = z.strictObject({
   id: identifierSchema,
   name: z.string().trim().min(1),
   version: z.literal(1),

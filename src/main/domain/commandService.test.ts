@@ -6,6 +6,7 @@ import {
   type KopperDocument,
 } from "../../shared/domain/document";
 import type { KopperError, Result } from "../../shared/domain/errors";
+import { OXIDE_LEDGER_THEME } from "../../shared/theme/presets";
 import { CommandService, type CommandRepository } from "./commandService";
 
 const timestamp = "2026-08-16T12:00:00.000Z";
@@ -353,6 +354,36 @@ describe("CommandService", () => {
       sectionId: "later",
       updatedAt: timestamp,
     });
+  });
+
+  it("keeps the latest appearance and custom themes when undoing an older note edit", async () => {
+    const { service } = makeService();
+    const customTheme = {
+      ...structuredClone(OXIDE_LEDGER_THEME),
+      id: "custom:newest",
+      name: "Newest custom",
+    };
+
+    await service.execute(edit("Edited"));
+    await service.execute({ type: "appearance.setMode", mode: "dark" });
+    await service.execute({
+      type: "appearance.upsertCustomTheme",
+      theme: customTheme,
+    });
+    await service.execute({
+      type: "appearance.setActiveTheme",
+      themeId: customTheme.id,
+    });
+
+    const undone = await service.undo();
+    expect(undone).toEqual({ ok: true, value: expect.any(Object) });
+    if (!undone.ok) return;
+    expect(undone.value.notes[0].body).toBe("Before");
+    expect(undone.value.appearance).toEqual({
+      mode: "dark",
+      activeThemeId: customTheme.id,
+    });
+    expect(undone.value.customThemes).toEqual([customTheme]);
   });
 
   it("serializes execute and undo requests even when persistence is delayed", async () => {

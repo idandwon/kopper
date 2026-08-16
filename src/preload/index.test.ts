@@ -2,6 +2,7 @@ import type { IpcRendererEvent } from "electron";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createEmptyDocument } from "../shared/domain/document";
+import { OXIDE_LEDGER_THEME } from "../shared/theme/presets";
 import type { KopperApi } from "../shared/ipc/contract";
 import { IPC_CHANNELS } from "../shared/ipc/contract";
 
@@ -47,8 +48,12 @@ describe("preload bridge", () => {
       "execute",
       "exportData",
       "exportRecoveryBytes",
+      "exportTheme",
       "getDataPath",
       "getDocument",
+      "getNativeAppearance",
+      "importTheme",
+      "onNativeAppearanceChanged",
       "openEditorWindow",
       "subscribeDocument",
       "undo",
@@ -156,6 +161,68 @@ describe("preload bridge", () => {
     await expect(exposedApi().openEditorWindow("")).rejects.toThrow();
     electron.invoke.mockResolvedValueOnce({ ok: true, value: { cancelled: "yes" } });
     await expect(exposedApi().exportData()).rejects.toThrow();
+  });
+
+  it("validates theme and native-appearance IPC in both directions", async () => {
+    const customTheme = {
+      ...structuredClone(OXIDE_LEDGER_THEME),
+      id: "custom:preview",
+    };
+    electron.invoke
+      .mockResolvedValueOnce({ ok: true, value: customTheme })
+      .mockResolvedValueOnce({
+        ok: true,
+        value: { path: "/private/theme.kopper-theme.json" },
+      })
+      .mockResolvedValueOnce({ ok: true, value: false });
+
+    await expect(exposedApi().importTheme()).resolves.toEqual({
+      ok: true,
+      value: customTheme,
+    });
+    await expect(exposedApi().exportTheme(customTheme.id)).resolves.toEqual({
+      ok: true,
+      value: { path: "/private/theme.kopper-theme.json" },
+    });
+    await expect(exposedApi().getNativeAppearance()).resolves.toEqual({
+      ok: true,
+      value: false,
+    });
+    expect(electron.invoke.mock.calls.slice(0, 3)).toEqual([
+      [IPC_CHANNELS.importTheme],
+      [IPC_CHANNELS.exportTheme, customTheme.id],
+      [IPC_CHANNELS.getNativeAppearance],
+    ]);
+
+    await expect(exposedApi().exportTheme("")).rejects.toThrow();
+    electron.invoke.mockResolvedValueOnce({ ok: true, value: {} });
+    await expect(exposedApi().importTheme()).rejects.toThrow();
+    electron.invoke.mockResolvedValueOnce({ ok: true, value: "dark" });
+    await expect(exposedApi().getNativeAppearance()).rejects.toThrow();
+  });
+
+  it("validates native appearance events and unsubscribes exactly its listener", () => {
+    const listener = vi.fn();
+    const unsubscribe = exposedApi().onNativeAppearanceChanged(listener);
+    const subscription = electron.on.mock.calls[0];
+    expect(subscription?.[0]).toBe(IPC_CHANNELS.nativeAppearanceChanged);
+    const wrappedListener = subscription?.[1] as (
+      event: IpcRendererEvent,
+      input: unknown,
+    ) => void;
+
+    wrappedListener({} as IpcRendererEvent, true);
+    expect(listener).toHaveBeenCalledWith(true);
+    expect(() => wrappedListener({} as IpcRendererEvent, "dark")).toThrow();
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+    unsubscribe();
+    expect(electron.removeListener).toHaveBeenCalledTimes(1);
+    expect(electron.removeListener).toHaveBeenCalledWith(
+      IPC_CHANNELS.nativeAppearanceChanged,
+      wrappedListener,
+    );
   });
 
   it("validates document events before notifying subscribers", () => {

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DocumentCommand } from "../../shared/domain/commands";
 import { createEmptyDocument } from "../../shared/domain/document";
+import { OXIDE_LEDGER_THEME } from "../../shared/theme/presets";
 import { IPC_CHANNELS, parseDocumentResult } from "../../shared/ipc/contract";
 import type { ClipboardWriter } from "../clipboard/noteClipboard";
 import { NoteRepository } from "../persistence/noteRepository";
@@ -15,6 +16,7 @@ import {
   type CommandExecutor,
   type IpcFileOperations,
   type IpcMainRegistrar,
+  type IpcThemeFiles,
 } from "./registerIpcHandlers";
 
 type Handler = (
@@ -48,7 +50,9 @@ class FakeIpcMain implements IpcMainRegistrar {
 
 const temporaryDirectories: string[] = [];
 const registeredChannels = Object.values(IPC_CHANNELS).filter(
-  (channel) => channel !== IPC_CHANNELS.documentChanged,
+  (channel) =>
+    channel !== IPC_CHANNELS.documentChanged &&
+    channel !== IPC_CHANNELS.nativeAppearanceChanged,
 );
 
 function makeClipboardWriter(): ClipboardWriter & {
@@ -289,6 +293,101 @@ describe("registerIpcHandlers", () => {
     ] as const) {
       await expect(ipcMain.invoke(channel, ...args)).resolves.toMatchObject({ ok: false, error: { code: "validation_failed" } });
     }
+  });
+
+  it("validates theme IPC, previews without commands, and resolves exports by authoritative ID", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "kopper-ipc-theme-"));
+    temporaryDirectories.push(directory);
+    const repository = new NoteRepository(join(directory, "kopper.json"));
+    const document = repository.snapshot();
+    const customTheme = {
+      ...structuredClone(OXIDE_LEDGER_THEME),
+      id: "custom:export",
+      name: "Custom export",
+    };
+    document.customThemes = [customTheme];
+    await repository.replace(document);
+    const themeFiles: IpcThemeFiles = {
+      importForPreview: vi.fn().mockResolvedValue({
+        ok: true,
+        value: customTheme,
+      }),
+      exportTheme: vi.fn().mockResolvedValue({
+        ok: true,
+        value: { path: "/private/export.kopper-theme.json" },
+      }),
+    };
+    const commandExecutor = makeCommandExecutor();
+    const ipcMain = new FakeIpcMain();
+    registerIpcHandlers(
+      repository,
+      commandExecutor,
+      ipcMain,
+      makeClipboardWriter(),
+      {
+        themeFiles,
+        getNativeAppearance: () => true,
+      },
+    );
+
+    await expect(ipcMain.invoke(IPC_CHANNELS.importTheme)).resolves.toEqual({
+      ok: true,
+      value: customTheme,
+    });
+    expect(commandExecutor.execute).not.toHaveBeenCalled();
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.exportTheme, OXIDE_LEDGER_THEME.id),
+    ).resolves.toEqual({
+      ok: true,
+      value: { path: "/private/export.kopper-theme.json" },
+    });
+    expect(themeFiles.exportTheme).toHaveBeenLastCalledWith(OXIDE_LEDGER_THEME);
+    await ipcMain.invoke(IPC_CHANNELS.exportTheme, customTheme.id);
+    expect(themeFiles.exportTheme).toHaveBeenLastCalledWith(customTheme);
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.getNativeAppearance),
+    ).resolves.toEqual({ ok: true, value: true });
+
+    for (const [channel, args] of [
+      [IPC_CHANNELS.importTheme, ["extra"]],
+      [IPC_CHANNELS.exportTheme, [""]],
+      [IPC_CHANNELS.exportTheme, ["missing"]],
+      [IPC_CHANNELS.getNativeAppearance, ["extra"]],
+    ] as const) {
+      await expect(ipcMain.invoke(channel, ...args)).resolves.toMatchObject({
+        ok: false,
+        error: { code: "validation_failed" },
+      });
+    }
+  });
+
+  it("rejects malformed theme service responses at the main boundary", async () => {
+    const repository = new NoteRepository("unused.json");
+    const ipcMain = new FakeIpcMain();
+    registerIpcHandlers(
+      repository,
+      makeCommandExecutor(),
+      ipcMain,
+      makeClipboardWriter(),
+      {
+        themeFiles: {
+          importForPreview: vi.fn().mockResolvedValue({ ok: true, value: {} }),
+          exportTheme: vi.fn().mockResolvedValue({
+            ok: true,
+            value: { path: "" },
+          }),
+        },
+        getNativeAppearance: () => "dark" as unknown as boolean,
+      },
+    );
+
+    await expect(ipcMain.invoke(IPC_CHANNELS.importTheme)).rejects.toThrow();
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.exportTheme, OXIDE_LEDGER_THEME.id),
+    ).rejects.toThrow();
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.getNativeAppearance),
+    ).rejects.toThrow();
   });
 
   it("dispatches argument-free undo and rejects malformed undo requests", async () => {

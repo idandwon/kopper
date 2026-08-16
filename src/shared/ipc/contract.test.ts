@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 
 import type { DocumentCommand } from "../domain/commands";
 import { createEmptyDocument } from "../domain/document";
+import { OXIDE_LEDGER_THEME } from "../theme/presets";
 import {
   ClipboardCopyResultSchema,
   CopyNotesArgumentsSchema,
@@ -9,6 +10,9 @@ import {
   DocumentResultSchema,
   FileOperationResultSchema,
   IPC_CHANNELS,
+  NativeAppearanceResultSchema,
+  ThemeExportResultSchema,
+  ThemeImportResultSchema,
   parseClipboardCopyResult,
   parseDocumentResult,
   type KopperApi,
@@ -87,6 +91,44 @@ describe("IPC contract", () => {
           sectionCount: 1,
         },
       }),
+    ).toThrow();
+  });
+
+  it("runtime-validates theme and native-appearance envelopes", () => {
+    const customTheme = {
+      ...structuredClone(OXIDE_LEDGER_THEME),
+      id: "custom:preview",
+    };
+    expect(
+      ThemeImportResultSchema.parse({ ok: true, value: customTheme }),
+    ).toEqual({ ok: true, value: customTheme });
+    expect(() =>
+      ThemeImportResultSchema.parse({
+        ok: true,
+        value: { ...customTheme, unexpected: true },
+      }),
+    ).toThrow();
+    expect(
+      ThemeExportResultSchema.parse({
+        ok: true,
+        value: { path: "/private/theme.kopper-theme.json" },
+      }),
+    ).toEqual({
+      ok: true,
+      value: { path: "/private/theme.kopper-theme.json" },
+    });
+    expect(() =>
+      ThemeExportResultSchema.parse({
+        ok: true,
+        value: { path: "/private/theme", contents: "secret" },
+      }),
+    ).toThrow();
+    expect(NativeAppearanceResultSchema.parse({ ok: true, value: false })).toEqual({
+      ok: true,
+      value: false,
+    });
+    expect(() =>
+      NativeAppearanceResultSchema.parse({ ok: true, value: "dark" }),
     ).toThrow();
   });
 

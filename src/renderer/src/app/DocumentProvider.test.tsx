@@ -69,6 +69,10 @@ function fileApiMocks(): Pick<
   | "exportRecoveryBytes"
   | "createNewStore"
   | "getDataPath"
+  | "importTheme"
+  | "exportTheme"
+  | "getNativeAppearance"
+  | "onNativeAppearanceChanged"
 > {
   return {
     openEditorWindow: vi.fn(),
@@ -78,6 +82,10 @@ function fileApiMocks(): Pick<
     exportRecoveryBytes: vi.fn(),
     createNewStore: vi.fn(),
     getDataPath: vi.fn(),
+    importTheme: vi.fn(),
+    exportTheme: vi.fn(),
+    getNativeAppearance: vi.fn(),
+    onNativeAppearanceChanged: vi.fn(() => vi.fn()),
   };
 }
 

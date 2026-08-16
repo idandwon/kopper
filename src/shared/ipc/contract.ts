@@ -1,7 +1,12 @@
 import { z } from "zod";
 
 import type { DocumentCommand } from "../domain/commands";
-import { KopperDocumentSchema, type KopperDocument } from "../domain/document";
+import {
+  KopperDocumentSchema,
+  ThemeDefinitionSchema,
+  type KopperDocument,
+  type ThemeDefinition,
+} from "../domain/document";
 import type { KopperError, Result } from "../domain/errors";
 
 export const IPC_CHANNELS = {
@@ -17,6 +22,10 @@ export const IPC_CHANNELS = {
   exportRecoveryBytes: "kopper:recovery:export",
   createNewStore: "kopper:recovery:create",
   getDataPath: "kopper:data:path",
+  importTheme: "kopper:theme:import",
+  exportTheme: "kopper:theme:export",
+  getNativeAppearance: "kopper:appearance:native:get",
+  nativeAppearanceChanged: "kopper:appearance:native:changed",
 } as const;
 
 export const NoteClipboardModeSchema = z.enum(["plain", "markdown-list"]);
@@ -150,6 +159,34 @@ export const OpenEditorResultSchema: z.ZodType<
   z.strictObject({ ok: z.literal(false), error: KopperErrorSchema }),
 ]);
 
+export const ThemeImportResultSchema: z.ZodType<
+  Result<ThemeDefinition | null, KopperError>
+> = z.discriminatedUnion("ok", [
+  z.strictObject({
+    ok: z.literal(true),
+    value: ThemeDefinitionSchema.nullable(),
+  }),
+  z.strictObject({ ok: z.literal(false), error: KopperErrorSchema }),
+]);
+
+export const ThemeExportResultSchema: z.ZodType<
+  Result<{ path: string } | null, KopperError>
+> = z.discriminatedUnion("ok", [
+  z.strictObject({
+    ok: z.literal(true),
+    value: z.strictObject({ path: z.string().min(1) }).nullable(),
+  }),
+  z.strictObject({ ok: z.literal(false), error: KopperErrorSchema }),
+]);
+
+export const NativeAppearanceSchema = z.boolean();
+export const NativeAppearanceResultSchema: z.ZodType<
+  Result<boolean, KopperError>
+> = z.discriminatedUnion("ok", [
+  z.strictObject({ ok: z.literal(true), value: NativeAppearanceSchema }),
+  z.strictObject({ ok: z.literal(false), error: KopperErrorSchema }),
+]);
+
 export const SingleIdentifierArgumentsSchema = z.tuple([z.string().min(1)]);
 export const ImportTokenArgumentsSchema = z.tuple([z.uuid()]);
 
@@ -170,5 +207,9 @@ export interface KopperApi {
   exportRecoveryBytes(): Promise<FileOperationResult>;
   createNewStore(): Promise<Result<KopperDocument, KopperError>>;
   getDataPath(): Promise<Result<string, KopperError>>;
+  importTheme(): Promise<Result<ThemeDefinition | null, KopperError>>;
+  exportTheme(themeId: string): Promise<Result<{ path: string } | null, KopperError>>;
+  getNativeAppearance(): Promise<Result<boolean, KopperError>>;
+  onNativeAppearanceChanged(listener: (useDarkColors: boolean) => void): () => void;
   subscribeDocument(listener: (document: KopperDocument) => void): () => void;
 }

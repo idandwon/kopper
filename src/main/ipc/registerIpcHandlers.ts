@@ -5,7 +5,10 @@ import {
   DocumentCommandSchema,
   type DocumentCommand,
 } from "../../shared/domain/commands";
-import type { KopperDocument } from "../../shared/domain/document";
+import type {
+  KopperDocument,
+  ThemeDefinition,
+} from "../../shared/domain/document";
 import type { KopperError, Result } from "../../shared/domain/errors";
 import {
   CopyNotesArgumentsSchema,
@@ -15,13 +18,17 @@ import {
   FileOperationResultSchema,
   ImportTokenArgumentsSchema,
   IPC_CHANNELS,
+  NativeAppearanceResultSchema,
   OpenEditorResultSchema,
   SingleIdentifierArgumentsSchema,
+  ThemeExportResultSchema,
+  ThemeImportResultSchema,
   parseClipboardCopyResult,
   parseDocumentResult,
   type DataImportPreview,
   type FileOperationResult,
 } from "../../shared/ipc/contract";
+import { getThemeById } from "../../shared/theme/presets";
 import {
   copyNotesToClipboard,
   type ClipboardWriter,
@@ -46,8 +53,17 @@ export interface IpcFileOperations {
   createNewStore(): Promise<Result<KopperDocument, KopperError>>;
 }
 
+export interface IpcThemeFiles {
+  importForPreview(): Promise<Result<ThemeDefinition | null, KopperError>>;
+  exportTheme(
+    theme: ThemeDefinition,
+  ): Promise<Result<{ path: string } | null, KopperError>>;
+}
+
 export interface IpcServices {
   files?: IpcFileOperations;
+  themeFiles?: IpcThemeFiles;
+  getNativeAppearance?(): boolean;
   openEditorWindow?(noteId: string): void;
   publish?(document: KopperDocument): void;
 }
@@ -224,6 +240,57 @@ export function registerIpcHandlers(
     return DataPathResultSchema.parse({ ok: true, value: services.files.activePath() });
   };
 
+  const importTheme = (
+    _event: IpcMainInvokeEvent,
+    ...args: unknown[]
+  ) =>
+    noArgumentFileOperation(
+      args,
+      services.themeFiles?.importForPreview.bind(services.themeFiles),
+      ThemeImportResultSchema,
+    );
+
+  const exportTheme = async (
+    _event: IpcMainInvokeEvent,
+    ...args: unknown[]
+  ) => {
+    const parsed = SingleIdentifierArgumentsSchema.safeParse(args);
+    if (!parsed.success || services.themeFiles === undefined) {
+      return ThemeExportResultSchema.parse(
+        unavailable("The theme export request was invalid."),
+      );
+    }
+    const current = repository.currentResult();
+    if (!current.ok) return ThemeExportResultSchema.parse(current);
+    const theme = getThemeById(current.value, parsed.data[0]);
+    if (theme === null) {
+      return ThemeExportResultSchema.parse(
+        unavailable("The requested theme does not exist."),
+      );
+    }
+    return ThemeExportResultSchema.parse(
+      await services.themeFiles.exportTheme(theme),
+    );
+  };
+
+  const getNativeAppearance = (
+    _event: IpcMainInvokeEvent,
+    ...args: unknown[]
+  ) => {
+    if (
+      !NoArgumentsSchema.safeParse(args).success ||
+      services.getNativeAppearance === undefined
+    ) {
+      return NativeAppearanceResultSchema.parse(
+        unavailable("The native appearance request was invalid."),
+      );
+    }
+    return NativeAppearanceResultSchema.parse({
+      ok: true,
+      value: services.getNativeAppearance(),
+    });
+  };
+
   const channels = [
     [IPC_CHANNELS.getDocument, getDocument],
     [IPC_CHANNELS.executeCommand, executeCommand],
@@ -236,6 +303,9 @@ export function registerIpcHandlers(
     [IPC_CHANNELS.exportRecoveryBytes, exportRecoveryBytes],
     [IPC_CHANNELS.createNewStore, createNewStore],
     [IPC_CHANNELS.getDataPath, getDataPath],
+    [IPC_CHANNELS.importTheme, importTheme],
+    [IPC_CHANNELS.exportTheme, exportTheme],
+    [IPC_CHANNELS.getNativeAppearance, getNativeAppearance],
   ] as const;
   for (const [channel, handler] of channels) {
     ipcMain.handle(channel, handler);

@@ -95,6 +95,8 @@ export class CommandService {
     const current = this.repository.snapshot();
     const restored = structuredClone(previous);
     restored.draft = structuredClone(current.draft);
+    restored.appearance = structuredClone(current.appearance);
+    restored.customThemes = structuredClone(current.customThemes);
     if (
       restored.sections.some(
         (section) => section.id === current.activeSectionId,

@@ -9,8 +9,12 @@ import {
   FileOperationResultSchema,
   ImportTokenArgumentsSchema,
   IPC_CHANNELS,
+  NativeAppearanceResultSchema,
+  NativeAppearanceSchema,
   OpenEditorResultSchema,
   SingleIdentifierArgumentsSchema,
+  ThemeExportResultSchema,
+  ThemeImportResultSchema,
   parseClipboardCopyResult,
   parseDocumentResult,
   type KopperApi,
@@ -86,6 +90,45 @@ const api: KopperApi = {
     return DataPathResultSchema.parse(
       await ipcRenderer.invoke(IPC_CHANNELS.getDataPath),
     );
+  },
+
+  async importTheme() {
+    return ThemeImportResultSchema.parse(
+      await ipcRenderer.invoke(IPC_CHANNELS.importTheme),
+    );
+  },
+
+  async exportTheme(themeId) {
+    const [parsedThemeId] = SingleIdentifierArgumentsSchema.parse([themeId]);
+    return ThemeExportResultSchema.parse(
+      await ipcRenderer.invoke(IPC_CHANNELS.exportTheme, parsedThemeId),
+    );
+  },
+
+  async getNativeAppearance() {
+    return NativeAppearanceResultSchema.parse(
+      await ipcRenderer.invoke(IPC_CHANNELS.getNativeAppearance),
+    );
+  },
+
+  onNativeAppearanceChanged(listener) {
+    const wrappedListener = (
+      _event: Electron.IpcRendererEvent,
+      input: unknown,
+    ) => {
+      listener(NativeAppearanceSchema.parse(input));
+    };
+    ipcRenderer.on(IPC_CHANNELS.nativeAppearanceChanged, wrappedListener);
+
+    let subscribed = true;
+    return () => {
+      if (!subscribed) return;
+      subscribed = false;
+      ipcRenderer.removeListener(
+        IPC_CHANNELS.nativeAppearanceChanged,
+        wrappedListener,
+      );
+    };
   },
 
   subscribeDocument(listener) {

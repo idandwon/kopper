@@ -11,7 +11,9 @@ import {
   createEmptyDocument,
   type KopperDocument,
   type Note,
+  type ThemeDefinition,
 } from "./document";
+import { BUNDLED_THEMES, OXIDE_LEDGER_THEME } from "../theme/presets";
 
 const initialTimestamp = "2026-08-15T12:00:00.000Z";
 const commandTimestamp = "2026-08-16T12:00:00.000Z";
@@ -112,6 +114,9 @@ describe("DocumentCommandSchema", () => {
     },
     { type: "section.add", title: "   " },
     { type: "section.reorder", sectionId: "inbox", destinationOrder: -1 },
+    { type: "appearance.setMode", mode: "sepia" },
+    { type: "appearance.setActiveTheme", themeId: "" },
+    { type: "appearance.deleteCustomTheme", themeId: "" },
   ])("rejects invalid command input %#", (command) => {
     expect(DocumentCommandSchema.safeParse(command).success).toBe(false);
     expectValidationFailure(command);
@@ -514,6 +519,119 @@ describe("section commands", () => {
   });
 });
 
+describe("appearance commands", () => {
+  const customTheme = (): ThemeDefinition => ({
+    ...structuredClone(OXIDE_LEDGER_THEME),
+    id: "custom:oxide",
+    name: "Duplicate name allowed",
+  });
+
+  it("sets appearance mode and activates bundled or custom theme IDs", () => {
+    const document = makeDocument();
+    document.customThemes = [customTheme()];
+
+    const dark = apply(document, { type: "appearance.setMode", mode: "dark" });
+    expect(dark.appearance.mode).toBe("dark");
+    expect(
+      apply(dark, {
+        type: "appearance.setActiveTheme",
+        themeId: BUNDLED_THEMES[1].id,
+      }).appearance.activeThemeId,
+    ).toBe(BUNDLED_THEMES[1].id);
+    expect(
+      apply(dark, {
+        type: "appearance.setActiveTheme",
+        themeId: "custom:oxide",
+      }).appearance.activeThemeId,
+    ).toBe("custom:oxide");
+  });
+
+  it("upserts complete readable custom themes by authoritative ID and allows duplicate names", () => {
+    const document = makeDocument();
+    document.customThemes = [{ ...customTheme(), id: "custom:first" }];
+    const inserted = apply(document, {
+      type: "appearance.upsertCustomTheme",
+      theme: { ...customTheme(), id: "custom:second" },
+    });
+    expect(inserted.customThemes).toHaveLength(2);
+    expect(inserted.customThemes.map(({ name }) => name)).toEqual([
+      "Duplicate name allowed",
+      "Duplicate name allowed",
+    ]);
+
+    const replacement = {
+      ...customTheme(),
+      id: "custom:second",
+      name: "Renamed",
+    };
+    expect(
+      apply(inserted, {
+        type: "appearance.upsertCustomTheme",
+        theme: replacement,
+      }).customThemes,
+    ).toEqual([inserted.customThemes[0], replacement]);
+  });
+
+  it("rejects unknown activation/deletion and bundled overwrite/deletion", () => {
+    const document = makeDocument();
+    for (const command of [
+      { type: "appearance.setActiveTheme", themeId: "missing" },
+      { type: "appearance.deleteCustomTheme", themeId: "missing" },
+      {
+        type: "appearance.upsertCustomTheme",
+        theme: structuredClone(OXIDE_LEDGER_THEME),
+      },
+      {
+        type: "appearance.deleteCustomTheme",
+        themeId: OXIDE_LEDGER_THEME.id,
+      },
+    ] satisfies DocumentCommand[]) {
+      expect(applyDocumentCommand(document, command, makeContext())).toEqual({
+        ok: false,
+        error: expect.objectContaining({ code: "validation_failed" }),
+      });
+    }
+  });
+
+  it("validates strict complete readable persisted themes before upsert", () => {
+    const incomplete = structuredClone(customTheme()) as unknown as Record<string, unknown>;
+    delete (incomplete.light as Record<string, unknown>).capture;
+    const unreadable = structuredClone(customTheme());
+    unreadable.light.foreground = unreadable.light.background;
+
+    for (const theme of [
+      { ...customTheme(), extra: true },
+      incomplete,
+      unreadable,
+    ]) {
+      expectValidationFailure({
+        type: "appearance.upsertCustomTheme",
+        theme,
+      });
+    }
+  });
+
+  it("falls back to Oxide Ledger only when deleting the active custom theme", () => {
+    const first = { ...customTheme(), id: "custom:first" };
+    const second = { ...customTheme(), id: "custom:second" };
+    const document = makeDocument();
+    document.customThemes = [first, second];
+    document.appearance.activeThemeId = first.id;
+
+    const inactiveDeleted = apply(document, {
+      type: "appearance.deleteCustomTheme",
+      themeId: second.id,
+    });
+    expect(inactiveDeleted.appearance.activeThemeId).toBe(first.id);
+
+    const activeDeleted = apply(inactiveDeleted, {
+      type: "appearance.deleteCustomTheme",
+      themeId: first.id,
+    });
+    expect(activeDeleted.appearance.activeThemeId).toBe(OXIDE_LEDGER_THEME.id);
+  });
+});
+
 describe("final document validation", () => {
   it("returns parseDocument failures without mutating the input", () => {
     const document = makeDocument();
@@ -570,6 +688,10 @@ describe("draft commands and undo classification", () => {
         "section.activate",
         "draft.set",
         "draft.clear",
+        "appearance.setMode",
+        "appearance.setActiveTheme",
+        "appearance.upsertCustomTheme",
+        "appearance.deleteCustomTheme",
       ].some((type) => isUndoable({ type } as DocumentCommand)),
     ).toBe(false);
   });

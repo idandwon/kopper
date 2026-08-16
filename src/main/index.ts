@@ -1,6 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { app, BrowserWindow, clipboard, dialog, ipcMain } from "electron";
+import {
+  app,
+  BrowserWindow,
+  clipboard,
+  dialog,
+  ipcMain,
+  nativeTheme,
+} from "electron";
 
 import { APP_NAME, STORE_FILE_NAME } from "../shared/appIdentity";
 import {
@@ -12,11 +19,16 @@ import { CommandService } from "./domain/commandService";
 import { MainOperationCoordinator } from "./domain/mainOperationCoordinator";
 import { registerIpcHandlers } from "./ipc/registerIpcHandlers";
 import { NoteRepository } from "./persistence/noteRepository";
-import { publishDocument } from "./publishDocument";
+import {
+  publishDocument,
+  publishNativeAppearance,
+} from "./publishDocument";
+import { ThemeFiles } from "./theme/themeFiles";
 
 app.setName(APP_NAME);
 
 let cleanupIpcHandlers: (() => void) | undefined;
+let cleanupNativeAppearance: (() => void) | undefined;
 
 void app.whenReady().then(async () => {
   const repository = new NoteRepository(
@@ -41,6 +53,7 @@ void app.whenReady().then(async () => {
     operationCoordinator,
     externalReplacementSucceeded: () => commandService.clearUndoHistory(),
   });
+  const themeFiles = new ThemeFiles(dialog);
   cleanupIpcHandlers = registerIpcHandlers(
     repository,
     commandService,
@@ -48,10 +61,22 @@ void app.whenReady().then(async () => {
     clipboard,
     {
       files: documentFiles,
+      themeFiles,
+      getNativeAppearance: () => nativeTheme.shouldUseDarkColors,
       openEditorWindow: openExpandedEditorWindow,
       publish,
     },
   );
+  const nativeAppearanceUpdated = () => {
+    publishNativeAppearance(
+      BrowserWindow.getAllWindows(),
+      nativeTheme.shouldUseDarkColors,
+    );
+  };
+  nativeTheme.on("updated", nativeAppearanceUpdated);
+  cleanupNativeAppearance = () => {
+    nativeTheme.off("updated", nativeAppearanceUpdated);
+  };
   createMainWindow();
 
   app.on("activate", () => {
@@ -64,6 +89,8 @@ void app.whenReady().then(async () => {
 app.on("will-quit", () => {
   cleanupIpcHandlers?.();
   cleanupIpcHandlers = undefined;
+  cleanupNativeAppearance?.();
+  cleanupNativeAppearance = undefined;
 });
 
 app.on("window-all-closed", () => {

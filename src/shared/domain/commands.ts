@@ -2,11 +2,19 @@ import { z } from "zod";
 
 import {
   parseDocument,
+  ThemeDefinitionSchema,
   type KopperDocument,
   type Note,
   type Section,
+  type ThemeDefinition,
 } from "./document";
 import type { KopperError, Result } from "./errors";
+import { validateReadableTheme } from "../theme/deriveTheme";
+import {
+  BUNDLED_THEMES,
+  OXIDE_LEDGER_THEME,
+} from "../theme/presets";
+import { THEME_FILE_SCHEMA_URL } from "../theme/themeSchema";
 
 export type DocumentCommand =
   | { type: "note.add"; id?: string; sectionId: string; body: string }
@@ -35,7 +43,11 @@ export type DocumentCommand =
     }
   | { type: "section.activate"; sectionId: string }
   | { type: "draft.set"; body: string; sectionId: string }
-  | { type: "draft.clear" };
+  | { type: "draft.clear" }
+  | { type: "appearance.setMode"; mode: "system" | "light" | "dark" }
+  | { type: "appearance.setActiveTheme"; themeId: string }
+  | { type: "appearance.upsertCustomTheme"; theme: ThemeDefinition }
+  | { type: "appearance.deleteCustomTheme"; themeId: string };
 
 export interface CommandContext {
   now(): string;
@@ -114,11 +126,31 @@ export const DocumentCommandSchema: z.ZodType<DocumentCommand> =
       sectionId: identifierSchema,
     }),
     z.strictObject({ type: z.literal("draft.clear") }),
+    z.strictObject({
+      type: z.literal("appearance.setMode"),
+      mode: z.enum(["system", "light", "dark"]),
+    }),
+    z.strictObject({
+      type: z.literal("appearance.setActiveTheme"),
+      themeId: identifierSchema,
+    }),
+    z.strictObject({
+      type: z.literal("appearance.upsertCustomTheme"),
+      theme: ThemeDefinitionSchema,
+    }),
+    z.strictObject({
+      type: z.literal("appearance.deleteCustomTheme"),
+      themeId: identifierSchema,
+    }),
   ]);
 
 type NoteCommand = Extract<DocumentCommand, { type: `note.${string}` }>;
 type SectionCommand = Extract<DocumentCommand, { type: `section.${string}` }>;
 type DraftCommand = Extract<DocumentCommand, { type: `draft.${string}` }>;
+type AppearanceCommand = Extract<
+  DocumentCommand,
+  { type: `appearance.${string}` }
+>;
 
 function validationError(message: string): Result<never, KopperError> {
   return {
@@ -544,6 +576,65 @@ function applyDraftCommand(
   }
 }
 
+function applyAppearanceCommand(
+  document: KopperDocument,
+  command: AppearanceCommand,
+): Result<void, KopperError> {
+  switch (command.type) {
+    case "appearance.setMode":
+      document.appearance.mode = command.mode;
+      return { ok: true, value: undefined };
+
+    case "appearance.setActiveTheme": {
+      const exists =
+        BUNDLED_THEMES.some(({ id }) => id === command.themeId) ||
+        document.customThemes.some(({ id }) => id === command.themeId);
+      if (!exists) return validationError("The selected theme does not exist.");
+      document.appearance.activeThemeId = command.themeId;
+      return { ok: true, value: undefined };
+    }
+
+    case "appearance.upsertCustomTheme": {
+      if (
+        command.theme.id.startsWith("builtin:") ||
+        BUNDLED_THEMES.some(({ id }) => id === command.theme.id)
+      ) {
+        return validationError("Bundled themes cannot be overwritten.");
+      }
+      const readable = validateReadableTheme({
+        $schema: THEME_FILE_SCHEMA_URL,
+        version: command.theme.version,
+        name: command.theme.name,
+        light: command.theme.light,
+        dark: command.theme.dark,
+      });
+      if (!readable.ok) return readable;
+
+      const index = document.customThemes.findIndex(
+        ({ id }) => id === command.theme.id,
+      );
+      if (index === -1) document.customThemes.push(command.theme);
+      else document.customThemes[index] = command.theme;
+      return { ok: true, value: undefined };
+    }
+
+    case "appearance.deleteCustomTheme": {
+      if (BUNDLED_THEMES.some(({ id }) => id === command.themeId)) {
+        return validationError("Bundled themes cannot be deleted.");
+      }
+      const index = document.customThemes.findIndex(
+        ({ id }) => id === command.themeId,
+      );
+      if (index === -1) return validationError("The custom theme does not exist.");
+      document.customThemes.splice(index, 1);
+      if (document.appearance.activeThemeId === command.themeId) {
+        document.appearance.activeThemeId = OXIDE_LEDGER_THEME.id;
+      }
+      return { ok: true, value: undefined };
+    }
+  }
+}
+
 export function applyDocumentCommand(
   document: KopperDocument,
   command: unknown,
@@ -560,7 +651,9 @@ export function applyDocumentCommand(
     ? applyNoteCommand(next, parsed as NoteCommand, context)
     : parsed.type.startsWith("section.")
       ? applySectionCommand(next, parsed as SectionCommand, context)
-      : applyDraftCommand(next, parsed as DraftCommand, context);
+      : parsed.type.startsWith("draft.")
+        ? applyDraftCommand(next, parsed as DraftCommand, context)
+        : applyAppearanceCommand(next, parsed as AppearanceCommand);
   if (!transition.ok) return transition;
 
   return parseDocument(next);
