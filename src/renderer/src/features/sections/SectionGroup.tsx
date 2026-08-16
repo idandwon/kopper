@@ -151,9 +151,10 @@ export function SectionGroup({
               onContextSelect={(id) =>
                 dispatchSelection({ type: "context", id, displayedIds })
               }
-              onMoveFocus={(direction, extend) =>
+              onMoveFocus={(sourceId, direction, extend) =>
                 dispatchSelection({
                   type: "move-focus",
+                  sourceId,
                   direction,
                   extend,
                   displayedIds,

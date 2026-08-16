@@ -107,7 +107,7 @@ describe("NoteCard", () => {
       },
       { type: "merge", noteIds: ["one", "two"] },
     ]);
-    expect(onMoveFocus).toHaveBeenCalledWith(1, true);
+    expect(onMoveFocus).toHaveBeenCalledWith("one", 1, true);
   });
 
   it("uses only the focused note for actions when it is not selected", () => {

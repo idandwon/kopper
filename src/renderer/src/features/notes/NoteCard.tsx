@@ -23,7 +23,7 @@ export interface NoteCardProps {
   disabled: boolean;
   onSelect(intent: NoteSelectIntent): void;
   onContextSelect(id: string): void;
-  onMoveFocus(direction: -1 | 1, extend: boolean): void;
+  onMoveFocus(sourceId: string, direction: -1 | 1, extend: boolean): void;
   onAction(action: NoteMenuAction): void;
 }
 
@@ -75,7 +75,11 @@ export function NoteCard({
 
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
-      onMoveFocus(event.key === "ArrowDown" ? 1 : -1, event.shiftKey);
+      onMoveFocus(
+        note.id,
+        event.key === "ArrowDown" ? 1 : -1,
+        event.shiftKey,
+      );
       return;
     }
     if (event.key === " ") {

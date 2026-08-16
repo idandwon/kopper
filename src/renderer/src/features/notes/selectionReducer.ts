@@ -17,6 +17,7 @@ export type SelectionAction =
       direction: -1 | 1;
       extend: boolean;
       displayedIds: string[];
+      sourceId?: string;
     }
   | { type: "context"; id: string; displayedIds: string[] }
   | { type: "reconcile"; displayedIds: string[] };
@@ -83,10 +84,19 @@ export function selectionReducer(
 
     case "move-focus": {
       if (action.displayedIds.length === 0) return initialSelectionState;
+      const displayedFocusedId =
+        state.focusedId !== null &&
+        action.displayedIds.includes(state.focusedId)
+          ? state.focusedId
+          : null;
+      const displayedSourceId =
+        action.sourceId !== undefined &&
+        action.displayedIds.includes(action.sourceId)
+          ? action.sourceId
+          : null;
+      const currentId = displayedFocusedId ?? displayedSourceId;
       const currentIndex =
-        state.focusedId === null
-          ? -1
-          : action.displayedIds.indexOf(state.focusedId);
+        currentId === null ? -1 : action.displayedIds.indexOf(currentId);
       const fallbackIndex =
         action.direction === 1 ? 0 : action.displayedIds.length - 1;
       const nextIndex =
@@ -106,10 +116,7 @@ export function selectionReducer(
       const anchorId =
         state.anchorId !== null && action.displayedIds.includes(state.anchorId)
           ? state.anchorId
-          : state.focusedId !== null &&
-              action.displayedIds.includes(state.focusedId)
-            ? state.focusedId
-            : focusedId;
+          : (displayedFocusedId ?? displayedSourceId ?? focusedId);
       return {
         focusedId,
         anchorId,

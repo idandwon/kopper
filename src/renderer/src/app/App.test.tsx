@@ -58,6 +58,50 @@ describe("Oxide Ledger App", () => {
     expect(screen.getByText("Lifecycle: captured to completed")).toBeInTheDocument();
   });
 
+  it("moves from the initial tabbable card and extends selection from that card", () => {
+    const activeDocument: KopperDocument = {
+      ...document,
+      notes: [
+        document.notes[0],
+        {
+          ...document.notes[1],
+          body: "Second active note",
+          completedAt: null,
+          previousPlacement: null,
+        },
+      ],
+    };
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({ document: activeDocument }),
+    );
+
+    const firstRender = render(<App />);
+    const firstCard = screen.getByRole("option", { name: "Note: Captured note" });
+    const secondCard = screen.getByRole("option", {
+      name: "Note: Second active note",
+    });
+    expect(firstCard).toHaveAttribute("tabindex", "0");
+
+    firstCard.focus();
+    fireEvent.keyDown(firstCard, { key: "ArrowDown" });
+    expect(secondCard).toHaveFocus();
+
+    firstRender.unmount();
+    render(<App />);
+    const initialCard = screen.getByRole("option", {
+      name: "Note: Captured note",
+    });
+    const extendedCard = screen.getByRole("option", {
+      name: "Note: Second active note",
+    });
+    initialCard.focus();
+    fireEvent.keyDown(initialCard, { key: "ArrowDown", shiftKey: true });
+
+    expect(extendedCard).toHaveFocus();
+    expect(initialCard).toHaveAttribute("aria-selected", "true");
+    expect(extendedCard).toHaveAttribute("aria-selected", "true");
+  });
+
   it("switches to completed projections and filters by search", async () => {
     const user = userEvent.setup();
     render(<App />);
