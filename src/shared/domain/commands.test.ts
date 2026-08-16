@@ -7,7 +7,11 @@ import {
   type CommandContext,
   type DocumentCommand,
 } from "./commands";
-import { createEmptyDocument, type KopperDocument, type Note } from "./document";
+import {
+  createEmptyDocument,
+  type KopperDocument,
+  type Note,
+} from "./document";
 
 const initialTimestamp = "2026-08-15T12:00:00.000Z";
 const commandTimestamp = "2026-08-16T12:00:00.000Z";
@@ -92,10 +96,20 @@ describe("DocumentCommandSchema", () => {
     { type: "note.add", id: "not-a-uuid", sectionId: "inbox", body: "text" },
     { type: "note.add", sectionId: "inbox", body: "  \n" },
     { type: "note.edit", noteId: "note-1", body: "\t" },
-    { type: "note.move", noteIds: [], destinationSectionId: "inbox", destinationOrder: 0 },
+    {
+      type: "note.move",
+      noteIds: [],
+      destinationSectionId: "inbox",
+      destinationOrder: 0,
+    },
     { type: "note.complete", noteIds: ["note-1", "note-1"] },
     { type: "note.merge", noteIds: ["note-1"] },
-    { type: "note.move", noteIds: ["note-1"], destinationSectionId: "inbox", destinationOrder: -1 },
+    {
+      type: "note.move",
+      noteIds: ["note-1"],
+      destinationSectionId: "inbox",
+      destinationOrder: -1,
+    },
     { type: "section.add", title: "   " },
     { type: "section.reorder", sectionId: "inbox", destinationOrder: -1 },
   ])("rejects invalid command input %#", (command) => {
@@ -203,8 +217,16 @@ describe("note commands", () => {
         .sort((left, right) => left.order - right.order),
     ).toEqual([
       expect.objectContaining({ id: "x", order: 0 }),
-      expect.objectContaining({ id: "c", order: 1, updatedAt: commandTimestamp }),
-      expect.objectContaining({ id: "a", order: 2, updatedAt: commandTimestamp }),
+      expect.objectContaining({
+        id: "c",
+        order: 1,
+        updatedAt: commandTimestamp,
+      }),
+      expect.objectContaining({
+        id: "a",
+        order: 2,
+        updatedAt: commandTimestamp,
+      }),
       expect.objectContaining({ id: "y", order: 3 }),
     ]);
   });
@@ -243,7 +265,9 @@ describe("note commands", () => {
     });
     expect(
       restored.notes
-        .filter((note) => note.completedAt === null && note.sectionId === "inbox")
+        .filter(
+          (note) => note.completedAt === null && note.sectionId === "inbox",
+        )
         .sort((left, right) => left.order - right.order),
     ).toEqual([
       expect.objectContaining({ id: "a", order: 0, previousPlacement: null }),
@@ -337,7 +361,12 @@ describe("note commands", () => {
 
     for (const command of [
       { type: "note.edit", noteId: "missing", body: "body" },
-      { type: "note.move", noteIds: ["done"], destinationSectionId: "later", destinationOrder: 0 },
+      {
+        type: "note.move",
+        noteIds: ["done"],
+        destinationSectionId: "later",
+        destinationOrder: 0,
+      },
       { type: "note.complete", noteIds: ["done"] },
       { type: "note.restore", noteIds: ["active"] },
       { type: "note.delete", noteIds: ["missing"] },

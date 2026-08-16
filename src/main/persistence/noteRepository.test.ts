@@ -272,7 +272,11 @@ describe("NoteRepository", () => {
     {
       name: "a schema-invalid document",
       breakDestination: async (path: string) =>
-        writeFile(path, JSON.stringify({ schemaVersion: 1, notes: [] }), "utf8"),
+        writeFile(
+          path,
+          JSON.stringify({ schemaVersion: 1, notes: [] }),
+          "utf8",
+        ),
       expectedLoadCode: "invalid_document",
     },
     {
@@ -284,7 +288,11 @@ describe("NoteRepository", () => {
     "preserves post-rename uncertainty across reload failure from $name",
     async ({ breakDestination, expectedLoadCode }) => {
       const initial = createEmptyDocument(new Date(timestamp));
-      await writeFile(storePath, `${JSON.stringify(initial, null, 2)}\n`, "utf8");
+      await writeFile(
+        storePath,
+        `${JSON.stringify(initial, null, 2)}\n`,
+        "utf8",
+      );
       const mismatched: KopperDocument = {
         ...initial,
         window: {
@@ -293,7 +301,11 @@ describe("NoteRepository", () => {
         },
       };
       const writer = vi.fn(async (path: string) => {
-        await writeFile(path, `${JSON.stringify(mismatched, null, 2)}\n`, "utf8");
+        await writeFile(
+          path,
+          `${JSON.stringify(mismatched, null, 2)}\n`,
+          "utf8",
+        );
         throw new AtomicReplaceError(
           "after_rename",
           new Error("directory sync failed"),
