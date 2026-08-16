@@ -296,17 +296,20 @@ describe("package verifier", () => {
     ],
     ["classic script with a legacy type", '<script type="text/jscript">'],
     ["module script", '<script type="MODULE">'],
-  ])("rejects remote inline imports in an executable %s", async (_name, tag) => {
-    const fixture = await createFixture({
-      asarFiles: {
-        "/out/renderer/index.html": `${tag}void import("https://cdn.example.invalid/inline.js")</script>`,
-      },
-    });
+  ])(
+    "rejects remote inline imports in an executable %s",
+    async (_name, tag) => {
+      const fixture = await createFixture({
+        asarFiles: {
+          "/out/renderer/index.html": `${tag}void import("https://cdn.example.invalid/inline.js")</script>`,
+        },
+      });
 
-    const result = await verifyPackage(fixture.appPath, fixture.ports);
+      const result = await verifyPackage(fixture.appPath, fixture.ports);
 
-    expect(failureCodes(result)).toContain("remote_renderer_script_source");
-  });
+      expect(failureCodes(result)).toContain("remote_renderer_script_source");
+    },
+  );
 
   it("allows benign entity and comment markers in attributes", async () => {
     const fixture = await createFixture({
