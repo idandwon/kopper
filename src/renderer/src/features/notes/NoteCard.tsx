@@ -17,6 +17,7 @@ export interface NoteCardProps {
   view: NoteProjectionView;
   focused: boolean;
   selected: boolean;
+  captureHighlighted?: boolean;
   tabbable?: boolean;
   actionNoteIds: string[];
   actionNotes: Note[];
@@ -46,6 +47,7 @@ export function NoteCard({
   view,
   focused,
   selected,
+  captureHighlighted = false,
   tabbable = focused,
   actionNoteIds,
   actionNotes,
@@ -141,12 +143,15 @@ export function NoteCard({
           data-note-id={note.id}
           data-focused={focused}
           data-selected={selected}
+          data-capture-highlighted={captureHighlighted}
           tabIndex={tabbable ? 0 : -1}
           className={cn(
             "rounded-lg border border-border bg-card py-3 pr-3 pl-10 text-[13px] leading-relaxed text-card-foreground outline-none transition-colors motion-reduce:transition-none",
             "focus-visible:ring-2 focus-visible:ring-ring/50",
             focused && "ring-1 ring-ring/40",
             selected && "border-primary/60 bg-accent",
+            captureHighlighted &&
+              "border-[var(--capture)] ring-2 ring-[var(--capture)]/35",
             disabled && "opacity-60",
           )}
           onClick={handleClick}

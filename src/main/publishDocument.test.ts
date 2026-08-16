@@ -3,9 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { KopperDocument } from "../shared/domain/document";
 import { IPC_CHANNELS } from "../shared/ipc/contract";
 import {
+  publishCaptureOutcome,
   publishDocument,
   publishNativeAppearance,
   publishPermissionState,
+  type CaptureOutcomePublicationWindow,
   type DocumentPublicationWindow,
   type NativeAppearancePublicationWindow,
   type PermissionPublicationWindow,
@@ -23,6 +25,16 @@ function publishWindow(windowDestroyed = false, webContentsDestroyed = false) {
       >(),
     },
   } satisfies DocumentPublicationWindow;
+}
+
+function captureWindow(windowDestroyed = false, webContentsDestroyed = false) {
+  return {
+    isDestroyed: vi.fn(() => windowDestroyed),
+    webContents: {
+      isDestroyed: vi.fn(() => webContentsDestroyed),
+      send: vi.fn(),
+    },
+  } satisfies CaptureOutcomePublicationWindow;
 }
 
 function appearanceWindow(windowDestroyed = false, webContentsDestroyed = false) {
@@ -80,6 +92,27 @@ describe("publishDocument", () => {
     expect(destroyed.webContents.send).not.toHaveBeenCalled();
     expect(() => publishPermissionState([live], "authorized")).toThrow();
     expect(live.webContents.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("publishes only validated capture outcomes to every live window", () => {
+    const first = captureWindow();
+    const second = captureWindow();
+    const destroyed = captureWindow(true);
+    const outcome = {
+      status: "captured",
+      noteId: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
+    } as const;
+    publishCaptureOutcome([first, destroyed, second], outcome);
+    for (const live of [first, second]) {
+      expect(live.webContents.send).toHaveBeenCalledWith(
+        IPC_CHANNELS.captureOutcome,
+        outcome,
+      );
+    }
+    expect(destroyed.webContents.send).not.toHaveBeenCalled();
+    expect(() =>
+      publishCaptureOutcome([first], { status: "captured", noteId: "bad" }),
+    ).toThrow();
   });
 
   it("publishes only validated native appearance booleans to live windows", () => {

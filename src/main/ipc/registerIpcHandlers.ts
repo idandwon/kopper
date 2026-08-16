@@ -79,6 +79,7 @@ export interface IpcServices {
   openEditorWindow?(noteId: string): void;
   publish?(document: KopperDocument): void;
   publishPermission?(state: PermissionState): void;
+  onPermissionObserved?(state: PermissionState): void;
   getAccessibilitySession?(): { continuedWithoutCapture: boolean };
   continueWithoutCapture?(): void | Promise<void>;
 }
@@ -350,6 +351,7 @@ export function registerIpcHandlers(
 
     try {
       const state = services.permissionManager.check(parsed.data[0]);
+      services.onPermissionObserved?.(state);
       if (
         lastObservedPermissionState !== undefined &&
         state !== lastObservedPermissionState

@@ -35,6 +35,7 @@ export const IPC_CHANNELS = {
   openAccessibilitySettings: "kopper:permission:settings:open",
   continueWithoutCapture: "kopper:onboarding:continue-without-capture",
   accessibilityPermissionChanged: "kopper:permission:changed",
+  captureOutcome: "kopper:capture:outcome",
 } as const;
 
 export const NoteClipboardModeSchema = z.enum(["plain", "markdown-list"]);
@@ -94,6 +95,18 @@ export const KopperErrorSchema: z.ZodType<KopperError> = z.strictObject({
   failures: z.array(ThemeContrastFailureSchema).optional(),
   opaqueBackgroundModes: z.array(z.enum(["light", "dark"])).optional(),
 });
+
+export type CaptureOutcome =
+  | { status: "captured"; noteId: string }
+  | { status: "empty" }
+  | { status: "failed"; error: KopperError };
+
+export const CaptureOutcomeSchema: z.ZodType<CaptureOutcome> =
+  z.discriminatedUnion("status", [
+    z.strictObject({ status: z.literal("captured"), noteId: z.uuid() }),
+    z.strictObject({ status: z.literal("empty") }),
+    z.strictObject({ status: z.literal("failed"), error: KopperErrorSchema }),
+  ]);
 
 export const DocumentResultSchema: z.ZodType<
   Result<KopperDocument, KopperError>
@@ -324,5 +337,6 @@ export interface KopperApi {
   onAccessibilityPermissionChanged(
     listener: (state: PermissionState) => void,
   ): () => void;
+  onCaptureOutcome(listener: (outcome: CaptureOutcome) => void): () => void;
   subscribeDocument(listener: (document: KopperDocument) => void): () => void;
 }

@@ -20,6 +20,7 @@ export interface SectionGroupProps {
   displayedIds: string[];
   selection: SelectionState;
   dispatchSelection: Dispatch<SelectionAction>;
+  captureHighlightedNoteId?: string | null;
   onExpand?(noteId: string): void;
   onEdit?(noteId: string): void;
   onEditNewWindow?(noteId: string): void;
@@ -31,6 +32,7 @@ export function SectionGroup({
   displayedIds,
   selection,
   dispatchSelection,
+  captureHighlightedNoteId = null,
   onExpand,
   onEdit,
   onEditNewWindow,
@@ -135,6 +137,7 @@ export function SectionGroup({
               view={view}
               focused={selection.focusedId === note.id}
               selected={selected}
+              captureHighlighted={captureHighlightedNoteId === note.id}
               tabbable={
                 selection.focusedId === note.id ||
                 (selection.focusedId === null && displayedIds[0] === note.id)

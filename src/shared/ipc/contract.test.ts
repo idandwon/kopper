@@ -5,6 +5,7 @@ import { createEmptyDocument } from "../domain/document";
 import { OXIDE_LEDGER_THEME } from "../theme/presets";
 import {
   AccessibilitySessionResultSchema,
+  CaptureOutcomeSchema,
   ClipboardCopyResultSchema,
   CopyNotesArgumentsSchema,
   DataImportPreviewResultSchema,
@@ -49,6 +50,33 @@ describe("IPC contract", () => {
       ["second", "first"],
       "markdown-list",
     );
+  });
+
+  it("strictly validates capture outcomes without exposing a request method", () => {
+    const captured = {
+      status: "captured",
+      noteId: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
+    };
+    expect(CaptureOutcomeSchema.parse(captured)).toEqual(captured);
+    expect(
+      CaptureOutcomeSchema.parse({
+        status: "failed",
+        error: {
+          code: "capture_timeout",
+          message: "Kopper timed out while capturing the selected text.",
+          retryable: true,
+        },
+      }),
+    ).toMatchObject({ status: "failed" });
+    for (const malformed of [
+      { status: "captured", noteId: "not-a-uuid" },
+      { status: "empty", text: "private selection" },
+      { status: "failed", error: { code: "native_error" } },
+    ]) {
+      expect(CaptureOutcomeSchema.safeParse(malformed).success).toBe(false);
+    }
+    expectTypeOf<KopperApi["onCaptureOutcome"]>().toBeFunction();
+    expectTypeOf<KopperApi>().not.toHaveProperty("requestCapture");
   });
 
   it("runtime-validates clipboard arguments and result envelopes", () => {

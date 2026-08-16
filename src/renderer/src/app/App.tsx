@@ -28,6 +28,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { AddSectionDialog } from "../features/sections/SectionManager";
 import { SectionGroup } from "../features/sections/SectionGroup";
 import { CompletedView } from "../features/completed/CompletedView";
+import { CaptureToast } from "../features/capture/CaptureToast";
 import {
   ExpandedEditorWindow,
   expandedEditorNoteId,
@@ -151,6 +152,9 @@ function DocumentPanel({
   const [query, setQuery] = useState("");
   const [view, setView] = useState<NoteProjectionView>("active");
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [captureHighlightedNoteId, setCaptureHighlightedNoteId] = useState<
+    string | null
+  >(null);
   const panelMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const [selection, dispatchSelection] = useReducer(
     selectionReducer,
@@ -309,6 +313,7 @@ function DocumentPanel({
                   displayedIds={displayedIds}
                   selection={visibleSelection}
                   dispatchSelection={dispatchSelection}
+                  captureHighlightedNoteId={captureHighlightedNoteId}
                   onExpand={(noteId) => {
                     void window.kopper.openEditorWindow(noteId);
                   }}
@@ -328,6 +333,7 @@ function DocumentPanel({
 
         {view === "active" && <NoteComposer />}
       </Panel>
+      <CaptureToast onHighlightedNoteChange={setCaptureHighlightedNoteId} />
     </div>
   );
 }

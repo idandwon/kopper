@@ -4,8 +4,10 @@ import {
   type PermissionState,
 } from "../shared/permissions/permissionState";
 import {
+  CaptureOutcomeSchema,
   IPC_CHANNELS,
   NativeAppearanceSchema,
+  type CaptureOutcome,
 } from "../shared/ipc/contract";
 
 interface PublicationWindow<Payload> {
@@ -19,6 +21,7 @@ interface PublicationWindow<Payload> {
 export type DocumentPublicationWindow = PublicationWindow<KopperDocument>;
 export type NativeAppearancePublicationWindow = PublicationWindow<boolean>;
 export type PermissionPublicationWindow = PublicationWindow<PermissionState>;
+export type CaptureOutcomePublicationWindow = PublicationWindow<CaptureOutcome>;
 
 export function publishDocument(
   windows: DocumentPublicationWindow[],
@@ -38,6 +41,17 @@ export function publishPermissionState(
   for (const window of windows) {
     if (window.isDestroyed() || window.webContents.isDestroyed()) continue;
     window.webContents.send(IPC_CHANNELS.accessibilityPermissionChanged, state);
+  }
+}
+
+export function publishCaptureOutcome(
+  windows: CaptureOutcomePublicationWindow[],
+  input: unknown,
+): void {
+  const outcome = CaptureOutcomeSchema.parse(input);
+  for (const window of windows) {
+    if (window.isDestroyed() || window.webContents.isDestroyed()) continue;
+    window.webContents.send(IPC_CHANNELS.captureOutcome, outcome);
   }
 }
 

@@ -4,6 +4,7 @@ import { DocumentCommandSchema } from "../shared/domain/commands";
 import { KopperDocumentSchema } from "../shared/domain/document";
 import {
   AccessibilitySessionResultSchema,
+  CaptureOutcomeSchema,
   CopyNotesArgumentsSchema,
   DataImportPreviewResultSchema,
   DataPathResultSchema,
@@ -164,6 +165,23 @@ const api: KopperApi = {
         IPC_CHANNELS.accessibilityPermissionChanged,
         wrappedListener,
       );
+    };
+  },
+
+  onCaptureOutcome(listener) {
+    const wrappedListener = (
+      _event: Electron.IpcRendererEvent,
+      input: unknown,
+    ) => {
+      listener(CaptureOutcomeSchema.parse(input));
+    };
+    ipcRenderer.on(IPC_CHANNELS.captureOutcome, wrappedListener);
+
+    let subscribed = true;
+    return () => {
+      if (!subscribed) return;
+      subscribed = false;
+      ipcRenderer.removeListener(IPC_CHANNELS.captureOutcome, wrappedListener);
     };
   },
 

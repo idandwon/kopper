@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -16,6 +17,10 @@ import {
   useKopperDocument,
   type KopperDocumentContextValue,
 } from "./DocumentProvider";
+
+let captureOutcomeListener:
+  | ((outcome: import("../../../shared/ipc/contract").CaptureOutcome) => void)
+  | undefined;
 
 const onboardingMock = vi.hoisted(() => ({
   mode: "grant" as "grant" | "hold",
@@ -135,8 +140,20 @@ beforeEach(() => {
   undo.mockReset().mockResolvedValue(true);
   retryLastAction.mockReset().mockResolvedValue(true);
   mockedUseKopperDocument.mockReturnValue(contextValue());
+  captureOutcomeListener = undefined;
+  window.kopper = {
+    onCaptureOutcome: vi.fn((listener) => {
+      captureOutcomeListener = listener;
+      return vi.fn();
+    }),
+    openEditorWindow: vi.fn(),
+    copyNotes: vi.fn(),
+  } as never;
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 describe("Oxide Ledger App", () => {
   it("gates only the loaded normal panel and continues without a false grant", async () => {
@@ -212,6 +229,25 @@ describe("Oxide Ledger App", () => {
     expect(
       screen.getByText("Lifecycle: captured to completed"),
     ).toBeInTheDocument();
+  });
+
+  it("highlights only the matching visible active card for 1800ms", () => {
+    vi.useFakeTimers();
+    render(<App />);
+    act(() => {
+      captureOutcomeListener?.({ status: "captured", noteId: "note-1" });
+    });
+    expect(
+      screen.getByRole("option", { name: "Note: Captured note" }),
+    ).toHaveAttribute("data-capture-highlighted", "true");
+    expect(screen.getByRole("status")).toHaveTextContent("Captured");
+
+    act(() => vi.advanceTimersByTime(1800));
+    expect(
+      screen.getByRole("option", { name: "Note: Captured note" }),
+    ).toHaveAttribute("data-capture-highlighted", "false");
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    vi.useRealTimers();
   });
 
   it("restores focus to the panel menu trigger when the controlled settings sheet closes", async () => {

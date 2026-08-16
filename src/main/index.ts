@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import {
@@ -6,12 +7,16 @@ import {
   clipboard,
   dialog,
   ipcMain,
+  nativeImage,
   nativeTheme,
   shell,
   systemPreferences,
 } from "electron";
 
 import { APP_NAME, STORE_FILE_NAME } from "../shared/appIdentity";
+import { CaptureCoordinator } from "./capture/captureCoordinator";
+import { CaptureRuntime } from "./capture/captureRuntime";
+import { SelectionCapture } from "./capture/selectionCapture";
 import {
   createMainWindow,
   openExpandedEditorWindow,
@@ -21,9 +26,11 @@ import { CommandService } from "./domain/commandService";
 import { MainOperationCoordinator } from "./domain/mainOperationCoordinator";
 import { registerIpcHandlers } from "./ipc/registerIpcHandlers";
 import { PermissionManager } from "./permissions/permissionManager";
+import { createGlobalKeyboardMonitor } from "./shortcuts/globalKeyboardMonitor";
 import { registerNativeAppearance } from "./nativeAppearance";
 import { NoteRepository } from "./persistence/noteRepository";
 import {
+  publishCaptureOutcome,
   publishDocument,
   publishNativeAppearance,
   publishPermissionState,
@@ -34,6 +41,7 @@ app.setName(APP_NAME);
 
 let cleanupIpcHandlers: (() => void) | undefined;
 let cleanupNativeAppearance: (() => void) | undefined;
+let captureRuntime: CaptureRuntime | undefined;
 
 void app.whenReady().then(async () => {
   const repository = new NoteRepository(
@@ -65,6 +73,33 @@ void app.whenReady().then(async () => {
       systemPreferences.isTrustedAccessibilityClient(prompt),
     openExternal: (url) => shell.openExternal(url),
   });
+  const publishCapture = (outcome: unknown) => {
+    publishCaptureOutcome(BrowserWindow.getAllWindows(), outcome);
+  };
+  const selectionCapture = new SelectionCapture({
+    clipboard,
+    nativeImage,
+    execFile: (file, args, options, callback) =>
+      execFile(file, args, options, (error, stdout, stderr) => {
+        callback(error, stdout, stderr);
+      }),
+  });
+  const captureCoordinator = new CaptureCoordinator(
+    selectionCapture,
+    commandService,
+    { activeSectionId: () => repository.snapshot().activeSectionId },
+    { createId: randomUUID, publish: publishCapture },
+  );
+  captureRuntime = new CaptureRuntime(
+    permissionManager,
+    () =>
+      createGlobalKeyboardMonitor({
+        onCapture: () => {
+          void captureCoordinator.requestCapture();
+        },
+      }),
+    publishCapture,
+  );
   const onboardingSession = { continuedWithoutCapture: false };
   cleanupIpcHandlers = registerIpcHandlers(
     repository,
@@ -80,6 +115,9 @@ void app.whenReady().then(async () => {
       publish,
       publishPermission: (state) => {
         publishPermissionState(BrowserWindow.getAllWindows(), state);
+      },
+      onPermissionObserved: (state) => {
+        void captureRuntime?.onPermissionObserved(state);
       },
       getAccessibilitySession: () => ({
         continuedWithoutCapture: onboardingSession.continuedWithoutCapture,
@@ -99,6 +137,7 @@ void app.whenReady().then(async () => {
     },
   );
   createMainWindow();
+  await captureRuntime.start();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -108,6 +147,8 @@ void app.whenReady().then(async () => {
 });
 
 app.on("will-quit", () => {
+  captureRuntime?.dispose();
+  captureRuntime = undefined;
   cleanupIpcHandlers?.();
   cleanupIpcHandlers = undefined;
   cleanupNativeAppearance?.();

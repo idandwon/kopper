@@ -57,6 +57,7 @@ describe("preload bridge", () => {
       "getNativeAppearance",
       "importTheme",
       "onAccessibilityPermissionChanged",
+      "onCaptureOutcome",
       "onNativeAppearanceChanged",
       "openAccessibilitySettings",
       "openEditorWindow",
@@ -341,6 +342,38 @@ describe("preload bridge", () => {
     unsubscribe();
     expect(electron.removeListener).toHaveBeenCalledExactlyOnceWith(
       IPC_CHANNELS.accessibilityPermissionChanged,
+      wrappedListener,
+    );
+  });
+
+  it("validates capture outcomes and unsubscribes exactly its listener", () => {
+    const listener = vi.fn();
+    const unsubscribe = exposedApi().onCaptureOutcome(listener);
+    const subscription = electron.on.mock.calls[0];
+    expect(subscription?.[0]).toBe(IPC_CHANNELS.captureOutcome);
+    const wrappedListener = subscription?.[1] as (
+      event: IpcRendererEvent,
+      input: unknown,
+    ) => void;
+    const outcome = {
+      status: "captured",
+      noteId: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
+    } as const;
+
+    wrappedListener({} as IpcRendererEvent, outcome);
+    expect(listener).toHaveBeenCalledWith(outcome);
+    expect(() =>
+      wrappedListener({} as IpcRendererEvent, {
+        status: "captured",
+        noteId: "not-a-uuid",
+      }),
+    ).toThrow();
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+    unsubscribe();
+    expect(electron.removeListener).toHaveBeenCalledExactlyOnceWith(
+      IPC_CHANNELS.captureOutcome,
       wrappedListener,
     );
   });

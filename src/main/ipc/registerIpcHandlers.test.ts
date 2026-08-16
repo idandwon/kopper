@@ -53,7 +53,8 @@ const registeredChannels = Object.values(IPC_CHANNELS).filter(
   (channel) =>
     channel !== IPC_CHANNELS.documentChanged &&
     channel !== IPC_CHANNELS.nativeAppearanceChanged &&
-    channel !== IPC_CHANNELS.accessibilityPermissionChanged,
+    channel !== IPC_CHANNELS.accessibilityPermissionChanged &&
+    channel !== IPC_CHANNELS.captureOutcome,
 );
 
 function makeClipboardWriter(): ClipboardWriter & {
@@ -404,6 +405,7 @@ describe("registerIpcHandlers", () => {
       .mockReturnValueOnce("granted");
     const openSettings = vi.fn(async () => undefined);
     const publishPermission = vi.fn();
+    const onPermissionObserved = vi.fn();
     const continueWithoutCapture = vi.fn();
     const getAccessibilitySession = vi.fn(() => ({
       continuedWithoutCapture: true,
@@ -417,6 +419,7 @@ describe("registerIpcHandlers", () => {
       {
         permissionManager: { check, openSettings },
         publishPermission,
+        onPermissionObserved,
         getAccessibilitySession,
         continueWithoutCapture,
       },
@@ -435,6 +438,12 @@ describe("registerIpcHandlers", () => {
     await ipcMain.invoke(IPC_CHANNELS.getAccessibilityPermission, false);
     expect(publishPermission).toHaveBeenNthCalledWith(2, "granted");
     expect(check.mock.calls).toEqual([[false], [false], [true], [false]]);
+    expect(onPermissionObserved.mock.calls).toEqual([
+      ["unknown"],
+      ["unknown"],
+      ["denied"],
+      ["granted"],
+    ]);
 
     await expect(
       ipcMain.invoke(IPC_CHANNELS.getAccessibilitySession),

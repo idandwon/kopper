@@ -78,6 +78,7 @@ function fileApiMocks(): Pick<
   | "openAccessibilitySettings"
   | "continueWithoutCapture"
   | "onAccessibilityPermissionChanged"
+  | "onCaptureOutcome"
 > {
   return {
     openEditorWindow: vi.fn(),
@@ -96,6 +97,7 @@ function fileApiMocks(): Pick<
     openAccessibilitySettings: vi.fn(),
     continueWithoutCapture: vi.fn(),
     onAccessibilityPermissionChanged: vi.fn(() => vi.fn()),
+    onCaptureOutcome: vi.fn(() => vi.fn()),
   };
 }
 
