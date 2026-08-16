@@ -270,6 +270,51 @@ describe("package verifier", () => {
     expect(failureCodes(result)).not.toContain("remote_renderer_script_source");
   });
 
+  it.each([
+    [
+      "remote script source inside a template",
+      '<template><script src="https://cdn.example.invalid/template.js"></script></template>',
+    ],
+    [
+      "remote inline dynamic import inside a template",
+      '<template><script>void import("https://cdn.example.invalid/template.js")</script></template>',
+    ],
+    [
+      "remote script source inside nested templates",
+      '<template><div><template><script src="https://cdn.example.invalid/nested-template.js"></script></template></div></template>',
+    ],
+  ])("rejects a %s", async (_name, content) => {
+    const fixture = await createFixture({
+      asarFiles: { "/out/renderer/index.html": content },
+    });
+
+    const result = await verifyPackage(fixture.appPath, fixture.ports);
+
+    expect(failureCodes(result)).toContain("remote_renderer_script_source");
+  });
+
+  it("allows benign comments, URLs, and inert scripts inside templates", async () => {
+    const fixture = await createFixture({
+      asarFiles: {
+        "/out/renderer/index.html": [
+          "<template><template>",
+          "<!-- <script src=https://cdn.example.invalid/commented.js></script> -->",
+          '<script type="application/ld+json" src="https&#58;//cdn.example.invalid/data.json">',
+          '{"example":"import(\\"https://cdn.example.invalid/example.js\\")"}',
+          "</script>",
+          '<a href="https://docs.example.invalid/help">Help</a>',
+          "<script>const example = \"https://cdn.example.invalid/example.js\"</script>",
+          "</template></template>",
+        ].join(""),
+      },
+    });
+
+    const result = await verifyPackage(fixture.appPath, fixture.ports);
+
+    expect(result.ok).toBe(true);
+    expect(failureCodes(result)).not.toContain("remote_renderer_script_source");
+  });
+
   it("allows an inert JSON-LD script with a remote src and remote-looking content", async () => {
     const fixture = await createFixture({
       asarFiles: {

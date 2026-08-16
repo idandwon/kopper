@@ -220,9 +220,11 @@ function inspectHtml(content) {
   }
 
   const stack = [...document.childNodes];
+  const visited = new Set();
   while (stack.length > 0) {
     const node = stack.pop();
-    if (!node || typeof node !== "object") continue;
+    if (!node || typeof node !== "object" || visited.has(node)) continue;
+    visited.add(node);
 
     if (node.tagName === "script") {
       const attributes = new Map(
@@ -247,6 +249,9 @@ function inspectHtml(content) {
     }
 
     if (Array.isArray(node.childNodes)) stack.push(...node.childNodes);
+    if (node.tagName === "template" && node.content) {
+      stack.push(node.content);
+    }
   }
   return { parseError: false, remote: false };
 }
