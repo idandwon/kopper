@@ -303,7 +303,7 @@ describe("package verifier", () => {
           '{"example":"import(\\"https://cdn.example.invalid/example.js\\")"}',
           "</script>",
           '<a href="https://docs.example.invalid/help">Help</a>',
-          "<script>const example = \"https://cdn.example.invalid/example.js\"</script>",
+          '<script>const example = "https://cdn.example.invalid/example.js"</script>',
           "</template></template>",
         ].join(""),
       },
