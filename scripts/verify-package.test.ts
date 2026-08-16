@@ -230,6 +230,102 @@ describe("package verifier", () => {
     expect(failureCodes(result)).not.toContain("remote_renderer_script_source");
   });
 
+  it("rejects a real remote script after a comment marker in an attribute", async () => {
+    const fixture = await createFixture({
+      asarFiles: {
+        "/out/renderer/index.html":
+          '<div data-example="<!--"></div><script src="https://cdn.example.invalid/remote.js"></script>',
+      },
+    });
+
+    const result = await verifyPackage(fixture.appPath, fixture.ports);
+
+    expect(failureCodes(result)).toContain("remote_renderer_script_source");
+  });
+
+  it("rejects an entity-decoded remote script source", async () => {
+    const fixture = await createFixture({
+      asarFiles: {
+        "/out/renderer/index.html":
+          '<script src="https&#58;//cdn.example.invalid/remote.js"></script>',
+      },
+    });
+
+    const result = await verifyPackage(fixture.appPath, fixture.ports);
+
+    expect(failureCodes(result)).toContain("remote_renderer_script_source");
+  });
+
+  it("ignores a truly commented remote script independently", async () => {
+    const fixture = await createFixture({
+      asarFiles: {
+        "/out/renderer/index.html":
+          "<!-- <script src=https://cdn.example.invalid/commented.js></script> -->",
+      },
+    });
+
+    const result = await verifyPackage(fixture.appPath, fixture.ports);
+
+    expect(result.ok).toBe(true);
+    expect(failureCodes(result)).not.toContain("remote_renderer_script_source");
+  });
+
+  it("allows an inert JSON-LD script with a remote src and remote-looking content", async () => {
+    const fixture = await createFixture({
+      asarFiles: {
+        "/out/renderer/index.html": [
+          '<script type="application/ld+json" src="https://cdn.example.invalid/data.json">',
+          '{"example":"import(\\"https://cdn.example.invalid/example.js\\")"}',
+          "</script>",
+        ].join(""),
+      },
+    });
+
+    const result = await verifyPackage(fixture.appPath, fixture.ports);
+
+    expect(result.ok).toBe(true);
+    expect(failureCodes(result)).not.toContain("remote_renderer_script_source");
+  });
+
+  it.each([
+    ["classic script without a type", "<script>"],
+    ["classic script with an empty type", '<script type="">'],
+    [
+      "classic script with a JavaScript MIME type",
+      '<script type="text/javascript; charset=utf-8">',
+    ],
+    ["classic script with a legacy type", '<script type="text/jscript">'],
+    ["module script", '<script type="MODULE">'],
+  ])("rejects remote inline imports in an executable %s", async (_name, tag) => {
+    const fixture = await createFixture({
+      asarFiles: {
+        "/out/renderer/index.html": `${tag}void import("https://cdn.example.invalid/inline.js")</script>`,
+      },
+    });
+
+    const result = await verifyPackage(fixture.appPath, fixture.ports);
+
+    expect(failureCodes(result)).toContain("remote_renderer_script_source");
+  });
+
+  it("allows benign entity and comment markers in attributes", async () => {
+    const fixture = await createFixture({
+      asarFiles: {
+        "/out/renderer/index.html": [
+          '<div data-example="<!--" data-url="https&#58;//docs.example.invalid"></div>',
+          '<script data-example="<!--" data-url="https&#58;//docs.example.invalid">',
+          "console.log('local renderer')",
+          "</script>",
+        ].join(""),
+      },
+    });
+
+    const result = await verifyPackage(fixture.appPath, fixture.ports);
+
+    expect(result.ok).toBe(true);
+    expect(failureCodes(result)).not.toContain("remote_renderer_script_source");
+  });
+
   it("parses executable inline scripts but ignores HTML comments and inert script data", async () => {
     const fixture = await createFixture({
       asarFiles: {

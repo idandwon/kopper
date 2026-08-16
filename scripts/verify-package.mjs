@@ -7,7 +7,8 @@ import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 
 import { extractFile, listPackage } from "@electron/asar";
-import { parse } from "acorn";
+import { parse as parseJavaScriptAst } from "acorn";
+import { parse as parseHtmlDocument } from "parse5";
 
 const execFile = promisify(execFileCallback);
 const REQUIRED_ARCHITECTURES = ["arm64", "x86_64"];
@@ -140,10 +141,13 @@ function staticStringStartsWithRemoteUrl(node) {
 function parseJavaScript(content) {
   const options = { ecmaVersion: "latest", allowHashBang: true };
   try {
-    return parse(content, { ...options, sourceType: "module" });
+    return parseJavaScriptAst(content, { ...options, sourceType: "module" });
   } catch {
     try {
-      return parse(content, { ...options, sourceType: "script" });
+      return parseJavaScriptAst(content, {
+        ...options,
+        sourceType: "script",
+      });
     } catch {
       return null;
     }
@@ -197,95 +201,52 @@ function inspectJavaScript(content) {
   return { parseError: false, remote: false };
 }
 
-function readTag(content, start) {
-  let quote = null;
-  for (let index = start; index < content.length; index += 1) {
-    const character = content[index];
-    if (quote) {
-      if (character === quote) quote = null;
-    } else if (character === '"' || character === "'") {
-      quote = character;
-    } else if (character === ">") {
-      return { end: index + 1, text: content.slice(start, index) };
-    }
-  }
-  return { end: content.length, text: content.slice(start) };
-}
-
-function parseAttributes(text) {
-  const attributes = new Map();
-  let index = 0;
-  while (index < text.length) {
-    while (/\s/u.test(text[index] ?? "")) index += 1;
-    if (index >= text.length || text[index] === "/") break;
-
-    const nameStart = index;
-    while (index < text.length && !/[\s=/>]/u.test(text[index])) index += 1;
-    const name = text.slice(nameStart, index).toLowerCase();
-    while (/\s/u.test(text[index] ?? "")) index += 1;
-
-    let value = "";
-    if (text[index] === "=") {
-      index += 1;
-      while (/\s/u.test(text[index] ?? "")) index += 1;
-      const quote = text[index];
-      if (quote === '"' || quote === "'") {
-        index += 1;
-        const valueStart = index;
-        while (index < text.length && text[index] !== quote) index += 1;
-        value = text.slice(valueStart, index);
-        if (text[index] === quote) index += 1;
-      } else {
-        const valueStart = index;
-        while (index < text.length && !/[\s>]/u.test(text[index])) index += 1;
-        value = text.slice(valueStart, index);
-      }
-    }
-    if (name && !attributes.has(name)) attributes.set(name, value);
-  }
-  return attributes;
-}
-
 function executableScript(attributes) {
   if (!attributes.has("type")) return true;
-  const type = attributes.get("type").trim().toLowerCase().split(";", 1)[0];
-  return type === "" || JAVASCRIPT_TYPES.has(type);
+
+  const type = attributes.get("type").trim().toLowerCase();
+  if (type === "" || type === "module") return true;
+
+  const mimeType = type.split(";", 1)[0].trim();
+  return JAVASCRIPT_TYPES.has(mimeType);
 }
 
 function inspectHtml(content) {
-  const openingTag = /<script(?=[\s/>])/giu;
-  let match;
-  while ((match = openingTag.exec(content))) {
-    const commentStart = content.lastIndexOf("<!--", match.index);
-    const commentEnd = content.lastIndexOf("-->", match.index);
-    if (commentStart > commentEnd) {
-      const closingComment = content.indexOf("-->", openingTag.lastIndex);
-      openingTag.lastIndex =
-        closingComment === -1 ? content.length : closingComment + 3;
-      continue;
-    }
+  let document;
+  try {
+    document = parseHtmlDocument(content);
+  } catch {
+    return { parseError: true, remote: false };
+  }
 
-    const tag = readTag(content, openingTag.lastIndex);
-    const attributes = parseAttributes(tag.text);
-    const closingTag = /<\/script(?=[\s>])/giu;
-    closingTag.lastIndex = tag.end;
-    const closingMatch = closingTag.exec(content);
-    const scriptEnd = closingMatch?.index ?? content.length;
-    const afterScript = closingMatch
-      ? readTag(content, closingTag.lastIndex).end
-      : content.length;
-    openingTag.lastIndex = afterScript;
+  const stack = [...document.childNodes];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node || typeof node !== "object") continue;
 
-    if (attributes.has("src")) {
-      if (REMOTE_URL.test(attributes.get("src"))) {
-        return { parseError: false, remote: true };
+    if (node.tagName === "script") {
+      const attributes = new Map(
+        node.attrs.map((attribute) => [attribute.name, attribute.value]),
+      );
+      if (!executableScript(attributes)) continue;
+
+      if (attributes.has("src")) {
+        if (REMOTE_URL.test(attributes.get("src").trim())) {
+          return { parseError: false, remote: true };
+        }
+        continue;
       }
+
+      const script = node.childNodes
+        .filter((child) => child.nodeName === "#text")
+        .map((child) => child.value)
+        .join("");
+      const result = inspectJavaScript(script);
+      if (result.remote || result.parseError) return result;
       continue;
     }
-    if (!executableScript(attributes)) continue;
 
-    const result = inspectJavaScript(content.slice(tag.end, scriptEnd));
-    if (result.remote || result.parseError) return result;
+    if (Array.isArray(node.childNodes)) stack.push(...node.childNodes);
   }
   return { parseError: false, remote: false };
 }

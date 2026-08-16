@@ -87,6 +87,9 @@ importers:
       jsdom:
         specifier: ^30.0.1
         version: 30.0.1(@noble/hashes@2.3.0)
+      parse5:
+        specifier: 8.0.1
+        version: 8.0.1
       sharp:
         specifier: 0.34.3
         version: 0.34.3
