@@ -64,7 +64,7 @@ function validateThemeMode(
         path: [token],
         message: `Invalid CSS color for theme token: ${token}`,
       });
-    } else if (EXPLICIT_MISSING_ALPHA_PATTERN.test(value)) {
+    } else if (EXPLICIT_MISSING_ALPHA_PATTERN.test(value.trim())) {
       context.addIssue({
         code: "custom",
         path: [token],
@@ -104,7 +104,7 @@ function validateThemeMode(
       });
     } else if (
       value !== undefined &&
-      EXPLICIT_MISSING_ALPHA_PATTERN.test(value)
+      EXPLICIT_MISSING_ALPHA_PATTERN.test(value.trim())
     ) {
       context.addIssue({
         code: "custom",

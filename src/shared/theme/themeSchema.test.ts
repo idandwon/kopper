@@ -88,13 +88,16 @@ describe("ThemeFileSchema", () => {
     for (const [token, value] of [
       ["background", "rgb(17 17 17 / none)"],
       ["card-foreground", "hsl(0 0% 10% / none)"],
+      ["background", "rgb(17 17 17 / none) "],
+      ["card-foreground", "hsl(0 0% 10% / none)\n"],
+      ["capture", "rgb(17 17 17 / none) "],
     ] as const) {
       const result = ThemeFileSchema.safeParse({
         ...theme,
         light: { ...theme.light, [token]: value },
       });
 
-      expect(result.success, token).toBe(false);
+      expect(result.success, `${token}: ${JSON.stringify(value)}`).toBe(false);
       if (!result.success) {
         expect(result.error.issues).toEqual(
           expect.arrayContaining([
@@ -110,17 +113,19 @@ describe("ThemeFileSchema", () => {
 
   it("keeps omitted alpha opaque and permits none in non-alpha color channels", () => {
     const theme = validTheme();
+    const background = "rgb(17 17 17) ";
     const result = ThemeFileSchema.safeParse({
       ...theme,
       name: "None More Black",
       light: {
         ...theme.light,
-        background: "rgb(17 17 17)",
+        background,
         foreground: "rgb(none 100% 100%)",
       },
     });
 
     expect(result.success).toBe(true);
+    if (result.success) expect(result.data.light.background).toBe(background);
   });
 
   it("normalizes raw zero radius and enforces the inclusive 0rem through 2rem range", () => {
