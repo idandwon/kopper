@@ -76,7 +76,9 @@ describe("atomicReplace", () => {
       },
     };
 
-    await expect(atomicReplace(path, "next", failingRenameFs)).rejects.toMatchObject({
+    await expect(
+      atomicReplace(path, "next", failingRenameFs),
+    ).rejects.toMatchObject({
       name: "AtomicReplaceError",
       stage: "before_rename",
       message: "rename failed",

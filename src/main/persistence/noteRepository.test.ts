@@ -105,7 +105,9 @@ describe("NoteRepository", () => {
     const result = await repository.replace(next);
 
     expect(result).toEqual({ ok: true, value: next });
-    expect(await readFile(storePath, "utf8")).toBe(`${JSON.stringify(next, null, 2)}\n`);
+    expect(await readFile(storePath, "utf8")).toBe(
+      `${JSON.stringify(next, null, 2)}\n`,
+    );
     expect(repository.snapshot()).toEqual(next);
   });
 
@@ -164,7 +166,10 @@ describe("NoteRepository", () => {
     expect(writer).toHaveBeenCalledTimes(1);
     releaseFirstWrite?.();
     await expect(firstReplacement).resolves.toEqual({ ok: true, value: first });
-    await expect(secondReplacement).resolves.toEqual({ ok: true, value: second });
+    await expect(secondReplacement).resolves.toEqual({
+      ok: true,
+      value: second,
+    });
     expect(writer).toHaveBeenCalledTimes(2);
     expect(repository.snapshot()).toEqual(second);
     expect(JSON.parse(await readFile(storePath, "utf8"))).toEqual(second);
@@ -206,7 +211,11 @@ describe("NoteRepository", () => {
     const writer = vi
       .fn<(path: string, contents: string) => Promise<void>>()
       .mockImplementationOnce(async (path) => {
-        await writeFile(path, `${JSON.stringify(mismatched, null, 2)}\n`, "utf8");
+        await writeFile(
+          path,
+          `${JSON.stringify(mismatched, null, 2)}\n`,
+          "utf8",
+        );
         throw new AtomicReplaceError(
           "after_rename",
           new Error("directory sync failed"),
