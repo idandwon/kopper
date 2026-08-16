@@ -4,7 +4,10 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { KopperDocument, ThemeDefinition } from "../../../shared/domain/document";
+import type {
+  KopperDocument,
+  ThemeDefinition,
+} from "../../../shared/domain/document";
 import type { KopperApi } from "../../../shared/ipc/contract";
 import { OXIDE_LEDGER_THEME } from "../../../shared/theme/presets";
 import {
@@ -163,9 +166,9 @@ describe("ThemeProvider resolution and root application", () => {
     expect(document.documentElement).not.toHaveClass("dark");
     expect(document.documentElement.style.colorScheme).toBe("light");
     flushFrames();
-    expect(document.documentElement.style.getPropertyValue("--background")).toBe(
-      OXIDE_LEDGER_THEME.light.background,
-    );
+    expect(
+      document.documentElement.style.getPropertyValue("--background"),
+    ).toBe(OXIDE_LEDGER_THEME.light.background);
 
     setDocumentContext(makeDocument({ mode: "dark" }));
     rendered.rerender();
@@ -173,9 +176,9 @@ describe("ThemeProvider resolution and root application", () => {
     expect(document.documentElement).toHaveClass("dark");
     expect(document.documentElement.style.colorScheme).toBe("dark");
     flushFrames();
-    expect(document.documentElement.style.getPropertyValue("--background")).toBe(
-      OXIDE_LEDGER_THEME.dark.background,
-    );
+    expect(
+      document.documentElement.style.getPropertyValue("--background"),
+    ).toBe(OXIDE_LEDGER_THEME.dark.background);
   });
 
   it("subscribes before getting native appearance and ignores a stale getter", async () => {
@@ -237,18 +240,18 @@ describe("ThemeProvider resolution and root application", () => {
 
     const rendered = renderHook(() => useTheme(), { wrapper });
     expect(document.documentElement).not.toHaveClass("dark");
-    expect(document.documentElement.style.getPropertyValue("color-scheme")).toBe(
-      "light",
-    );
+    expect(
+      document.documentElement.style.getPropertyValue("color-scheme"),
+    ).toBe("light");
     expect(
       document.documentElement.style.getPropertyPriority("color-scheme"),
     ).toBe("");
 
     rendered.unmount();
     expect(document.documentElement).toHaveClass("dark");
-    expect(document.documentElement.style.getPropertyValue("color-scheme")).toBe(
-      "only light",
-    );
+    expect(
+      document.documentElement.style.getPropertyValue("color-scheme"),
+    ).toBe("only light");
     expect(
       document.documentElement.style.getPropertyPriority("color-scheme"),
     ).toBe("important");
@@ -295,9 +298,9 @@ describe("ThemeProvider resolution and root application", () => {
     rendered.unmount();
     expect(listeners.size).toBe(0);
     expect(document.documentElement).toHaveClass("dark");
-    expect(document.documentElement.style.getPropertyValue("color-scheme")).toBe(
-      "only light",
-    );
+    expect(
+      document.documentElement.style.getPropertyValue("color-scheme"),
+    ).toBe("only light");
     expect(
       document.documentElement.style.getPropertyPriority("color-scheme"),
     ).toBe("important");
@@ -325,7 +328,9 @@ describe("ThemeProvider resolution and root application", () => {
     expect(rendered.result.current.activeTheme).toBe(OXIDE_LEDGER_THEME);
 
     setDocumentContext(
-      makeDocument({ mode: "light", activeThemeId: "custom:missing" }, [availableCustom]),
+      makeDocument({ mode: "light", activeThemeId: "custom:missing" }, [
+        availableCustom,
+      ]),
       true,
     );
     rendered.rerender();
@@ -343,17 +348,17 @@ describe("ThemeProvider previews", () => {
     act(() => result.current.previewTheme(theme));
     expect(result.current.activeTheme).toBe(theme);
     flushFrames();
-    expect(document.documentElement.style.getPropertyValue("--background")).toBe(
-      theme.light.background,
-    );
+    expect(
+      document.documentElement.style.getPropertyValue("--background"),
+    ).toBe(theme.light.background);
     expect(execute).not.toHaveBeenCalled();
 
     act(() => result.current.cancelPreview());
     expect(result.current.activeTheme).toBe(OXIDE_LEDGER_THEME);
     flushFrames();
-    expect(document.documentElement.style.getPropertyValue("--background")).toBe(
-      OXIDE_LEDGER_THEME.light.background,
-    );
+    expect(
+      document.documentElement.style.getPropertyValue("--background"),
+    ).toBe(OXIDE_LEDGER_THEME.light.background);
     expect(execute).not.toHaveBeenCalled();
   });
 
