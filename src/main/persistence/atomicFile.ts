@@ -36,6 +36,22 @@ async function removeTemporaryFile(
   }
 }
 
+async function createTemporaryFile(
+  temporaryPath: string,
+  fileSystem: AtomicFileSystem,
+) {
+  try {
+    return await fileSystem.open(temporaryPath, "wx", 0o600);
+  } catch (error) {
+    if (!isNodeError(error) || error.code !== "EEXIST") {
+      throw error;
+    }
+  }
+
+  await removeTemporaryFile(temporaryPath, fileSystem);
+  return fileSystem.open(temporaryPath, "wx", 0o600);
+}
+
 export async function atomicReplace(
   path: string,
   contents: string,
@@ -45,8 +61,9 @@ export async function atomicReplace(
   const temporaryPath = `${path}.tmp-${process.pid}`;
 
   try {
-    const temporaryFile = await fileSystem.open(temporaryPath, "w", 0o600);
+    const temporaryFile = await createTemporaryFile(temporaryPath, fileSystem);
     try {
+      await temporaryFile.chmod(0o600);
       await temporaryFile.writeFile(contents, "utf8");
       await temporaryFile.sync();
     } finally {
