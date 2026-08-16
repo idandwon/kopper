@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -253,6 +253,74 @@ describe("NoteRepository", () => {
     });
     expect(writer).toHaveBeenCalledTimes(2);
   });
+
+  it.each([
+    {
+      name: "an unreadable destination",
+      breakDestination: async (path: string) => {
+        await rm(path);
+        await mkdir(path);
+      },
+      expectedLoadCode: "read_failed",
+    },
+    {
+      name: "malformed JSON",
+      breakDestination: async (path: string) =>
+        writeFile(path, "{broken", "utf8"),
+      expectedLoadCode: "invalid_document",
+    },
+    {
+      name: "a schema-invalid document",
+      breakDestination: async (path: string) =>
+        writeFile(path, JSON.stringify({ schemaVersion: 1, notes: [] }), "utf8"),
+      expectedLoadCode: "invalid_document",
+    },
+    {
+      name: "a missing destination",
+      breakDestination: async (path: string) => rm(path),
+      expectedLoadCode: "write_failed",
+    },
+  ])(
+    "preserves post-rename uncertainty across reload failure from $name",
+    async ({ breakDestination, expectedLoadCode }) => {
+      const initial = createEmptyDocument(new Date(timestamp));
+      await writeFile(storePath, `${JSON.stringify(initial, null, 2)}\n`, "utf8");
+      const mismatched: KopperDocument = {
+        ...initial,
+        window: {
+          pinned: false,
+          bounds: { x: 10, y: 20, width: 380, height: 640 },
+        },
+      };
+      const writer = vi.fn(async (path: string) => {
+        await writeFile(path, `${JSON.stringify(mismatched, null, 2)}\n`, "utf8");
+        throw new AtomicReplaceError(
+          "after_rename",
+          new Error("directory sync failed"),
+        );
+      });
+      const repository = new NoteRepository(storePath, writer);
+      expect((await repository.load()).ok).toBe(true);
+      const intended = changedDocument(repository.snapshot());
+      const uncertain = await repository.replace(intended);
+      expect(uncertain).toEqual({
+        ok: false,
+        error: expect.objectContaining({
+          code: "write_failed",
+          retryable: false,
+        }),
+      });
+      expect(writer).toHaveBeenCalledTimes(1);
+
+      await breakDestination(storePath);
+      await expect(repository.load()).resolves.toEqual({
+        ok: false,
+        error: expect.objectContaining({ code: expectedLoadCode }),
+      });
+      await expect(repository.replace(intended)).resolves.toEqual(uncertain);
+      expect(writer).toHaveBeenCalledTimes(1);
+    },
+  );
 
   it("validates a replacement before invoking the atomic writer", async () => {
     const writer = vi.fn(async (): Promise<void> => undefined);

@@ -64,13 +64,18 @@ export class NoteRepository {
   }
 
   private async loadNow(): Promise<RepositoryLoadResult> {
-    this.writeFailureLatch = undefined;
-
     let raw: Buffer;
     try {
       raw = await readFile(this.path);
     } catch (error) {
       if (isNodeError(error) && error.code === "ENOENT") {
+        if (this.writeFailureLatch !== undefined) {
+          return {
+            ok: false,
+            error: structuredClone(this.writeFailureLatch),
+          };
+        }
+
         return this.createStore();
       }
 
