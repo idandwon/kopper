@@ -173,6 +173,9 @@ describe("WindowManager", () => {
   it("toggles normally but acknowledges hidden capture without activation and auto-hides", () => {
     const manager = new WindowManager();
     const window = manager.createMainWindow() as unknown as InstanceType<typeof electron.FakeWindow>;
+    window.emit("ready-to-show");
+    window.visible = false;
+    window.show.mockClear();
     manager.acknowledgeCapture();
     expect(window.showInactive).toHaveBeenCalledOnce();
     expect(window.show).not.toHaveBeenCalled();
@@ -186,6 +189,33 @@ describe("WindowManager", () => {
     expect(window.focus).toHaveBeenCalledOnce();
     manager.toggle();
     expect(window.hide).toHaveBeenCalledTimes(2);
+  });
+
+  it("suppresses the default ready show after an early inactive acknowledgement", () => {
+    const manager = new WindowManager();
+    manager.acknowledgeCapture();
+    const window = electron.FakeWindow.instances[0]!;
+
+    expect(window.showInactive).toHaveBeenCalledOnce();
+    window.emit("ready-to-show");
+
+    expect(window.show).not.toHaveBeenCalled();
+    expect(window.focus).not.toHaveBeenCalled();
+  });
+
+  it("lets an explicit Open before ready override inactive-show suppression", () => {
+    const manager = new WindowManager();
+    manager.acknowledgeCapture();
+    const window = electron.FakeWindow.instances[0]!;
+
+    manager.show();
+    expect(window.show).not.toHaveBeenCalled();
+    window.emit("ready-to-show");
+
+    expect(window.show).toHaveBeenCalledOnce();
+    expect(window.focus).toHaveBeenCalledOnce();
+    vi.advanceTimersByTime(1_800);
+    expect(window.hide).not.toHaveBeenCalled();
   });
 
   it("leaves an already visible capture panel unchanged and cancels auto-hide on focus", () => {
@@ -202,7 +232,7 @@ describe("WindowManager", () => {
     expect(window.hide).not.toHaveBeenCalled();
   });
 
-  it("debounces bounds persistence and flushes it before hide", () => {
+  it("debounces bounds persistence and flushes it before hide", async () => {
     const persistBounds = vi.fn();
     const manager = new WindowManager({ persistBounds });
     const window = manager.createMainWindow() as unknown as InstanceType<typeof electron.FakeWindow>;
@@ -211,7 +241,27 @@ describe("WindowManager", () => {
     window.emit("resize");
     expect(persistBounds).not.toHaveBeenCalled();
     manager.hide();
+    await manager.flushBounds();
     expect(persistBounds).toHaveBeenCalledExactlyOnceWith(window.bounds);
+  });
+
+  it("returns a final bounds flush promise that settles with deferred persistence", async () => {
+    let resolvePersist!: () => void;
+    const persistBounds = vi.fn(
+      () => new Promise<void>((resolve) => { resolvePersist = resolve; }),
+    );
+    const manager = new WindowManager({ persistBounds });
+    const window = manager.createMainWindow() as unknown as InstanceType<typeof electron.FakeWindow>;
+    window.bounds = { x: 700, y: 40, width: 380, height: 620 };
+    window.emit("move");
+
+    let flushed = false;
+    const flushing = manager.flushBounds().then(() => { flushed = true; });
+    await Promise.resolve();
+    expect(flushed).toBe(false);
+    resolvePersist();
+    await flushing;
+    expect(flushed).toBe(true);
   });
 
   it("deduplicates editor windows and keeps their close behavior normal", () => {

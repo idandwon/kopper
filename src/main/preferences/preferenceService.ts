@@ -20,7 +20,7 @@ export interface PreferenceShortcutPort {
   currentPreferences(): ShortcutPreferences | undefined;
   validate(preferences: ShortcutPreferences): Result<void, KopperError>;
   apply(preferences: ShortcutPreferences): Promise<Result<void, KopperError>>;
-  reset(): void;
+  reset(): void | Promise<void>;
 }
 
 export interface PreferenceWindowPort {
@@ -200,7 +200,7 @@ export class PreferenceService {
   }
 
   private async rollbackNative(previous: NativePreferenceState): Promise<void> {
-    if (previous.shortcuts === undefined) this.shortcutManager.reset();
+    if (previous.shortcuts === undefined) await this.shortcutManager.reset();
     else await this.shortcutManager.apply(previous.shortcuts);
     try {
       this.windowManager.setPinned(previous.pinned);

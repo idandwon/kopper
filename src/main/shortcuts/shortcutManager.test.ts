@@ -22,6 +22,14 @@ class FakeGlobalShortcut implements GlobalShortcutPort {
   readonly blocked = new Set<string>();
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 function monitor(startOk = true): CaptureMonitor {
   return {
     start: vi.fn(() =>
@@ -149,13 +157,88 @@ describe("ShortcutManager", () => {
     expect(failedMonitor.stop).toHaveBeenCalledOnce();
   });
 
+  it("stops a partial monitor and rolls back when native startup throws", async () => {
+    const failedMonitor = monitor();
+    vi.mocked(failedMonitor.start).mockImplementationOnce(() => {
+      throw new Error("native detail");
+    });
+    const { manager, global } = setup(failedMonitor);
+    await manager.apply(doubleShift);
+
+    await expect(manager.setCaptureEnabled(true)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "shortcut_conflict" },
+    });
+    expect(failedMonitor.stop).toHaveBeenCalledOnce();
+    expect(global.callbacks.has(doubleShift.togglePanel)).toBe(true);
+  });
+
+  it("serializes a permission enable with a concurrent preference apply", async () => {
+    const pending = deferred<CaptureMonitor>();
+    const createdMonitor = monitor();
+    const global = new FakeGlobalShortcut();
+    const factory = vi.fn(() => pending.promise);
+    const manager = new ShortcutManager(global, factory, {
+      onCapture: vi.fn(),
+      onTogglePanel: vi.fn(),
+    });
+    await manager.apply(doubleShift);
+
+    const enabling = manager.setCaptureEnabled(true);
+    await vi.waitFor(() => expect(factory).toHaveBeenCalledOnce());
+    const saving = manager.apply(accelerator);
+    pending.resolve(createdMonitor);
+
+    await expect(Promise.all([enabling, saving])).resolves.toEqual([
+      { ok: true, value: undefined },
+      { ok: true, value: undefined },
+    ]);
+    expect(createdMonitor.start).toHaveBeenCalledOnce();
+    expect(createdMonitor.stop).toHaveBeenCalledOnce();
+    expect([...global.callbacks.keys()].sort()).toEqual(
+      ["CommandOrControl+Shift+C", "CommandOrControl+Shift+Space"].sort(),
+    );
+    expect(manager.currentPreferences()).toEqual(accelerator);
+  });
+
+  it("invalidates a deferred factory immediately and cleans queued partial bindings on dispose", async () => {
+    const pending = deferred<CaptureMonitor>();
+    const staleMonitor = monitor();
+    const global = new FakeGlobalShortcut();
+    const factory = vi.fn(() => pending.promise);
+    const onTogglePanel = vi.fn();
+    const manager = new ShortcutManager(global, factory, {
+      onCapture: vi.fn(),
+      onTogglePanel,
+    });
+    await manager.apply(doubleShift);
+
+    const enabling = manager.setCaptureEnabled(true);
+    await vi.waitFor(() => expect(factory).toHaveBeenCalledOnce());
+    const staleToggleCallback = global.callbacks.get(doubleShift.togglePanel);
+    const saving = manager.apply(accelerator);
+    const disposing = manager.dispose();
+    staleToggleCallback?.();
+    expect(onTogglePanel).not.toHaveBeenCalled();
+    pending.resolve(staleMonitor);
+
+    await Promise.all([enabling, saving, disposing]);
+    expect(staleMonitor.start).not.toHaveBeenCalled();
+    expect(staleMonitor.stop).toHaveBeenCalledOnce();
+    expect(global.callbacks.size).toBe(0);
+    expect(manager.currentPreferences()).toBeUndefined();
+    await expect(manager.apply(accelerator)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "shortcut_conflict" },
+    });
+  });
+
   it("disposes every owned registration and monitor exactly once", async () => {
     const { manager, global, createdMonitor } = setup();
     await manager.apply(doubleShift);
     await manager.setCaptureEnabled(true);
 
-    manager.dispose();
-    manager.dispose();
+    await Promise.all([manager.dispose(), manager.dispose()]);
 
     expect(global.callbacks.size).toBe(0);
     expect(createdMonitor.stop).toHaveBeenCalledOnce();

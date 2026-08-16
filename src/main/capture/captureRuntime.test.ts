@@ -187,6 +187,25 @@ describe("CaptureRuntime", () => {
     expect(stale.stop).toHaveBeenCalledOnce();
   });
 
+  it("dispose awaits configurable binding shutdown and remains idempotent", async () => {
+    const pending = deferred<{ ok: true; value: undefined }>();
+    const binding = {
+      setCaptureEnabled: vi.fn(() => pending.promise),
+    };
+    const runtime = new CaptureRuntime({ check: () => "unknown" }, binding, vi.fn());
+
+    let disposed = false;
+    const disposal = runtime.dispose().then(() => { disposed = true; });
+    expect(binding.setCaptureEnabled).toHaveBeenCalledExactlyOnceWith(false);
+    await Promise.resolve();
+    expect(disposed).toBe(false);
+
+    pending.resolve({ ok: true, value: undefined });
+    await Promise.all([disposal, runtime.dispose()]);
+    expect(disposed).toBe(true);
+    expect(binding.setCaptureEnabled).toHaveBeenCalledOnce();
+  });
+
   it("dispose stops once and prevents start after an async factory resolves", async () => {
     const pending = deferred<CaptureMonitor>();
     const created = monitor();

@@ -63,8 +63,7 @@ export function validateShortcutPreferences(
   }
   if (
     preferences.capture.kind === "accelerator" &&
-    normalize(preferences.capture.accelerator) ===
-      normalize(preferences.togglePanel)
+    normalize(preferences.capture.accelerator) === normalize(preferences.togglePanel)
   ) {
     return shortcutConflict("Capture and panel shortcuts must be different.");
   }
@@ -77,11 +76,22 @@ interface ActiveBindings {
   monitor?: CaptureMonitor;
 }
 
+type Activation =
+  | { ok: true; value: ActiveBindings }
+  | {
+      ok: false;
+      partial: ActiveBindings;
+      result: Result<never, KopperError>;
+    };
+
 export class ShortcutManager {
   private preferences: ShortcutPreferences | undefined;
   private captureEnabled = false;
   private active: ActiveBindings = {};
   private disposed = false;
+  private lifecycle = 0;
+  private tail: Promise<void> = Promise.resolve();
+  private disposal: Promise<void> | undefined;
 
   constructor(
     private readonly globalShortcut: GlobalShortcutPort,
@@ -99,20 +109,68 @@ export class ShortcutManager {
     return validateShortcutPreferences(preferences);
   }
 
-  async apply(
+  apply(preferences: ShortcutPreferences): Promise<Result<void, KopperError>> {
+    const requested = structuredClone(preferences);
+    return this.enqueue(() => this.applyNow(requested));
+  }
+
+  setCaptureEnabled(enabled: boolean): Promise<Result<void, KopperError>> {
+    return this.enqueue(() => this.setCaptureEnabledNow(enabled));
+  }
+
+  reset(): Promise<void> {
+    return this.enqueue(async () => {
+      if (this.disposed) return;
+      this.deactivate(this.active);
+      this.active = {};
+      this.preferences = undefined;
+      this.captureEnabled = false;
+    });
+  }
+
+  dispose(): Promise<void> {
+    if (this.disposal !== undefined) return this.disposal;
+
+    // Invalidate a lazy factory before waiting for the transition which owns it.
+    this.disposed = true;
+    this.lifecycle += 1;
+    this.disposal = this.enqueue(async () => {
+      const active = this.active;
+      this.active = {};
+      this.preferences = undefined;
+      this.captureEnabled = false;
+      this.deactivate(active);
+    });
+    return this.disposal;
+  }
+
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const queued = this.tail.then(operation);
+    this.tail = queued.then(
+      () => undefined,
+      () => undefined,
+    );
+    return queued;
+  }
+
+  private async applyNow(
     preferences: ShortcutPreferences,
   ): Promise<Result<void, KopperError>> {
-    if (this.disposed) {
-      return shortcutConflict("Keyboard shortcuts are unavailable.");
-    }
+    if (this.disposed) return shortcutConflict("Keyboard shortcuts are unavailable.");
     const valid = this.validate(preferences);
     if (!valid.ok) return valid;
 
+    const lifecycle = this.lifecycle;
     const previousPreferences = this.preferences;
     const previousActive = this.active;
+    this.active = {};
     this.deactivate(previousActive);
 
-    const desired = await this.activate(preferences, this.captureEnabled);
+    const desired = await this.activate(preferences, this.captureEnabled, lifecycle);
+    if (!this.isCurrent(lifecycle)) {
+      this.deactivateActivation(desired);
+      return shortcutConflict("Keyboard shortcuts are unavailable.");
+    }
     if (desired.ok) {
       this.preferences = structuredClone(preferences);
       this.active = desired.value;
@@ -120,19 +178,26 @@ export class ShortcutManager {
     }
 
     this.deactivate(desired.partial);
-    this.active = {};
     if (previousPreferences !== undefined) {
       const restored = await this.activate(
         previousPreferences,
         this.captureEnabled,
+        lifecycle,
       );
+      if (!this.isCurrent(lifecycle)) {
+        this.deactivateActivation(restored);
+        return desired.result;
+      }
       if (restored.ok) this.active = restored.value;
       else this.deactivate(restored.partial);
     }
     return desired.result;
   }
 
-  async setCaptureEnabled(enabled: boolean): Promise<Result<void, KopperError>> {
+  private async setCaptureEnabledNow(
+    enabled: boolean,
+  ): Promise<Result<void, KopperError>> {
+    if (this.disposed) return shortcutConflict("Keyboard shortcuts are unavailable.");
     if (this.captureEnabled === enabled) return { ok: true, value: undefined };
     if (this.preferences === undefined) {
       return enabled
@@ -140,9 +205,15 @@ export class ShortcutManager {
         : { ok: true, value: undefined };
     }
 
+    const lifecycle = this.lifecycle;
     const previousActive = this.active;
+    this.active = {};
     this.deactivate(previousActive);
-    const desired = await this.activate(this.preferences, enabled);
+    const desired = await this.activate(this.preferences, enabled, lifecycle);
+    if (!this.isCurrent(lifecycle)) {
+      this.deactivateActivation(desired);
+      return shortcutConflict("Keyboard shortcuts are unavailable.");
+    }
     if (desired.ok) {
       this.active = desired.value;
       this.captureEnabled = enabled;
@@ -153,36 +224,22 @@ export class ShortcutManager {
     const restored = await this.activate(
       this.preferences,
       this.captureEnabled,
+      lifecycle,
     );
+    if (!this.isCurrent(lifecycle)) {
+      this.deactivateActivation(restored);
+      return desired.result;
+    }
     this.active = restored.ok ? restored.value : {};
     if (!restored.ok) this.deactivate(restored.partial);
     return desired.result;
   }
 
-  reset(): void {
-    if (this.disposed) return;
-    this.deactivate(this.active);
-    this.active = {};
-    this.preferences = undefined;
-  }
-
-  dispose(): void {
-    if (this.disposed) return;
-    this.reset();
-    this.disposed = true;
-  }
-
   private async activate(
     preferences: ShortcutPreferences,
     captureEnabled: boolean,
-  ): Promise<
-    | { ok: true; value: ActiveBindings }
-    | {
-        ok: false;
-        partial: ActiveBindings;
-        result: Result<never, KopperError>;
-      }
-  > {
+    lifecycle: number,
+  ): Promise<Activation> {
     const active: ActiveBindings = {};
     if (!this.register(preferences.togglePanel, this.options.onTogglePanel)) {
       return {
@@ -210,25 +267,9 @@ export class ShortcutManager {
       return { ok: true, value: active };
     }
 
+    let monitor: CaptureMonitor;
     try {
-      const monitor = await this.createMonitor();
-      const started = monitor.start();
-      if (!started.ok) {
-        try {
-          monitor.stop();
-        } catch {
-          // Failed monitor cleanup is best effort.
-        }
-        return {
-          ok: false,
-          partial: active,
-          result: shortcutConflict(
-            "Double Shift could not be enabled. Check Accessibility access.",
-          ),
-        };
-      }
-      active.monitor = monitor;
-      return { ok: true, value: active };
+      monitor = await this.createMonitor();
     } catch {
       return {
         ok: false,
@@ -238,11 +279,53 @@ export class ShortcutManager {
         ),
       };
     }
+    if (!this.isCurrent(lifecycle)) {
+      this.stopMonitor(monitor);
+      return {
+        ok: false,
+        partial: active,
+        result: shortcutConflict("Keyboard shortcuts are unavailable."),
+      };
+    }
+    let started: ReturnType<CaptureMonitor["start"]>;
+    try {
+      started = monitor.start();
+    } catch {
+      this.stopMonitor(monitor);
+      return {
+        ok: false,
+        partial: active,
+        result: shortcutConflict(
+          "Double Shift could not be enabled. Check Accessibility access.",
+        ),
+      };
+    }
+    if (!started.ok) {
+      this.stopMonitor(monitor);
+      return {
+        ok: false,
+        partial: active,
+        result: shortcutConflict(
+          "Double Shift could not be enabled. Check Accessibility access.",
+        ),
+      };
+    }
+    active.monitor = monitor;
+    return { ok: true, value: active };
+  }
+
+  private isCurrent(lifecycle: number): boolean {
+    return !this.disposed && lifecycle === this.lifecycle;
+  }
+
+  private deactivateActivation(activation: Activation): void {
+    this.deactivate(activation.ok ? activation.value : activation.partial);
   }
 
   private register(accelerator: string, callback: () => void): boolean {
     try {
       return this.globalShortcut.register(accelerator, () => {
+        if (this.disposed) return;
         try {
           callback();
         } catch {
@@ -257,12 +340,14 @@ export class ShortcutManager {
   private deactivate(active: ActiveBindings): void {
     if (active.capture !== undefined) this.unregister(active.capture);
     if (active.toggle !== undefined) this.unregister(active.toggle);
-    if (active.monitor !== undefined) {
-      try {
-        active.monitor.stop();
-      } catch {
-        // Native monitor shutdown is best effort.
-      }
+    if (active.monitor !== undefined) this.stopMonitor(active.monitor);
+  }
+
+  private stopMonitor(monitor: CaptureMonitor): void {
+    try {
+      monitor.stop();
+    } catch {
+      // Native monitor shutdown is best effort.
     }
   }
 

@@ -120,6 +120,10 @@ export class WindowManager {
   private boundsTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingBounds: WindowBounds | undefined;
   private acknowledgementTimer: ReturnType<typeof setTimeout> | undefined;
+  private boundsPersistenceTail: Promise<void> = Promise.resolve();
+  private mainWindowReady = false;
+  private suppressReadyShow = false;
+  private explicitOpenPending = false;
 
   constructor(private readonly options: WindowManagerOptions = {}) {
     this.persistBounds = options.persistBounds ?? (() => undefined);
@@ -148,11 +152,24 @@ export class WindowManager {
       webPreferences: secureWebPreferences,
     });
     this.mainWindow = window;
+    this.mainWindowReady = false;
+    this.suppressReadyShow = false;
+    this.explicitOpenPending = false;
     installNavigationSecurity(window);
     loadRenderer(window);
     window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     window.setAlwaysOnTop(this.options.pinned ?? false);
-    window.once("ready-to-show", () => window.show());
+    window.once("ready-to-show", () => {
+      this.mainWindowReady = true;
+      if (this.explicitOpenPending) {
+        this.explicitOpenPending = false;
+        this.suppressReadyShow = false;
+        window.show();
+        window.focus();
+      } else if (!this.suppressReadyShow) {
+        window.show();
+      }
+    });
     window.on("move", () => this.scheduleBoundsPersistence());
     window.on("resize", () => this.scheduleBoundsPersistence());
     window.on("focus", () => this.cancelAcknowledgement());
@@ -162,7 +179,12 @@ export class WindowManager {
       this.hide();
     });
     window.once("closed", () => {
-      if (this.mainWindow === window) this.mainWindow = undefined;
+      if (this.mainWindow === window) {
+        this.mainWindow = undefined;
+        this.mainWindowReady = false;
+        this.suppressReadyShow = false;
+        this.explicitOpenPending = false;
+      }
     });
     return window;
   }
@@ -199,13 +221,20 @@ export class WindowManager {
   show(): void {
     const window = this.createMainWindow();
     this.cancelAcknowledgement();
+    this.suppressReadyShow = false;
+    if (!this.mainWindowReady) {
+      this.explicitOpenPending = true;
+      return;
+    }
     window.show();
     window.focus();
   }
 
   hide(): void {
     this.cancelAcknowledgement();
-    this.flushBounds();
+    void this.flushBounds().catch(() => {
+      // Hiding remains reliable when bounds persistence fails.
+    });
     this.mainWindow?.hide();
   }
 
@@ -222,12 +251,15 @@ export class WindowManager {
   acknowledgeCapture(): void {
     const window = this.createMainWindow();
     if (window.isVisible()) return;
+    if (!this.mainWindowReady) this.suppressReadyShow = true;
     window.showInactive();
     this.cancelAcknowledgement();
     this.acknowledgementTimer = setTimeout(() => {
       this.acknowledgementTimer = undefined;
       if (!window.isDestroyed() && !window.isFocused()) {
-        this.flushBounds();
+        void this.flushBounds().catch(() => {
+          // Auto-hide remains reliable when bounds persistence fails.
+        });
         window.hide();
       }
     }, ACKNOWLEDGEMENT_MS);
@@ -288,27 +320,35 @@ export class WindowManager {
   beginQuit(): void {
     this.quitting = true;
     this.cancelAcknowledgement();
-    this.flushBounds();
   }
 
-  flushBounds(): void {
+  flushBounds(): Promise<void> {
     if (this.boundsTimer !== undefined) clearTimeout(this.boundsTimer);
     this.boundsTimer = undefined;
     const bounds = this.pendingBounds;
     this.pendingBounds = undefined;
-    if (bounds !== undefined) void this.persistBounds(bounds);
+    if (bounds === undefined) return this.boundsPersistenceTail;
+
+    const persistence = this.boundsPersistenceTail.then(() =>
+      this.persistBounds(bounds),
+    );
+    this.boundsPersistenceTail = persistence.then(
+      () => undefined,
+      () => undefined,
+    );
+    return persistence;
   }
 
   quit(): void {
-    if (this.quitting) return;
-    this.beginQuit();
-    app.quit();
+    if (!this.quitting) app.quit();
   }
 
   dispose(): void {
     this.quitting = true;
     this.cancelAcknowledgement();
-    this.flushBounds();
+    if (this.boundsTimer !== undefined) clearTimeout(this.boundsTimer);
+    this.boundsTimer = undefined;
+    this.pendingBounds = undefined;
     this.tray?.destroy();
     this.tray = undefined;
   }
@@ -343,7 +383,11 @@ export class WindowManager {
     if (window === undefined || window.isDestroyed()) return;
     this.pendingBounds = window.getBounds();
     if (this.boundsTimer !== undefined) clearTimeout(this.boundsTimer);
-    this.boundsTimer = setTimeout(() => this.flushBounds(), BOUNDS_DEBOUNCE_MS);
+    this.boundsTimer = setTimeout(() => {
+      void this.flushBounds().catch(() => {
+        // Later moves and controlled quit can retry after a persistence failure.
+      });
+    }, BOUNDS_DEBOUNCE_MS);
     this.boundsTimer.unref?.();
   }
 

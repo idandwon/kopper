@@ -11,12 +11,21 @@ import { Input } from "../../components/ui/input";
 function acceleratorFromEvent(event: KeyboardEvent): string | null {
   if (["Meta", "Control", "Alt", "Shift"].includes(event.key)) return null;
   const modifiers: string[] = [];
-  if (event.metaKey || event.ctrlKey) modifiers.push("CommandOrControl");
+  if (event.metaKey) modifiers.push("Command");
+  if (event.ctrlKey) modifiers.push("Control");
   if (event.altKey) modifiers.push("Alt");
   if (event.shiftKey) modifiers.push("Shift");
   if (modifiers.length === 0) return null;
   const key = event.key.length === 1 ? event.key.toUpperCase() : event.key;
   return [...modifiers, key === " " ? "Space" : key].join("+");
+}
+
+function shortcutFingerprint(preferences: ShortcutPreferences): string {
+  const capture =
+    preferences.capture.kind === "double-modifier"
+      ? `double-modifier:${preferences.capture.modifier}`
+      : `accelerator:${preferences.capture.accelerator}`;
+  return `${capture}\u0000${preferences.togglePanel}`;
 }
 
 export function ShortcutSettings({
@@ -30,11 +39,13 @@ export function ShortcutSettings({
   );
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const authoritativeShortcutFingerprint = shortcutFingerprint(document.shortcuts);
 
   useEffect(() => {
     setCandidate(structuredClone(document.shortcuts));
-  }, [document.shortcuts]);
+  }, [authoritativeShortcutFingerprint]);
 
   useEffect(() => {
     if (!recording) return;
@@ -42,7 +53,6 @@ export function ShortcutSettings({
       event.preventDefault();
       if (event.key === "Escape") {
         setRecording(false);
-        setCandidate(structuredClone(document.shortcuts));
         setMessage("Shortcut recording cancelled.");
         return;
       }
@@ -57,7 +67,7 @@ export function ShortcutSettings({
     };
     globalThis.addEventListener("keydown", onKeyDown, true);
     return () => globalThis.removeEventListener("keydown", onKeyDown, true);
-  }, [document.shortcuts, recording]);
+  }, [recording]);
 
   const save = async (preferences: ShortcutPreferences, reset = false) => {
     if (busy) return;
@@ -109,8 +119,9 @@ export function ShortcutSettings({
   };
 
   const testCapture = async () => {
-    if (captureUnavailable || busy) return;
-    setMessage(null);
+    if (captureUnavailable || busy || testing) return;
+    setTesting(true);
+    setMessage("Testing capture…");
     try {
       const result = await window.kopper.requestCapture();
       setMessage(
@@ -122,6 +133,8 @@ export function ShortcutSettings({
       );
     } catch {
       setMessage("Test capture could not run.");
+    } finally {
+      setTesting(false);
     }
   };
 
@@ -246,7 +259,8 @@ export function ShortcutSettings({
           type="button"
           size="xs"
           variant="ghost"
-          disabled={busy || captureUnavailable}
+          disabled={busy || testing || captureUnavailable}
+          aria-busy={testing}
           onClick={() => void testCapture()}
         >
           Test capture

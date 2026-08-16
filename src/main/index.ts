@@ -28,6 +28,7 @@ import { CommandService } from "./domain/commandService";
 import { MainOperationCoordinator } from "./domain/mainOperationCoordinator";
 import { DocumentFiles } from "./files/documentFiles";
 import { registerIpcHandlers } from "./ipc/registerIpcHandlers";
+import { ControlledQuit } from "./lifecycle/controlledQuit";
 import { registerNativeAppearance } from "./nativeAppearance";
 import { PermissionManager } from "./permissions/permissionManager";
 import { NoteRepository } from "./persistence/noteRepository";
@@ -50,6 +51,22 @@ let cleanupNativeAppearance: (() => void) | undefined;
 let captureRuntime: CaptureRuntime | undefined;
 let shortcutManager: ShortcutManager | undefined;
 let windowManager: WindowManager | undefined;
+
+const controlledQuit = new ControlledQuit({
+  flushBounds: () => windowManager?.flushBounds(),
+  disposeCaptureRuntime: async () => {
+    await captureRuntime?.dispose();
+    captureRuntime = undefined;
+  },
+  disposeShortcutManager: async () => {
+    await shortcutManager?.dispose();
+    shortcutManager = undefined;
+  },
+  finishQuit: () => {
+    windowManager?.beginQuit();
+    app.quit();
+  },
+});
 
 const unavailableCapture = (): CaptureOutcome => ({
   status: "failed",
@@ -158,8 +175,8 @@ void app.whenReady().then(async () => {
       preferencesCommitted: () => captureRuntime?.retryCaptureBinding(),
     },
   );
-  windowManager.setBoundsPersistence((bounds) => {
-    void preferenceService.setBounds(bounds);
+  windowManager.setBoundsPersistence(async (bounds) => {
+    await preferenceService.setBounds(bounds);
   });
 
   const startupPreferences =
@@ -240,15 +257,11 @@ void app.whenReady().then(async () => {
   app.on("activate", () => windowManager?.show());
 });
 
-app.on("before-quit", () => {
-  windowManager?.beginQuit();
+app.on("before-quit", (event) => {
+  controlledQuit.handleBeforeQuit(event);
 });
 
 app.on("will-quit", () => {
-  captureRuntime?.dispose();
-  captureRuntime = undefined;
-  shortcutManager?.dispose();
-  shortcutManager = undefined;
   windowManager?.dispose();
   windowManager = undefined;
   cleanupIpcHandlers?.();

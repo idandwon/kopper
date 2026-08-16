@@ -39,6 +39,7 @@ export class CaptureRuntime {
   private monitor: CaptureMonitor | undefined;
   private failurePublishedForGrantedCycle = false;
   private tail: Promise<void> = Promise.resolve();
+  private disposal: Promise<void> | undefined;
 
   constructor(
     private readonly permission: CapturePermissionChecker,
@@ -97,16 +98,26 @@ export class CaptureRuntime {
     return operation;
   }
 
-  dispose(): void {
-    if (this.disposed) return;
+  dispose(): Promise<void> {
+    if (this.disposal !== undefined) return this.disposal;
     this.disposed = true;
     this.observation += 1;
     this.desiredState = "unknown";
     this.captureAvailable = false;
     this.stopMonitor();
-    if (typeof this.captureBinding !== "function") {
-      void this.captureBinding.setCaptureEnabled(false);
+    if (typeof this.captureBinding === "function") {
+      this.disposal = Promise.resolve();
+    } else {
+      try {
+        this.disposal = this.captureBinding.setCaptureEnabled(false).then(
+          () => undefined,
+          () => undefined,
+        );
+      } catch {
+        this.disposal = Promise.resolve();
+      }
     }
+    return this.disposal;
   }
 
   private async observeCurrentPermission(): Promise<void> {
