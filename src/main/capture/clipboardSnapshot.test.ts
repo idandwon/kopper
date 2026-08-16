@@ -64,6 +64,58 @@ describe("clipboard snapshots", () => {
     });
   });
 
+  it.each(["public.url", "public.url-name", "NSURLPboardType"])(
+    "snapshots a valid bookmark from recognized format %s",
+    (format) => {
+      const clipboard = makeClipboard({
+        availableFormats: vi.fn(() => [format]),
+        readBookmark: vi.fn(() => ({
+          title: "Example",
+          url: "https://example.test/",
+        })),
+      });
+
+      const snapshot = snapshotClipboard(clipboard);
+
+      expect(snapshot).toEqual({
+        bookmark: { title: "Example", url: "https://example.test/" },
+      });
+    },
+  );
+
+  it("ignores unrelated custom formats containing bookmark", () => {
+    const clipboard = makeClipboard({
+      availableFormats: vi.fn(() => [
+        "public.utf8-plain-text",
+        "com.example.bookmark-metadata",
+      ]),
+      readText: vi.fn(() => "original text"),
+      readBookmark: vi.fn(() => ({ title: "", url: "" })),
+    });
+
+    const snapshot = snapshotClipboard(clipboard);
+
+    expect(snapshot).toEqual({ text: "original text" });
+
+    restoreClipboard(clipboard, snapshot, { createFromBuffer: vi.fn() });
+    expect(clipboard.write).toHaveBeenCalledWith({ text: "original text" });
+  });
+
+  it("does not snapshot a recognized URL format without a bookmark URL", () => {
+    const clipboard = makeClipboard({
+      availableFormats: vi.fn(() => [
+        "public.utf8-plain-text",
+        "public.url",
+      ]),
+      readText: vi.fn(() => "original text"),
+      readBookmark: vi.fn(() => ({ title: "Empty URL", url: "" })),
+    });
+
+    const snapshot = snapshotClipboard(clipboard);
+
+    expect(snapshot).toEqual({ text: "original text" });
+  });
+
   it("restores supported representations in one combined write", () => {
     const clipboard = makeClipboard();
     const rebuiltImage = image(Buffer.from([8]));

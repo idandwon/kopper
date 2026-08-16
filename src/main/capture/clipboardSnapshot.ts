@@ -44,7 +44,11 @@ const formatPatterns: Record<SupportedFormat, RegExp[]> = {
   ],
   html: [/^text\/html$/i, /^public\.html$/i, /HTML Format/i],
   rtf: [/^text\/rtf$/i, /^public\.rtf$/i, /Rich Text Format/i],
-  bookmark: [/bookmark/i, /^public\.url-name$/i, /^text\/uri-list$/i],
+  bookmark: [
+    /^public\.url$/,
+    /^public\.url-name$/,
+    /^NSURLPboardType$/,
+  ],
 };
 
 function hasFormat(formats: string[], format: SupportedFormat): boolean {
@@ -70,11 +74,7 @@ export function snapshotClipboard(clipboard: ClipboardAdapter): ClipboardSnapsho
   if (text.length > 0 || hasFormat(formats, "text")) snapshot.text = text;
   if (html.length > 0 || hasFormat(formats, "html")) snapshot.html = html;
   if (rtf.length > 0 || hasFormat(formats, "rtf")) snapshot.rtf = rtf;
-  if (
-    bookmark.title.length > 0 ||
-    bookmark.url.length > 0 ||
-    hasFormat(formats, "bookmark")
-  ) {
+  if (bookmark.url.length > 0 && hasFormat(formats, "bookmark")) {
     snapshot.bookmark = { ...bookmark };
   }
   if (!image.isEmpty()) snapshot.imagePng = Buffer.from(image.toPNG());
