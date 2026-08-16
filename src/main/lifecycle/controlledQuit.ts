@@ -6,6 +6,7 @@ export interface ControlledQuitOptions {
   flushBounds(): void | Promise<void>;
   disposeCaptureRuntime(): void | Promise<void>;
   disposeShortcutManager(): void | Promise<void>;
+  disposeSecurityPolicy(): void | Promise<void>;
   finishQuit(): void;
 }
 
@@ -33,6 +34,7 @@ export class ControlledQuit {
     await settle(() => this.options.flushBounds());
     await settle(() => this.options.disposeCaptureRuntime());
     await settle(() => this.options.disposeShortcutManager());
+    await settle(() => this.options.disposeSecurityPolicy());
     this.isQuitting = true;
     this.options.finishQuit();
   }

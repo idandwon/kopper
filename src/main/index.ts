@@ -10,6 +10,7 @@ import {
   ipcMain,
   nativeImage,
   nativeTheme,
+  session,
   shell,
   systemPreferences,
 } from "electron";
@@ -31,7 +32,10 @@ import { DocumentFiles } from "./files/documentFiles";
 import { registerIpcHandlers } from "./ipc/registerIpcHandlers";
 import { ControlledQuit } from "./lifecycle/controlledQuit";
 import { registerNativeAppearance } from "./nativeAppearance";
-import { PermissionManager } from "./permissions/permissionManager";
+import {
+  ACCESSIBILITY_SETTINGS_URL,
+  PermissionManager,
+} from "./permissions/permissionManager";
 import { PermissionObserver } from "./permissions/permissionObserver";
 import { NoteRepository } from "./persistence/noteRepository";
 import { PreferenceService } from "./preferences/preferenceService";
@@ -41,6 +45,7 @@ import {
   publishNativeAppearance,
   publishPermissionState,
 } from "./publishDocument";
+import { installSecurityPolicy } from "./security/securityPolicy";
 import { createGlobalKeyboardMonitor } from "./shortcuts/globalKeyboardMonitor";
 import { ShortcutManager } from "./shortcuts/shortcutManager";
 import { ThemeFiles } from "./theme/themeFiles";
@@ -50,6 +55,7 @@ app.setName(APP_NAME);
 
 let cleanupIpcHandlers: (() => void) | undefined;
 let cleanupNativeAppearance: (() => void) | undefined;
+let cleanupSecurityPolicy: (() => void) | undefined;
 let captureRuntime: CaptureRuntime | undefined;
 let shortcutManager: ShortcutManager | undefined;
 let windowManager: WindowManager | undefined;
@@ -63,6 +69,10 @@ const controlledQuit = new ControlledQuit({
   disposeShortcutManager: async () => {
     await shortcutManager?.dispose();
     shortcutManager = undefined;
+  },
+  disposeSecurityPolicy: () => {
+    cleanupSecurityPolicy?.();
+    cleanupSecurityPolicy = undefined;
   },
   finishQuit: () => {
     windowManager?.beginQuit();
@@ -99,7 +109,7 @@ void app.whenReady().then(async () => {
     platform: process.platform,
     isTrustedAccessibilityClient: (prompt) =>
       systemPreferences.isTrustedAccessibilityClient(prompt),
-    openExternal: (url) => shell.openExternal(url),
+    openExternal: () => shell.openExternal(ACCESSIBILITY_SETTINGS_URL),
   });
   const selectionCapture = new SelectionCapture({
     clipboard,
@@ -165,6 +175,10 @@ void app.whenReady().then(async () => {
   windowManager.setBoundsPersistence(async (bounds) => {
     await preferenceService.setBounds(bounds);
   });
+  cleanupSecurityPolicy = installSecurityPolicy(
+    session.defaultSession,
+    windowManager,
+  );
 
   const startupPreferences =
     initialDocument ?? {
@@ -268,6 +282,7 @@ app.on("will-quit", () => {
   cleanupIpcHandlers = undefined;
   cleanupNativeAppearance?.();
   cleanupNativeAppearance = undefined;
+  cleanupSecurityPolicy = undefined;
 });
 
 app.on("window-all-closed", () => {

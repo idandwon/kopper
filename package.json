@@ -12,6 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "audit:deps": "pnpm audit --prod --audit-level high",
+    "audit:source": "node scripts/verify-package.mjs --source",
     "icons": "node scripts/build-icons.mjs",
     "package:dir": "pnpm package:unsigned",
     "package:unsigned": "pnpm build && electron-builder --mac dir --universal -c.mac.identity=null -c.mac.notarize=false",

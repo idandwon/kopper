@@ -81,6 +81,7 @@ const electron = vi.hoisted(() => {
     FakeTray,
     quit: vi.fn(),
     dockHide: vi.fn(),
+    isPackaged: true,
     menu: vi.fn((template: unknown) => template),
     image: { setTemplateImage: vi.fn() },
     displays: [{ workArea: { x: 0, y: 0, width: 1440, height: 900 } }],
@@ -88,7 +89,13 @@ const electron = vi.hoisted(() => {
 });
 
 vi.mock("electron", () => ({
-  app: { quit: electron.quit, dock: { hide: electron.dockHide } },
+  app: {
+    quit: electron.quit,
+    dock: { hide: electron.dockHide },
+    get isPackaged() {
+      return electron.isPackaged;
+    },
+  },
   BrowserWindow: electron.FakeWindow,
   Menu: { buildFromTemplate: electron.menu },
   nativeImage: { createFromDataURL: () => electron.image },
@@ -108,6 +115,8 @@ beforeEach(() => {
   electron.FakeTray.instances.length = 0;
   electron.quit.mockReset();
   electron.dockHide.mockReset();
+  electron.isPackaged = true;
+  delete process.env.ELECTRON_RENDERER_URL;
   electron.menu.mockClear();
   electron.displays.splice(0, electron.displays.length, {
     workArea: { x: 0, y: 0, width: 1440, height: 900 },
@@ -139,6 +148,53 @@ describe("WindowManager", () => {
     expect(window.setVisibleOnAllWorkspaces).toHaveBeenCalledWith(true, {
       visibleOnFullScreen: true,
     });
+  });
+
+  it("ignores a renderer environment URL in a packaged application", () => {
+    process.env.ELECTRON_RENDERER_URL = "https://example.invalid/remote";
+
+    const manager = new WindowManager();
+    const window = manager.createMainWindow() as unknown as InstanceType<
+      typeof electron.FakeWindow
+    >;
+
+    expect(manager.rendererUrl.protocol).toBe("file:");
+    expect(window.loadURL).not.toHaveBeenCalled();
+    expect(window.loadFile).toHaveBeenCalledOnce();
+  });
+
+  it("falls back to the local renderer for invalid development configuration", () => {
+    electron.isPackaged = false;
+    process.env.ELECTRON_RENDERER_URL = "not a URL";
+
+    const manager = new WindowManager();
+    const window = manager.createMainWindow() as unknown as InstanceType<
+      typeof electron.FakeWindow
+    >;
+
+    expect(manager.rendererUrl.protocol).toBe("file:");
+    expect(window.loadFile).toHaveBeenCalledOnce();
+  });
+
+  it("registers the secure main and editor preferences at window creation", () => {
+    const manager = new WindowManager();
+    const created = vi.fn();
+    manager.onWindowCreated(created);
+
+    const main = manager.createMainWindow() as unknown as InstanceType<
+      typeof electron.FakeWindow
+    >;
+    const editor = manager.openExpandedEditorWindow("note-1") as unknown as InstanceType<
+      typeof electron.FakeWindow
+    >;
+
+    expect(created.mock.calls).toEqual([[main], [editor]]);
+    expect(main.options.webPreferences).toMatchObject({
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    });
+    expect(editor.options.webPreferences).toEqual(main.options.webPreferences);
   });
 
   it("uses only visible remembered bounds and clamps them to the intersecting work area", () => {

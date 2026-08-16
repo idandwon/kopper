@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   app,
   BrowserWindow,
@@ -11,6 +11,7 @@ import {
 } from "electron";
 
 import type { WindowBounds } from "../../shared/domain/document";
+import type { SecurityWindowRegistry } from "../security/securityPolicy";
 
 const PANEL_WIDTH = 380;
 const PANEL_HEIGHT = 640;
@@ -28,42 +29,14 @@ const secureWebPreferences = {
 } as const;
 
 function rendererEntryUrl(): URL {
-  if (process.env.ELECTRON_RENDERER_URL) {
-    return new URL(process.env.ELECTRON_RENDERER_URL);
+  if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
+    try {
+      return new URL(process.env.ELECTRON_RENDERER_URL);
+    } catch {
+      // Invalid development configuration never widens renderer trust.
+    }
   }
   return pathToFileURL(join(__dirname, "../renderer/index.html"));
-}
-
-function isTrustedRendererNavigation(navigationUrl: string): boolean {
-  try {
-    const expected = rendererEntryUrl();
-    const requested = new URL(navigationUrl);
-    expected.hash = "";
-    requested.hash = "";
-    return requested.href === expected.href;
-  } catch {
-    return false;
-  }
-}
-
-function installNavigationSecurity(window: BrowserWindow): void {
-  window.webContents.on("will-navigate", (event, navigationUrl) => {
-    if (!isTrustedRendererNavigation(navigationUrl)) event.preventDefault();
-  });
-  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-}
-
-function loadRenderer(window: BrowserWindow, hash?: string): void {
-  if (process.env.ELECTRON_RENDERER_URL) {
-    const url = new URL(process.env.ELECTRON_RENDERER_URL);
-    if (hash !== undefined) url.hash = hash;
-    void window.loadURL(url.toString());
-  } else {
-    void window.loadFile(
-      join(__dirname, "../renderer/index.html"),
-      hash === undefined ? undefined : { hash },
-    );
-  }
 }
 
 function intersects(left: Rectangle, right: Rectangle): boolean {
@@ -110,7 +83,8 @@ export interface WindowManagerOptions {
   openSettings?(): void;
 }
 
-export class WindowManager {
+export class WindowManager implements SecurityWindowRegistry {
+  readonly rendererUrl = rendererEntryUrl();
   private mainWindow: BrowserWindow | undefined;
   private readonly editorWindows = new Map<string, BrowserWindow>();
   private tray: Tray | undefined;
@@ -124,6 +98,9 @@ export class WindowManager {
   private mainWindowReady = false;
   private suppressReadyShow = false;
   private explicitOpenPending = false;
+  private readonly windowCreatedListeners = new Set<
+    (window: BrowserWindow) => void
+  >();
 
   constructor(private readonly options: WindowManagerOptions = {}) {
     this.persistBounds = options.persistBounds ?? (() => undefined);
@@ -152,11 +129,11 @@ export class WindowManager {
       webPreferences: secureWebPreferences,
     });
     this.mainWindow = window;
+    this.notifyWindowCreated(window);
     this.mainWindowReady = false;
     this.suppressReadyShow = false;
     this.explicitOpenPending = false;
-    installNavigationSecurity(window);
-    loadRenderer(window);
+    this.loadRenderer(window);
     window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     window.setAlwaysOnTop(this.options.pinned ?? false);
     window.once("ready-to-show", () => {
@@ -207,8 +184,8 @@ export class WindowManager {
       webPreferences: secureWebPreferences,
     });
     this.editorWindows.set(noteId, window);
-    installNavigationSecurity(window);
-    loadRenderer(window, `editor=${encodeURIComponent(noteId)}`);
+    this.notifyWindowCreated(window);
+    this.loadRenderer(window, `editor=${encodeURIComponent(noteId)}`);
     window.once("ready-to-show", () => window.show());
     window.once("closed", () => {
       if (this.editorWindows.get(noteId) === window) {
@@ -216,6 +193,17 @@ export class WindowManager {
       }
     });
     return window;
+  }
+
+  getWindows(): BrowserWindow[] {
+    const windows = [...this.editorWindows.values()];
+    if (this.mainWindow !== undefined) windows.unshift(this.mainWindow);
+    return windows.filter((window) => !window.isDestroyed());
+  }
+
+  onWindowCreated(listener: (window: BrowserWindow) => void): () => void {
+    this.windowCreatedListeners.add(listener);
+    return () => this.windowCreatedListeners.delete(listener);
   }
 
   show(): void {
@@ -351,6 +339,29 @@ export class WindowManager {
     this.pendingBounds = undefined;
     this.tray?.destroy();
     this.tray = undefined;
+  }
+
+  private loadRenderer(window: BrowserWindow, hash?: string): void {
+    if (this.rendererUrl.protocol === "file:") {
+      let rendererPath: string;
+      try {
+        rendererPath = fileURLToPath(this.rendererUrl);
+      } catch {
+        rendererPath = join(__dirname, "../renderer/index.html");
+      }
+      void window.loadFile(
+        rendererPath,
+        hash === undefined ? undefined : { hash },
+      );
+      return;
+    }
+    const url = new URL(this.rendererUrl);
+    if (hash !== undefined) url.hash = hash;
+    void window.loadURL(url.toString());
+  }
+
+  private notifyWindowCreated(window: BrowserWindow): void {
+    for (const listener of this.windowCreatedListeners) listener(window);
   }
 
   private initialPanelBounds(remembered: WindowBounds | null): WindowBounds {

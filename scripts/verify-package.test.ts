@@ -7,7 +7,17 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { runCli, verifyPackage } from "./verify-package.mjs";
+import * as packageVerifier from "./verify-package.mjs";
+
+const { runCli, verifyPackage } = packageVerifier;
+const { verifySource } = packageVerifier as typeof packageVerifier & {
+  verifySource(root?: string): Promise<{
+    ok: boolean;
+    source: string;
+    checks: { files: number };
+    failures: Array<{ file: string; rule: string }>;
+  }>;
+};
 
 interface FixtureOptions {
   info?: Record<string, unknown>;
@@ -107,6 +117,135 @@ afterEach(async () => {
 function failureCodes(result: Awaited<ReturnType<typeof verifyPackage>>) {
   return result.failures.map((failure) => failure.code);
 }
+
+async function createSourceFixture(files: Record<string, string>) {
+  const root = await mkdtemp(join(tmpdir(), "kopper-source-audit-test-"));
+  temporaryDirectories.push(root);
+  await Promise.all(
+    Object.entries(files).map(async ([relativePath, content]) => {
+      const path = join(root, relativePath);
+      await mkdir(join(path, ".."), { recursive: true });
+      await writeFile(path, content, "utf8");
+    }),
+  );
+  return root;
+}
+
+describe("source security auditor", () => {
+  it.each([
+    ["updater", 'import { autoUpdater } from "electron-updater";', "forbidden_import"],
+    ["updater helper", 'import updateElectronApp from "update-electron-app";', "forbidden_import"],
+    ["analytics", 'const analytics = require("posthog-js");', "forbidden_import"],
+    ["generic external URL", "void shell.openExternal(targetUrl);", "unrestricted_external_open"],
+    ["web security disabled", "const options = { webSecurity: false };", "insecure_web_preference"],
+    ["Node enabled", "const options = { nodeIntegration: true };", "insecure_web_preference"],
+    ["isolation disabled", "const options = { contextIsolation: false };", "insecure_web_preference"],
+    ["content logging", "console.error(note.body);", "production_console_log"],
+  ])("rejects %s in application source", async (_name, source, rule) => {
+    const root = await createSourceFixture({ "src/main/unsafe.ts": source });
+
+    const result = await verifySource(root);
+
+    expect(result.ok).toBe(false);
+    expect(result.failures).toContainEqual({
+      file: "src/main/unsafe.ts",
+      rule,
+    });
+  });
+
+  it("rejects a fixed-looking external open without the reviewed named import", async () => {
+    const root = await createSourceFixture({
+      "src/main/index.ts": [
+        'import "./permissions/permissionManager";',
+        "const ACCESSIBILITY_SETTINGS_URL = targetUrl;",
+        "void shell.openExternal(ACCESSIBILITY_SETTINGS_URL);",
+      ].join("\n"),
+    });
+
+    const result = await verifySource(root);
+
+    expect(result.failures).toContainEqual({
+      file: "src/main/index.ts",
+      rule: "unrestricted_external_open",
+    });
+  });
+
+  it("permits only the fixed Accessibility Settings external-open adapter", async () => {
+    const root = await createSourceFixture({
+      "src/main/index.ts": [
+        'import { shell } from "electron";',
+        'import { ACCESSIBILITY_SETTINGS_URL } from "./permissions/permissionManager";',
+        "const adapter = () => shell.openExternal(ACCESSIBILITY_SETTINGS_URL);",
+      ].join("\n"),
+    });
+
+    await expect(verifySource(root)).resolves.toMatchObject({
+      ok: true,
+      failures: [],
+    });
+  });
+
+  it("scans application source only and treats tests as negative fixture data", async () => {
+    const unsafe = 'import updater from "electron-updater"; console.log(noteBody);';
+    const root = await createSourceFixture({
+      "src/main/safe.ts": "export const safe = true;",
+      "src/main/safe.test.ts": unsafe,
+      "src/main/__fixtures__/unsafe.ts": unsafe,
+      "scripts/generated.mjs": unsafe,
+      "out/main/index.js": unsafe,
+      "release/app/index.js": unsafe,
+      "node_modules/example/index.js": unsafe,
+    });
+
+    await expect(verifySource(root)).resolves.toMatchObject({
+      ok: true,
+      checks: { files: 1 },
+      failures: [],
+    });
+  });
+
+  it("reports only file and rule names without matched user, credential, or native-error values", async () => {
+    const secret = "private-note-clipboard-import-credential-native-error";
+    const root = await createSourceFixture({
+      "src/preload/unsafe.ts": `console.log(${JSON.stringify(secret)});`,
+    });
+
+    const result = await verifySource(root);
+
+    expect(JSON.stringify(result)).not.toContain(secret);
+    expect(result.failures).toEqual([
+      { file: "src/preload/unsafe.ts", rule: "production_console_log" },
+    ]);
+  });
+
+  it("supports the --source CLI mode with safe structured output", async () => {
+    const output: string[] = [];
+    const errors: string[] = [];
+
+    const sourcePorts = {
+      verifySource: async () => ({
+        ok: true,
+        source: "src",
+        checks: { files: 42 },
+        failures: [],
+      }),
+      stdout: (line: string) => output.push(line),
+      stderr: (line: string) => errors.push(line),
+    };
+    const exitCode = await runCli(
+      ["--source"],
+      sourcePorts as unknown as Parameters<typeof runCli>[1],
+    );
+
+    expect(exitCode).toBe(0);
+    expect(errors).toEqual([]);
+    expect(JSON.parse(output.join("\n"))).toMatchObject({
+      ok: true,
+      source: "src",
+      checks: { files: 42 },
+    });
+  });
+});
 
 describe("package verifier", () => {
   it.each([

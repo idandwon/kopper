@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { ControlledQuit } from "./controlledQuit";
+import {
+  ControlledQuit,
+} from "./controlledQuit";
 
 function deferred() {
   let resolve!: () => void;
@@ -17,11 +19,13 @@ describe("ControlledQuit", () => {
     const persistence = deferred();
     const disposeCaptureRuntime = vi.fn(async () => undefined);
     const disposeShortcutManager = vi.fn(async () => undefined);
+    const disposeSecurityPolicy = vi.fn(async () => undefined);
     const finishQuit = vi.fn();
     const controller = new ControlledQuit({
       flushBounds: () => persistence.promise,
       disposeCaptureRuntime,
       disposeShortcutManager,
+      disposeSecurityPolicy,
       finishQuit,
     });
     const firstPreventDefault = vi.fn();
@@ -37,6 +41,7 @@ describe("ControlledQuit", () => {
     await vi.waitFor(() => expect(finishQuit).toHaveBeenCalledOnce());
     expect(disposeCaptureRuntime).toHaveBeenCalledOnce();
     expect(disposeShortcutManager).toHaveBeenCalledOnce();
+    expect(disposeSecurityPolicy).toHaveBeenCalledOnce();
 
     const secondPreventDefault = vi.fn();
     controller.handleBeforeQuit({ preventDefault: secondPreventDefault });
@@ -55,6 +60,9 @@ describe("ControlledQuit", () => {
       },
       disposeShortcutManager: async () => {
         throw new Error("private shortcut detail");
+      },
+      disposeSecurityPolicy: async () => {
+        throw new Error("private security detail");
       },
       finishQuit,
     });

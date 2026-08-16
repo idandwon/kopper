@@ -1,14 +1,16 @@
 #!/usr/bin/env node
 
 import { execFile as execFileCallback } from "node:child_process";
-import { access, readdir } from "node:fs/promises";
-import { basename, join, resolve, sep } from "node:path";
+import { access, readFile, readdir } from "node:fs/promises";
+import { basename, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 
 import { extractFile, listPackage } from "@electron/asar";
 import { parse as parseJavaScriptAst } from "acorn";
 import { parse as parseHtmlDocument } from "parse5";
+import { SyntaxKind } from "typescript/unstable/ast";
+import { createScanner } from "typescript/unstable/ast/scanner";
 
 const execFile = promisify(execFileCallback);
 const REQUIRED_ARCHITECTURES = ["arm64", "x86_64"];
@@ -280,6 +282,175 @@ function failure(code, message) {
   return { code, message };
 }
 
+const SOURCE_EXTENSIONS = /\.(?:[cm]?[jt]s|[jt]sx)$/u;
+const FORBIDDEN_IMPORTS = new Set([
+  "electron-updater",
+  "update-electron-app",
+  "@sentry/electron",
+  "@sentry/browser",
+  "@segment/analytics-node",
+  "@segment/analytics-next",
+  "@amplitude/analytics-browser",
+  "@google-analytics/data",
+  "@vercel/analytics",
+  "amplitude-js",
+  "analytics",
+  "analytics-node",
+  "mixpanel",
+  "plausible-tracker",
+  "posthog-js",
+  "rudder-sdk-js",
+]);
+const INSECURE_WEB_PREFERENCES = new Map([
+  ["webSecurity", false],
+  ["nodeIntegration", true],
+  ["contextIsolation", false],
+]);
+
+function forbiddenImport(moduleName) {
+  return [...FORBIDDEN_IMPORTS].some(
+    (forbidden) =>
+      moduleName === forbidden || moduleName.startsWith(`${forbidden}/`),
+  );
+}
+
+function scanSourceTokens(content) {
+  const scanner = createScanner(true, undefined, content);
+  const tokens = [];
+  while (true) {
+    const kind = scanner.scan();
+    if (kind === SyntaxKind.EndOfFile) break;
+    tokens.push({
+      kind,
+      text: scanner.getTokenText(),
+      value: scanner.getTokenValue(),
+    });
+  }
+  return tokens;
+}
+
+function tokenText(token) {
+  if (!token) return "";
+  return token.kind === SyntaxKind.StringLiteral ? token.value : token.text;
+}
+
+function follows(tokens, index, expected) {
+  return expected.every(
+    (text, offset) => tokenText(tokens[index + offset]) === text,
+  );
+}
+
+function hasFixedAccessibilityImport(tokens) {
+  return tokens.some((token, index) => {
+    if (
+      token.kind !== SyntaxKind.StringLiteral ||
+      !tokenText(token).endsWith("/permissions/permissionManager")
+    ) {
+      return false;
+    }
+    let start = index - 1;
+    while (start >= 0 && ![";", "import"].includes(tokenText(tokens[start]))) {
+      start -= 1;
+    }
+    const declaration = tokens.slice(Math.max(0, start), index).map(tokenText);
+    return (
+      declaration[0] === "import" &&
+      declaration.includes("from") &&
+      declaration.includes("ACCESSIBILITY_SETTINGS_URL")
+    );
+  });
+}
+
+function importedString(tokens, index) {
+  const token = tokens[index];
+  if (token?.kind !== SyntaxKind.StringLiteral) return false;
+  const nearby = tokens.slice(Math.max(0, index - 8), index).map(tokenText);
+  return (
+    nearby.includes("import") ||
+    nearby.includes("from") ||
+    nearby.some(
+      (text, nearbyIndex) =>
+        text === "require" && nearby[nearbyIndex + 1] === "(",
+    )
+  );
+}
+
+function inspectApplicationSource(relativePath, content) {
+  const tokens = scanSourceTokens(content);
+  const rules = new Set();
+  const fixedAccessibilityImport = hasFixedAccessibilityImport(tokens);
+
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    const text = tokenText(token);
+    if (
+      token.kind === SyntaxKind.StringLiteral &&
+      importedString(tokens, index) &&
+      forbiddenImport(text)
+    ) {
+      rules.add("forbidden_import");
+    }
+    if (follows(tokens, index, ["shell", ".", "openExternal", "("])) {
+      const fixedAdapter =
+        relativePath === "src/main/index.ts" &&
+        tokenText(tokens[index + 4]) === "ACCESSIBILITY_SETTINGS_URL" &&
+        tokenText(tokens[index + 5]) === ")" &&
+        fixedAccessibilityImport;
+      if (!fixedAdapter) rules.add("unrestricted_external_open");
+    }
+    if (
+      text === "console" &&
+      tokenText(tokens[index + 1]) === "." &&
+      tokenText(tokens[index + 3]) === "("
+    ) {
+      rules.add("production_console_log");
+    }
+    const expected = INSECURE_WEB_PREFERENCES.get(text);
+    if (expected !== undefined) {
+      const operator = tokenText(tokens[index + 1]);
+      const actual = tokenText(tokens[index + 2]);
+      if (
+        [":", "="].includes(operator) &&
+        actual === String(expected)
+      ) {
+        rules.add("insecure_web_preference");
+      }
+    }
+  }
+  return [...rules].sort();
+}
+
+function applicationSourcePath(path) {
+  const normalized = path.split(sep).join("/");
+  return (
+    SOURCE_EXTENSIONS.test(normalized) &&
+    !/\.(?:spec|test)\.[cm]?[jt]sx?$/u.test(normalized) &&
+    !normalized.split("/").includes("__fixtures__")
+  );
+}
+
+export async function verifySource(root = process.cwd()) {
+  const absoluteRoot = resolve(root);
+  const sourceRoot = join(absoluteRoot, "src");
+  const files = await findFiles(sourceRoot, (_name, path) =>
+    applicationSourcePath(path),
+  );
+  const failures = [];
+  for (const path of files) {
+    const relativePath = relative(absoluteRoot, path).split(sep).join("/");
+    const content = await readFile(path, "utf8");
+    for (const rule of inspectApplicationSource(relativePath, content)) {
+      failures.push({ file: relativePath, rule });
+    }
+  }
+  return {
+    ok: failures.length === 0,
+    source: "src",
+    checks: { files: files.length },
+    failures,
+  };
+}
+
 export async function verifyPackage(appPath, injectedPorts = {}) {
   const ports = { ...defaultPorts, ...injectedPorts };
   const absoluteAppPath = resolve(appPath);
@@ -510,10 +681,31 @@ export async function verifyPackage(appPath, injectedPorts = {}) {
 export async function runCli(args, injectedPorts = {}) {
   const ports = {
     verify: verifyPackage,
+    verifySource,
     stdout: (line) => console.log(line),
     stderr: (line) => console.error(line),
     ...injectedPorts,
   };
+
+  if (args.length === 1 && args[0] === "--source") {
+    try {
+      const result = await ports.verifySource();
+      const output = JSON.stringify(result, null, 2);
+      if (result.ok) ports.stdout(output);
+      else ports.stderr(output);
+      return result.ok ? 0 : 1;
+    } catch {
+      ports.stderr(
+        JSON.stringify({
+          ok: false,
+          source: "src",
+          checks: null,
+          failures: [{ file: "src", rule: "source_audit_failed" }],
+        }),
+      );
+      return 1;
+    }
+  }
 
   if (args.length !== 1 || !args[0].endsWith(".app")) {
     ports.stderr(
@@ -524,7 +716,7 @@ export async function runCli(args, injectedPorts = {}) {
         failures: [
           failure(
             "invalid_arguments",
-            "Usage: verify-package.mjs <path-to-application.app>",
+            "Usage: verify-package.mjs <path-to-application.app> | --source",
           ),
         ],
       }),

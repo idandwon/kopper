@@ -30,8 +30,23 @@ export function verifyPackage(
   ports?: Partial<VerifierPorts>,
 ): Promise<VerificationResult>;
 
+export interface SourceAuditFailure {
+  file: string;
+  rule: string;
+}
+
+export interface SourceAuditResult {
+  ok: boolean;
+  source: string;
+  checks: { files: number };
+  failures: SourceAuditFailure[];
+}
+
+export function verifySource(root?: string): Promise<SourceAuditResult>;
+
 export interface CliPorts {
   verify(appPath: string): Promise<VerificationResult>;
+  verifySource(): Promise<SourceAuditResult>;
   stdout(line: string): void;
   stderr(line: string): void;
 }
