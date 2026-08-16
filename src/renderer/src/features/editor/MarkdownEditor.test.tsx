@@ -31,6 +31,22 @@ describe("MarkdownEditor", () => {
     expect(document.querySelector("script")).toBeNull();
   });
 
+  it("renders Markdown links as inert text without a user-controlled href", () => {
+    render(
+      <MarkdownEditor
+        noteId="note-1"
+        body="[Open privileged page](https://attacker.example/steal)"
+        editing={false}
+        onEditingChange={vi.fn()}
+        onSave={vi.fn()}
+      />,
+    );
+
+    const linkText = screen.getByText("Open privileged page");
+    expect(linkText.closest("a")).toBeNull();
+    expect(linkText).not.toHaveAttribute("href");
+  });
+
   it("saves nonblank edits only after Cmd+Enter is acknowledged", async () => {
     const user = userEvent.setup();
     const onSave = vi.fn().mockResolvedValue(true);

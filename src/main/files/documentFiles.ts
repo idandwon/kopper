@@ -11,6 +11,10 @@ import type {
   DataImportPreview,
   FileOperationResult,
 } from "../../shared/ipc/contract.js";
+import {
+  MainOperationCoordinator,
+  type MainOperationRunner,
+} from "../domain/mainOperationCoordinator";
 import type { NoteRepository } from "../persistence/noteRepository";
 
 export interface DocumentDialog {
@@ -54,15 +58,32 @@ const nodeFileSystem: DocumentFileSystem = {
   },
 };
 
+export interface DocumentFilesOptions {
+  fileSystem?: DocumentFileSystem;
+  now?: () => number;
+  operationCoordinator?: MainOperationRunner;
+  externalReplacementSucceeded?: () => void;
+}
+
 export class DocumentFiles {
   private readonly pendingImports = new Map<string, PendingImport>();
+  private readonly fileSystem: DocumentFileSystem;
+  private readonly now: () => number;
+  private readonly operationCoordinator: MainOperationRunner;
+  private readonly externalReplacementSucceeded: () => void;
 
   constructor(
     private readonly repository: NoteRepository,
     private readonly dialog: DocumentDialog,
-    private readonly fileSystem: DocumentFileSystem = nodeFileSystem,
-    private readonly now: () => number = Date.now,
-  ) {}
+    options: DocumentFilesOptions = {},
+  ) {
+    this.fileSystem = options.fileSystem ?? nodeFileSystem;
+    this.now = options.now ?? Date.now;
+    this.operationCoordinator =
+      options.operationCoordinator ?? new MainOperationCoordinator();
+    this.externalReplacementSucceeded =
+      options.externalReplacementSucceeded ?? (() => undefined);
+  }
 
   activePath(): string {
     return this.repository.activePath();
@@ -143,14 +164,22 @@ export class DocumentFiles {
     };
   }
 
-  async confirmImport(token: string): Promise<Result<KopperDocument, KopperError>> {
-    const pending = this.pendingImports.get(token);
-    this.pendingImports.delete(token);
-    if (pending !== undefined) clearTimeout(pending.expirationTimer);
-    if (pending === undefined || pending.expiresAt <= this.now()) {
-      return failure("validation_failed", "The import preview is unknown or has expired.");
-    }
-    return this.repository.replace(pending.document);
+  confirmImport(token: string): Promise<Result<KopperDocument, KopperError>> {
+    return this.operationCoordinator.run(async () => {
+      const pending = this.pendingImports.get(token);
+      this.pendingImports.delete(token);
+      if (pending !== undefined) clearTimeout(pending.expirationTimer);
+      if (pending === undefined || pending.expiresAt <= this.now()) {
+        return failure(
+          "validation_failed",
+          "The import preview is unknown or has expired.",
+        );
+      }
+
+      const replaced = await this.repository.replace(pending.document);
+      if (replaced.ok) this.externalReplacementSucceeded();
+      return replaced;
+    });
   }
 
   async exportRecoveryBytes(): Promise<FileOperationResult> {
@@ -181,7 +210,11 @@ export class DocumentFiles {
   }
 
   createNewStore(): Promise<Result<KopperDocument, KopperError>> {
-    return this.repository.createNewStore();
+    return this.operationCoordinator.run(async () => {
+      const replaced = await this.repository.createNewStore();
+      if (replaced.ok) this.externalReplacementSucceeded();
+      return replaced;
+    });
   }
 
   private removeExpiredImports(): void {

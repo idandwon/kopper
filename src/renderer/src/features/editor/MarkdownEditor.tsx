@@ -70,7 +70,14 @@ export function MarkdownEditor({
   if (!editing) {
     return (
       <div className="kopper-markdown min-w-0" data-note-markdown={noteId}>
-        <ReactMarkdown remarkPlugins={[remarkGfm]}>{body}</ReactMarkdown>
+        <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
+          components={{
+            a: ({ children }) => <span>{children}</span>,
+          }}
+        >
+          {body}
+        </ReactMarkdown>
       </div>
     );
   }

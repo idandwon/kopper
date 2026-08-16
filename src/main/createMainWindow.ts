@@ -1,5 +1,6 @@
 import { BrowserWindow } from "electron";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 const secureWebPreferences = {
   preload: join(__dirname, "../preload/index.js"),
@@ -7,6 +8,32 @@ const secureWebPreferences = {
   nodeIntegration: false,
   sandbox: true,
 } as const;
+
+function rendererEntryUrl(): URL {
+  if (process.env.ELECTRON_RENDERER_URL) {
+    return new URL(process.env.ELECTRON_RENDERER_URL);
+  }
+  return pathToFileURL(join(__dirname, "../renderer/index.html"));
+}
+
+function isTrustedRendererNavigation(navigationUrl: string): boolean {
+  try {
+    const expected = rendererEntryUrl();
+    const requested = new URL(navigationUrl);
+    expected.hash = "";
+    requested.hash = "";
+    return requested.href === expected.href;
+  } catch {
+    return false;
+  }
+}
+
+function installNavigationSecurity(window: BrowserWindow): void {
+  window.webContents.on("will-navigate", (event, navigationUrl) => {
+    if (!isTrustedRendererNavigation(navigationUrl)) event.preventDefault();
+  });
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+}
 
 function loadRenderer(window: BrowserWindow, hash?: string): void {
   if (process.env.ELECTRON_RENDERER_URL) {
@@ -32,6 +59,7 @@ export function createMainWindow(): BrowserWindow {
     webPreferences: secureWebPreferences,
   });
 
+  installNavigationSecurity(window);
   loadRenderer(window);
   window.once("ready-to-show", () => window.show());
   return window;
@@ -57,6 +85,7 @@ export function openExpandedEditorWindow(noteId: string): BrowserWindow {
     webPreferences: secureWebPreferences,
   });
   expandedEditorWindows.set(noteId, window);
+  installNavigationSecurity(window);
   loadRenderer(window, `editor=${encodeURIComponent(noteId)}`);
   window.once("ready-to-show", () => window.show());
   window.once("closed", () => {

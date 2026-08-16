@@ -5,6 +5,10 @@ import {
 } from "../../shared/domain/commands";
 import type { KopperDocument } from "../../shared/domain/document";
 import type { KopperError, Result } from "../../shared/domain/errors";
+import {
+  MainOperationCoordinator,
+  type MainOperationRunner,
+} from "./mainOperationCoordinator";
 
 const UNDO_LIMIT = 20;
 const undoClearingTypes = new Set<DocumentCommand["type"]>([
@@ -37,30 +41,25 @@ const nothingToUndo = (): Result<KopperDocument, KopperError> => ({
 
 export class CommandService {
   private readonly undoStack: KopperDocument[] = [];
-  private operationTail: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly repository: CommandRepository,
     private readonly options: CommandServiceOptions,
+    private readonly operationCoordinator: MainOperationRunner = new MainOperationCoordinator(),
   ) {}
 
   execute(
     command: DocumentCommand,
   ): Promise<Result<KopperDocument, KopperError>> {
-    return this.enqueue(() => this.executeNow(command));
+    return this.operationCoordinator.run(() => this.executeNow(command));
   }
 
   undo(): Promise<Result<KopperDocument, KopperError>> {
-    return this.enqueue(() => this.undoNow());
+    return this.operationCoordinator.run(() => this.undoNow());
   }
 
-  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
-    const result = this.operationTail.then(operation);
-    this.operationTail = result.then(
-      () => undefined,
-      () => undefined,
-    );
-    return result;
+  clearUndoHistory(): void {
+    this.undoStack.length = 0;
   }
 
   private async executeNow(

@@ -10,6 +10,7 @@ import {
 } from "./createMainWindow";
 import { DocumentFiles } from "./files/documentFiles";
 import { CommandService } from "./domain/commandService";
+import { MainOperationCoordinator } from "./domain/mainOperationCoordinator";
 import { registerIpcHandlers } from "./ipc/registerIpcHandlers";
 import { NoteRepository } from "./persistence/noteRepository";
 
@@ -30,12 +31,20 @@ void app.whenReady().then(async () => {
       }
     }
   };
-  const commandService = new CommandService(repository, {
-    now: () => new Date().toISOString(),
-    createId: randomUUID,
-    publish,
+  const operationCoordinator = new MainOperationCoordinator();
+  const commandService = new CommandService(
+    repository,
+    {
+      now: () => new Date().toISOString(),
+      createId: randomUUID,
+      publish,
+    },
+    operationCoordinator,
+  );
+  const documentFiles = new DocumentFiles(repository, dialog, {
+    operationCoordinator,
+    externalReplacementSucceeded: () => commandService.clearUndoHistory(),
   });
-  const documentFiles = new DocumentFiles(repository, dialog);
   cleanupIpcHandlers = registerIpcHandlers(
     repository,
     commandService,

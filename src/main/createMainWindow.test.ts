@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const electron = vi.hoisted(() => {
@@ -9,6 +11,24 @@ const electron = vi.hoisted(() => {
     });
     readonly loadURL = vi.fn().mockResolvedValue(undefined);
     readonly loadFile = vi.fn().mockResolvedValue(undefined);
+    readonly webContents = {
+      on: vi.fn(
+        (
+          event: string,
+          listener: (event: { preventDefault(): void }, url: string) => void,
+        ) => {
+          this.webContentsListeners.set(event, listener);
+        },
+      ),
+      setWindowOpenHandler: vi.fn((handler: () => { action: string }) => {
+        this.windowOpenHandler = handler;
+      }),
+    };
+    readonly webContentsListeners = new Map<
+      string,
+      (event: { preventDefault(): void }, url: string) => void
+    >();
+    windowOpenHandler: (() => { action: string }) | undefined;
     readonly show = vi.fn();
     readonly focus = vi.fn();
     readonly isDestroyed = vi.fn().mockReturnValue(false);
@@ -23,11 +43,50 @@ const electron = vi.hoisted(() => {
 
 vi.mock("electron", () => ({ BrowserWindow: electron.FakeWindow }));
 
-import { openExpandedEditorWindow } from "./createMainWindow";
+import {
+  createMainWindow,
+  openExpandedEditorWindow,
+} from "./createMainWindow";
 
 beforeEach(() => {
   electron.FakeWindow.instances.length = 0;
   delete process.env.ELECTRON_RENDERER_URL;
+});
+
+describe("window navigation security", () => {
+  it.each([
+    ["main", () => createMainWindow()],
+    ["editor", () => openExpandedEditorWindow("security-note")],
+  ])(
+    "guards the %s window against untrusted navigation and all popups",
+    (_name, createWindow) => {
+      const window = createWindow() as unknown as InstanceType<
+        typeof electron.FakeWindow
+      >;
+      const willNavigate = window.webContentsListeners.get("will-navigate");
+      expect(willNavigate).toBeDefined();
+
+      const preventExternal = vi.fn();
+      willNavigate?.(
+        { preventDefault: preventExternal },
+        "https://attacker.example/steal",
+      );
+      expect(preventExternal).toHaveBeenCalledOnce();
+
+      const [rendererPath] = window.loadFile.mock.calls[0] as [string];
+      const preventHashRoute = vi.fn();
+      const trustedHashRoute = new URL(pathToFileURL(rendererPath));
+      trustedHashRoute.hash = "editor=note-1";
+      willNavigate?.(
+        { preventDefault: preventHashRoute },
+        trustedHashRoute.toString(),
+      );
+      expect(preventHashRoute).not.toHaveBeenCalled();
+
+      expect(window.windowOpenHandler?.()).toEqual({ action: "deny" });
+      window.listeners.get("closed")?.();
+    },
+  );
 });
 
 describe("expanded editor windows", () => {

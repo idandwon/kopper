@@ -4,7 +4,12 @@ import { basename, join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createEmptyDocument } from "../../shared/domain/document";
+import {
+  createEmptyDocument,
+  type KopperDocument,
+} from "../../shared/domain/document";
+import { CommandService } from "../domain/commandService";
+import { MainOperationCoordinator } from "../domain/mainOperationCoordinator";
 import { NoteRepository } from "../persistence/noteRepository";
 import { DocumentFiles, type DocumentDialog } from "./documentFiles.js";
 
@@ -17,6 +22,26 @@ function dialog(overrides: Partial<DocumentDialog> = {}): DocumentDialog {
     showSaveDialog: vi.fn().mockResolvedValue({ canceled: true }),
     ...overrides,
   };
+}
+
+function noteDocument(body: string, sectionTitle: string): KopperDocument {
+  const document = createEmptyDocument(new Date(timestamp));
+  document.sections[0].id = "inbox";
+  document.sections[0].title = sectionTitle;
+  document.activeSectionId = "inbox";
+  document.notes = [
+    {
+      id: "note-1",
+      sectionId: "inbox",
+      body,
+      order: 0,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      completedAt: null,
+      previousPlacement: null,
+    },
+  ];
+  return document;
 }
 
 async function fixture() {
@@ -108,6 +133,133 @@ describe("DocumentFiles", () => {
     vi.advanceTimersByTime(5 * 60_000 + 1);
     await expect(expiringFiles.confirmImport(preview.value.token)).resolves.toMatchObject({ ok: false, error: { code: "validation_failed" } });
     expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("coordinates import before a later edit so the edit snapshots and preserves imported state", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "kopper-coordination-"));
+    directories.push(directory);
+    const storePath = join(directory, "kopper.json");
+    const before = noteDocument("Before", "Before section");
+    const imported = noteDocument("Imported", "Imported section");
+    await writeFile(storePath, `${JSON.stringify(before, null, 2)}\n`, "utf8");
+    const importPath = join(directory, "import.json");
+    await writeFile(importPath, JSON.stringify(imported), "utf8");
+
+    let releaseImport: (() => void) | undefined;
+    const importGate = new Promise<void>((resolve) => {
+      releaseImport = resolve;
+    });
+    let signalImportStarted: (() => void) | undefined;
+    const importStarted = new Promise<void>((resolve) => {
+      signalImportStarted = resolve;
+    });
+    const writer = vi.fn(async (path: string, contents: string) => {
+      signalImportStarted?.();
+      await importGate;
+      await writeFile(path, contents, "utf8");
+    });
+    const repository = new NoteRepository(storePath, writer);
+    await repository.load();
+    const operations = new MainOperationCoordinator();
+    const service = new CommandService(repository, {
+      now: () => timestamp,
+      createId: () => "generated-id",
+      publish: vi.fn(),
+    }, operations);
+    const files = new DocumentFiles(repository, dialog({
+      showOpenDialog: vi.fn().mockResolvedValue({ canceled: false, filePaths: [importPath] }),
+    }), {
+      operationCoordinator: operations,
+      externalReplacementSucceeded: () => service.clearUndoHistory(),
+    });
+    const preview = await files.chooseImport();
+    if (!preview.ok || preview.value === null) throw new Error("Expected import preview");
+
+    const importing = files.confirmImport(preview.value.token);
+    await importStarted;
+    const editing = service.execute({ type: "note.edit", noteId: "note-1", body: "Edited after import" });
+    await Promise.resolve();
+    expect(writer).toHaveBeenCalledTimes(1);
+
+    releaseImport?.();
+    await expect(importing).resolves.toEqual({ ok: true, value: imported });
+    await expect(editing).resolves.toMatchObject({ ok: true });
+    expect(repository.snapshot()).toMatchObject({
+      sections: [expect.objectContaining({ title: "Imported section" })],
+      notes: [expect.objectContaining({ body: "Edited after import" })],
+    });
+  });
+
+  it("clears older undo history after successful import and create-new-store replacements", async () => {
+    const { directory, repository } = await fixture();
+    await repository.replace(noteDocument("Before", "Before section"));
+    const imported = noteDocument("Imported", "Imported section");
+    const importPath = join(directory, "import.json");
+    await writeFile(importPath, JSON.stringify(imported), "utf8");
+    const operations = new MainOperationCoordinator();
+    const service = new CommandService(repository, {
+      now: () => timestamp,
+      createId: () => "generated-id",
+      publish: vi.fn(),
+    }, operations);
+    const files = new DocumentFiles(repository, dialog({
+      showOpenDialog: vi.fn().mockResolvedValue({ canceled: false, filePaths: [importPath] }),
+    }), {
+      operationCoordinator: operations,
+      externalReplacementSucceeded: () => service.clearUndoHistory(),
+    });
+
+    await service.execute({ type: "note.edit", noteId: "note-1", body: "Edited before import" });
+    const preview = await files.chooseImport();
+    if (!preview.ok || preview.value === null) throw new Error("Expected import preview");
+    await expect(files.confirmImport(preview.value.token)).resolves.toEqual({ ok: true, value: imported });
+    await expect(service.undo()).resolves.toMatchObject({ ok: false, error: { message: "There is no document action to undo." } });
+
+    await service.execute({ type: "note.edit", noteId: "note-1", body: "Edited before create" });
+    await expect(files.createNewStore()).resolves.toMatchObject({ ok: true });
+    await expect(service.undo()).resolves.toMatchObject({ ok: false, error: { message: "There is no document action to undo." } });
+  });
+
+  it("retains undo history when an external replacement fails", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "kopper-replacement-failure-"));
+    directories.push(directory);
+    const storePath = join(directory, "kopper.json");
+    const before = noteDocument("Before", "Before section");
+    const imported = noteDocument("Imported", "Imported section");
+    await writeFile(storePath, `${JSON.stringify(before, null, 2)}\n`, "utf8");
+    const importPath = join(directory, "import.json");
+    await writeFile(importPath, JSON.stringify(imported), "utf8");
+    const writer = vi
+      .fn<(path: string, contents: string) => Promise<void>>()
+      .mockImplementationOnce(async (path, contents) => {
+        await writeFile(path, contents, "utf8");
+      })
+      .mockRejectedValueOnce(new Error("disk full"))
+      .mockImplementationOnce(async (path, contents) => {
+        await writeFile(path, contents, "utf8");
+      });
+    const repository = new NoteRepository(storePath, writer);
+    await repository.load();
+    const operations = new MainOperationCoordinator();
+    const service = new CommandService(repository, {
+      now: () => timestamp,
+      createId: () => "generated-id",
+      publish: vi.fn(),
+    }, operations);
+    const externalReplacementSucceeded = vi.fn(() => service.clearUndoHistory());
+    const files = new DocumentFiles(repository, dialog({
+      showOpenDialog: vi.fn().mockResolvedValue({ canceled: false, filePaths: [importPath] }),
+    }), { operationCoordinator: operations, externalReplacementSucceeded });
+
+    await service.execute({ type: "note.edit", noteId: "note-1", body: "Edited" });
+    const preview = await files.chooseImport();
+    if (!preview.ok || preview.value === null) throw new Error("Expected import preview");
+    await expect(files.confirmImport(preview.value.token)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "write_failed" },
+    });
+    expect(externalReplacementSucceeded).not.toHaveBeenCalled();
+    await expect(service.undo()).resolves.toEqual({ ok: true, value: before });
   });
 
   it("exports malformed current-store bytes unchanged and only creates a store explicitly", async () => {
