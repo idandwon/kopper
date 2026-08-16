@@ -44,11 +44,7 @@ const formatPatterns: Record<SupportedFormat, RegExp[]> = {
   ],
   html: [/^text\/html$/i, /^public\.html$/i, /HTML Format/i],
   rtf: [/^text\/rtf$/i, /^public\.rtf$/i, /Rich Text Format/i],
-  bookmark: [
-    /^public\.url$/,
-    /^public\.url-name$/,
-    /^NSURLPboardType$/,
-  ],
+  bookmark: [/^public\.url$/, /^public\.url-name$/, /^NSURLPboardType$/],
 };
 
 function hasFormat(formats: string[], format: SupportedFormat): boolean {
@@ -62,7 +58,9 @@ function hasFormat(formats: string[], format: SupportedFormat): boolean {
  * Source-specific/custom pasteboard formats are intentionally unsupported and
  * may be replaced when Command+C updates the system pasteboard.
  */
-export function snapshotClipboard(clipboard: ClipboardAdapter): ClipboardSnapshot {
+export function snapshotClipboard(
+  clipboard: ClipboardAdapter,
+): ClipboardSnapshot {
   const formats = clipboard.availableFormats();
   const text = clipboard.readText();
   const html = clipboard.readHTML();

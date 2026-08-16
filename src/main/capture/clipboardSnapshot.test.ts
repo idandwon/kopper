@@ -103,10 +103,7 @@ describe("clipboard snapshots", () => {
 
   it("does not snapshot a recognized URL format without a bookmark URL", () => {
     const clipboard = makeClipboard({
-      availableFormats: vi.fn(() => [
-        "public.utf8-plain-text",
-        "public.url",
-      ]),
+      availableFormats: vi.fn(() => ["public.utf8-plain-text", "public.url"]),
       readText: vi.fn(() => "original text"),
       readBookmark: vi.fn(() => ({ title: "Empty URL", url: "" })),
     });
