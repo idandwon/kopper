@@ -178,7 +178,115 @@ describe("NoteComposer", () => {
     });
   });
 
-  it("does not flush again when the debounced draft was acknowledged", async () => {
+  it("clears a persisted draft when emptied immediately before unmount", () => {
+    mockedUseKopperDocument.mockReturnValue({
+      ...mockedUseKopperDocument(),
+      document: {
+        ...document,
+        draft: { body: "Saved", sectionId: "inbox", updatedAt: timestamp },
+      },
+    });
+    const { unmount } = render(<NoteComposer />);
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "" },
+    });
+
+    unmount();
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenCalledWith({ type: "draft.clear" });
+  });
+
+  it("waits for an in-flight save before flushing the latest value once", async () => {
+    let resolveFirst: ((result: boolean) => void) | undefined;
+    execute.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    const { unmount } = render(<NoteComposer />);
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "Save A" },
+    });
+    await act(() => vi.advanceTimersByTimeAsync(250));
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "Save B" },
+    });
+
+    unmount();
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    await act(async () => resolveFirst?.(true));
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(execute).toHaveBeenLastCalledWith({
+      type: "draft.set",
+      sectionId: "inbox",
+      body: "Save B",
+    });
+  });
+
+  it("keeps an in-flight save as the cleanup barrier after another debounce", async () => {
+    let resolveFirst: ((result: boolean) => void) | undefined;
+    execute.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    const { unmount } = render(<NoteComposer />);
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "Save A" },
+    });
+    await act(() => vi.advanceTimersByTimeAsync(250));
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "Save B" },
+    });
+    await act(() => vi.advanceTimersByTimeAsync(250));
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    unmount();
+    await act(async () => resolveFirst?.(true));
+
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(execute).toHaveBeenLastCalledWith({
+      type: "draft.set",
+      sectionId: "inbox",
+      body: "Save B",
+    });
+  });
+
+  it("clears after an in-flight save settles when the latest value is empty", async () => {
+    let resolveFirst: ((result: boolean) => void) | undefined;
+    execute.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    const { unmount } = render(<NoteComposer />);
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "Save A" },
+    });
+    await act(() => vi.advanceTimersByTimeAsync(250));
+    fireEvent.change(screen.getByRole("textbox"), { target: { value: "" } });
+
+    unmount();
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    await act(async () => resolveFirst?.(true));
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(execute).toHaveBeenLastCalledWith({ type: "draft.clear" });
+  });
+
+  it("does not flush again when the debounced draft is already latest", async () => {
+    let resolveSave: ((result: boolean) => void) | undefined;
+    execute.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveSave = resolve;
+        }),
+    );
     const { unmount } = render(<NoteComposer />);
     fireEvent.change(screen.getByRole("textbox"), {
       target: { value: "Acknowledged" },
@@ -186,7 +294,70 @@ describe("NoteComposer", () => {
     await act(() => vi.advanceTimersByTimeAsync(250));
 
     unmount();
+    await act(async () => resolveSave?.(true));
 
     expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("follows active section changes when there is no persisted or local draft", () => {
+    const secondSection = {
+      ...document.sections[0],
+      id: "later",
+      title: "Later",
+      order: 1,
+    };
+    const context = {
+      ...mockedUseKopperDocument(),
+      document: { ...document, sections: [...document.sections, secondSection] },
+    };
+    mockedUseKopperDocument.mockReturnValue(context);
+    const { rerender } = render(<NoteComposer />);
+
+    mockedUseKopperDocument.mockReturnValue({
+      ...context,
+      document: { ...context.document, activeSectionId: "later" },
+    });
+    rerender(<NoteComposer />);
+
+    expect(screen.getByText("Later")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["persisted", "Saved"],
+    ["local", "Local"],
+  ])("keeps a %s draft pinned when the active section changes", (kind, value) => {
+    const secondSection = {
+      ...document.sections[0],
+      id: "later",
+      title: "Later",
+      order: 1,
+    };
+    const context = {
+      ...mockedUseKopperDocument(),
+      document: {
+        ...document,
+        sections: [...document.sections, secondSection],
+        draft:
+          kind === "persisted"
+            ? { body: value, sectionId: "inbox", updatedAt: timestamp }
+            : null,
+      },
+    };
+    mockedUseKopperDocument.mockReturnValue(context);
+    const { rerender } = render(<NoteComposer />);
+    if (kind === "local") {
+      fireEvent.change(screen.getByRole("textbox"), {
+        target: { value },
+      });
+    }
+
+    mockedUseKopperDocument.mockReturnValue({
+      ...context,
+      document: { ...context.document, activeSectionId: "later" },
+    });
+    rerender(<NoteComposer />);
+
+    expect(screen.getByText("Inbox")).toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toHaveValue(value);
   });
 });

@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 
 import { Button } from "../../components/ui/button";
 import { useKopperDocument } from "../../app/DocumentProvider";
@@ -6,7 +12,7 @@ import { useKopperDocument } from "../../app/DocumentProvider";
 const DRAFT_DEBOUNCE_MS = 250;
 
 function draftKey(sectionId: string, body: string): string {
-  return JSON.stringify([sectionId, body]);
+  return body.length === 0 ? "cleared" : JSON.stringify([sectionId, body]);
 }
 
 export function NoteComposer() {
@@ -29,10 +35,58 @@ export function NoteComposer() {
 
   latestRef.current = { body, sectionId };
 
+  const saveDraft = useCallback(
+    (draft: { body: string; sectionId: string }): Promise<boolean> => {
+      const key = draftKey(draft.sectionId, draft.body);
+      let request: Promise<boolean>;
+      try {
+        request =
+          draft.body.length === 0
+            ? execute({ type: "draft.clear" })
+            : execute({
+                type: "draft.set",
+                sectionId: draft.sectionId,
+                body: draft.body,
+              });
+      } catch {
+        return Promise.resolve(false);
+      }
+
+      const promise = request.then(
+        (acknowledged) => {
+          if (acknowledged) acknowledgedRef.current = key;
+          return acknowledged;
+        },
+        () => false,
+      );
+      savePromiseRef.current = promise;
+      void promise.then(() => {
+        if (savePromiseRef.current === promise) savePromiseRef.current = null;
+      });
+      return promise;
+    },
+    [execute],
+  );
+
   useEffect(() => {
-    if (document.sections.some((section) => section.id === sectionId)) return;
+    const sectionExists = document.sections.some(
+      (section) => section.id === sectionId,
+    );
+    const hasValidPersistedDraft =
+      document.draft !== null &&
+      document.sections.some(
+        (section) => section.id === document.draft?.sectionId,
+      );
+    if (sectionExists && (hasValidPersistedDraft || body.length > 0)) return;
+    if (sectionId === document.activeSectionId) return;
     setSectionId(document.activeSectionId);
-  }, [document.activeSectionId, document.sections, sectionId]);
+  }, [
+    body,
+    document.activeSectionId,
+    document.draft,
+    document.sections,
+    sectionId,
+  ]);
 
   useEffect(() => {
     const currentKey = draftKey(sectionId, body);
@@ -40,12 +94,25 @@ export function NoteComposer() {
 
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
-      const promise = execute({ type: "draft.set", sectionId, body });
-      savePromiseRef.current = promise;
-      void promise.then((acknowledged) => {
-        if (savePromiseRef.current === promise) savePromiseRef.current = null;
-        if (acknowledged && mountedRef.current) {
-          acknowledgedRef.current = currentKey;
+      const pendingSave = savePromiseRef.current;
+      if (pendingSave === null) {
+        void saveDraft({ body, sectionId });
+        return;
+      }
+
+      void pendingSave.then(() => {
+        if (
+          !mountedRef.current ||
+          submittingRef.current ||
+          savePromiseRef.current !== null
+        ) {
+          return;
+        }
+        const latest = latestRef.current;
+        if (
+          draftKey(latest.sectionId, latest.body) !== acknowledgedRef.current
+        ) {
+          void saveDraft(latest);
         }
       });
     }, DRAFT_DEBOUNCE_MS);
@@ -56,27 +123,28 @@ export function NoteComposer() {
         timerRef.current = null;
       }
     };
-  }, [body, execute, sectionId]);
+  }, [body, saveDraft, sectionId]);
 
   useEffect(
     () => () => {
       mountedRef.current = false;
       if (timerRef.current !== null) clearTimeout(timerRef.current);
-      const latest = latestRef.current;
-      const currentKey = draftKey(latest.sectionId, latest.body);
-      if (
-        !submittingRef.current &&
-        latest.body.trim().length > 0 &&
-        currentKey !== acknowledgedRef.current
-      ) {
-        void execute({
-          type: "draft.set",
-          sectionId: latest.sectionId,
-          body: latest.body,
-        });
-      }
+      if (submittingRef.current) return;
+
+      const flushLatest = async () => {
+        const pendingSave = savePromiseRef.current;
+        if (pendingSave !== null) await pendingSave;
+
+        const latest = latestRef.current;
+        if (
+          draftKey(latest.sectionId, latest.body) !== acknowledgedRef.current
+        ) {
+          await saveDraft(latest);
+        }
+      };
+      void flushLatest();
     },
-    [execute],
+    [saveDraft],
   );
 
   const submit = async () => {
