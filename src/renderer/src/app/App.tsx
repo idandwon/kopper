@@ -1,22 +1,19 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
-import type { KopperDocument, Note, Section } from "../../../shared/domain/document";
-import { Input } from "../components/ui/input";
+import type { KopperDocument } from "../../../shared/domain/document";
+import type { KopperError } from "../../../shared/domain/errors";
+import { Button } from "../components/ui/button";
 import { ScrollArea } from "../components/ui/scroll-area";
+import { AddSectionDialog } from "../features/sections/SectionManager";
+import { SectionGroup } from "../features/sections/SectionGroup";
+import { NoteComposer } from "../features/notes/NoteComposer";
+import { SearchField } from "../features/search/SearchField";
+import {
+  projectNotes,
+  type NoteProjectionView,
+} from "../features/search/projectNotes";
 import { cn } from "../lib/utils";
 import { useKopperDocument } from "./DocumentProvider";
-
-function notesInSection(document: KopperDocument, section: Section): Note[] {
-  return document.notes
-    .filter(
-      (note) => note.completedAt === null && note.sectionId === section.id,
-    )
-    .sort((left, right) => {
-      const leftOrder = left.previousPlacement?.order ?? left.order;
-      const rightOrder = right.previousPlacement?.order ?? right.order;
-      return leftOrder - rightOrder;
-    });
-}
 
 function LifecycleRail() {
   return (
@@ -54,113 +51,129 @@ function LoadingState() {
   );
 }
 
-function ErrorState({ message }: { message: string }) {
+function GlobalError({
+  error,
+  retry,
+  disabled,
+}: {
+  error: KopperError;
+  retry(): Promise<boolean>;
+  disabled: boolean;
+}) {
   return (
-    <Panel>
-      <div className="flex flex-1 items-center p-6">
-        <p
-          role="alert"
-          className="w-full rounded-lg border border-border bg-card p-4 text-sm text-card-foreground"
+    <div
+      role="alert"
+      className="mx-4 mb-2 ml-5 flex items-center gap-3 rounded-lg border border-destructive bg-card p-3 text-sm text-card-foreground"
+    >
+      <p className="m-0 min-w-0 flex-1">{error.message}</p>
+      {error.retryable && (
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
+          disabled={disabled}
+          onClick={() => void retry()}
         >
-          {message}
-        </p>
-      </div>
-    </Panel>
+          Retry
+        </Button>
+      )}
+    </div>
   );
 }
 
-function NoteCard({ note }: { note: Note }) {
-  const completed = note.completedAt !== null;
+function ViewButton({
+  view,
+  current,
+  onSelect,
+}: {
+  view: NoteProjectionView;
+  current: NoteProjectionView;
+  onSelect(view: NoteProjectionView): void;
+}) {
+  const active = view === current;
+  const label = view === "active" ? "Active notes" : "Completed notes";
 
   return (
-    <article className="relative rounded-lg border border-border bg-card py-3 pr-3 pl-10 text-[13px] leading-relaxed text-card-foreground">
-      <span
-        aria-hidden="true"
-        className={cn(
-          "absolute top-4 left-4 size-3.5 rounded-full border-2",
-          completed
-            ? "border-[var(--completed)] bg-[var(--completed)]"
-            : "border-[var(--capture)]",
-        )}
-      />
-      <span className="sr-only">{completed ? "Completed" : "Captured"}</span>
-      <p className="m-0 whitespace-pre-wrap">{note.body}</p>
-    </article>
+    <Button
+      type="button"
+      size="xs"
+      variant={active ? "secondary" : "ghost"}
+      aria-label={label}
+      aria-pressed={active}
+      onClick={() => onSelect(view)}
+    >
+      {view === "active" ? "Active" : "Completed"}
+    </Button>
   );
 }
 
-function DocumentShell({ document }: { document: KopperDocument }) {
-  const sections = [...document.sections].sort((left, right) => left.order - right.order);
+function DocumentPanel({ document }: { document: KopperDocument }) {
+  const { error, pendingAction, retryLastAction, undo } = useKopperDocument();
+  const [query, setQuery] = useState("");
+  const [view, setView] = useState<NoteProjectionView>("active");
+  const projections = projectNotes(document, query, view);
   const dark = document.appearance.mode === "dark";
+  const busy = pendingAction !== null;
 
   return (
     <div className={cn("contents", dark && "dark")}>
       <Panel>
-        <header className="flex items-center px-4 pt-4 pb-3 pl-5">
-          <div className="relative w-full">
-            <span
-              aria-hidden="true"
-              className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted-foreground"
-            >
-              ⌕
-            </span>
-            <Input
-              type="search"
-              aria-label="Search notes"
-              readOnly
-              placeholder="Search notes"
-              className="h-10 rounded-lg bg-card pr-14 pl-9 text-sm"
-            />
-            <kbd className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 rounded-md border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-              ⌘ K
-            </kbd>
+        <header className="grid gap-2 px-4 pt-4 pb-3 pl-5">
+          <SearchField query={query} onQueryChange={setQuery} />
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex rounded-lg border border-border bg-card p-0.5" aria-label="Note lifecycle view">
+              <ViewButton view="active" current={view} onSelect={setView} />
+              <ViewButton view="completed" current={view} onSelect={setView} />
+            </div>
+            <div className="flex items-center gap-1">
+              <AddSectionDialog />
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                disabled={busy}
+                onClick={() => void undo()}
+              >
+                Undo
+              </Button>
+            </div>
           </div>
         </header>
 
-        <ScrollArea className="min-h-0 flex-1" aria-label="Notes by section">
-          <div className="space-y-5 px-4 pt-1 pb-24 pl-5">
-            {sections.map((section) => {
-              const notes = notesInSection(document, section);
+        {error !== null && (
+          <GlobalError
+            error={error}
+            retry={retryLastAction}
+            disabled={busy}
+          />
+        )}
 
-              return (
-                <section key={section.id} aria-labelledby={`section-${section.id}`}>
-                  <div className="mb-2 flex items-center gap-2 font-mono text-[10px] tracking-[0.13em] text-muted-foreground uppercase">
-                    <h2 id={`section-${section.id}`} className="m-0 text-inherit">
-                      {section.title}
-                    </h2>
-                    <span className="h-px flex-1 bg-border" aria-hidden="true" />
-                    <span aria-label={`${notes.length} notes`} className="tracking-normal">
-                      {String(notes.length).padStart(2, "0")}
-                    </span>
-                  </div>
-                  <div className="space-y-2">
-                    {notes.map((note) => (
-                      <NoteCard key={note.id} note={note} />
-                    ))}
-                  </div>
-                </section>
-              );
-            })}
+        <ScrollArea className="min-h-0 flex-1" aria-label="Notes by section">
+          <div className="space-y-5 px-4 pt-1 pb-36 pl-5">
+            {projections.map((projection) => (
+              <SectionGroup
+                key={projection.section.id}
+                projection={projection}
+                view={view}
+              />
+            ))}
+            {projections.length === 0 && (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                No matching notes
+              </p>
+            )}
           </div>
         </ScrollArea>
 
-        <div className="absolute right-4 bottom-4 left-5 rounded-xl border border-border bg-card p-2">
-          <Input
-            aria-label="Add a note or prompt"
-            placeholder="Add a note or prompt"
-            disabled
-            className="h-10 border-0 bg-card px-3 text-sm shadow-none disabled:opacity-70"
-          />
-        </div>
+        <NoteComposer />
       </Panel>
     </div>
   );
 }
 
 export function App() {
-  const { document, error, pendingAction } = useKopperDocument();
+  const { document, pendingAction } = useKopperDocument();
 
   if (pendingAction === "load") return <LoadingState />;
-  if (error !== null) return <ErrorState message={error.message} />;
-  return <DocumentShell document={document} />;
+  return <DocumentPanel document={document} />;
 }

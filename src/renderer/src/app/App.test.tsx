@@ -1,48 +1,25 @@
 import "@testing-library/jest-dom/vitest";
 
-import { render, screen, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KopperDocument } from "../../../shared/domain/document";
 import { App } from "./App";
-import {
-  useKopperDocument,
-  type KopperDocumentContextValue,
-} from "./DocumentProvider";
+import { useKopperDocument, type KopperDocumentContextValue } from "./DocumentProvider";
 
-vi.mock("./DocumentProvider", () => ({
-  useKopperDocument: vi.fn(),
-}));
+vi.mock("./DocumentProvider", () => ({ useKopperDocument: vi.fn() }));
 
 const timestamp = "2026-08-16T12:00:00.000Z";
 const document: KopperDocument = {
   schemaVersion: 1,
-  sections: [
-    {
-      id: "inbox",
-      title: "Inbox",
-      order: 0,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    },
-  ],
+  sections: [{ id: "inbox", title: "Inbox", order: 0, createdAt: timestamp, updatedAt: timestamp }],
   notes: [
-    {
-      id: "note-1",
-      sectionId: "inbox",
-      body: "Captured note",
-      order: 0,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      completedAt: null,
-      previousPlacement: null,
-    },
+    { id: "note-1", sectionId: "inbox", body: "Captured note", order: 0, createdAt: timestamp, updatedAt: timestamp, completedAt: null, previousPlacement: null },
+    { id: "note-2", sectionId: "inbox", body: "Completed note", order: 1, createdAt: timestamp, updatedAt: timestamp, completedAt: timestamp, previousPlacement: { sectionId: "inbox", order: 1 } },
   ],
   activeSectionId: "inbox",
-  shortcuts: {
-    capture: { kind: "double-modifier", modifier: "shift" },
-    togglePanel: "CommandOrControl+Shift+Space",
-  },
+  shortcuts: { capture: { kind: "double-modifier", modifier: "shift" }, togglePanel: "CommandOrControl+Shift+Space" },
   window: { pinned: false, bounds: null },
   appearance: { mode: "system", activeThemeId: "oxide-ledger" },
   customThemes: [],
@@ -50,95 +27,81 @@ const document: KopperDocument = {
 };
 
 const mockedUseKopperDocument = vi.mocked(useKopperDocument);
+const execute = vi.fn<KopperDocumentContextValue["execute"]>();
+const undo = vi.fn<KopperDocumentContextValue["undo"]>();
+const retryLastAction = vi.fn<KopperDocumentContextValue["retryLastAction"]>();
 
-function contextValue(
-  overrides: Partial<KopperDocumentContextValue> = {},
-): KopperDocumentContextValue {
-  return {
-    document,
-    pendingAction: null,
-    error: null,
-    execute: vi.fn(),
-    undo: vi.fn(),
-    retryLastAction: vi.fn(),
-    clearError: vi.fn(),
-    ...overrides,
-  };
+function contextValue(overrides: Partial<KopperDocumentContextValue> = {}): KopperDocumentContextValue {
+  return { document, pendingAction: null, error: null, execute, undo, retryLastAction, clearError: vi.fn(), ...overrides };
 }
 
 beforeEach(() => {
+  execute.mockReset().mockResolvedValue(true);
+  undo.mockReset().mockResolvedValue(true);
+  retryLastAction.mockReset().mockResolvedValue(true);
   mockedUseKopperDocument.mockReturnValue(contextValue());
 });
+afterEach(cleanup);
 
 describe("Oxide Ledger App", () => {
-  it("renders the read-only Oxide Ledger shell from the document", () => {
+  it("renders the interactive active panel and lifecycle rail", () => {
     render(<App />);
 
-    expect(
-      screen.getByRole("searchbox", { name: "Search notes" }),
-    ).toBeVisible();
-    expect(screen.getByText("⌘ K")).toBeVisible();
+    expect(screen.getByRole("searchbox", { name: "Search notes" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Active notes" })).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("heading", { name: "Inbox" })).toBeVisible();
     expect(screen.getByText("Captured note")).toBeVisible();
-    expect(
-      screen.getByRole("textbox", { name: "Add a note or prompt" }),
-    ).toBeVisible();
-    expect(
-      screen.getByRole("textbox", { name: "Add a note or prompt" }),
-    ).toBeDisabled();
+    expect(screen.queryByText("Completed note")).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Add a note or prompt" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Undo" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Add section" })).toBeVisible();
     expect(screen.getByText("Lifecycle: captured to completed")).toBeInTheDocument();
   });
 
-  it("excludes completed notes from active sections and counts", () => {
-    const withCompleted = structuredClone(document);
-    withCompleted.notes.push({
-      id: "note-2",
-      sectionId: "inbox",
-      body: "Completed note",
-      order: 1,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      completedAt: timestamp,
-      previousPlacement: { sectionId: "inbox", order: 1 },
-    });
-    mockedUseKopperDocument.mockReturnValue(
-      contextValue({ document: withCompleted }),
-    );
+  it("switches to completed projections and filters by search", async () => {
+    const user = userEvent.setup();
+    render(<App />);
 
-    const { container } = render(<App />);
+    await user.click(screen.getByRole("button", { name: "Completed notes" }));
+    expect(screen.getByText("Completed note")).toBeVisible();
+    expect(screen.queryByText("Captured note")).not.toBeInTheDocument();
 
-    expect(within(container).queryByText("Completed note")).not.toBeInTheDocument();
-    expect(within(container).getByLabelText("1 notes")).toHaveTextContent("01");
+    await user.type(screen.getByRole("searchbox"), "missing");
+    expect(screen.queryByRole("heading", { name: "Inbox" })).not.toBeInTheDocument();
+    expect(screen.getByText("No matching notes")).toBeVisible();
+  });
+
+  it("supports Cmd+K outside editors and Undo", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    screen.getByRole("button", { name: "Undo" }).focus();
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    expect(screen.getByRole("searchbox")).toHaveFocus();
+
+    await user.click(screen.getByRole("button", { name: "Undo" }));
+    expect(undo).toHaveBeenCalledOnce();
+  });
+
+  it("renders a persistent structured error with Retry only when retryable", async () => {
+    const user = userEvent.setup();
+    mockedUseKopperDocument.mockReturnValue(contextValue({ error: { code: "write_failed", message: "The ledger could not be written.", retryable: true, recoveryAction: "retry" } }));
+    const { rerender } = render(<App />);
+
+    const alert = screen.getByRole("alert");
+    expect(alert).toHaveTextContent("The ledger could not be written.");
+    await user.click(within(alert).getByRole("button", { name: "Retry" }));
+    expect(retryLastAction).toHaveBeenCalledOnce();
+    expect(screen.getByText("Captured note")).toBeVisible();
+
+    mockedUseKopperDocument.mockReturnValue(contextValue({ error: { code: "validation_failed", message: "Invalid action.", retryable: false } }));
+    rerender(<App />);
+    expect(screen.getByRole("alert")).toHaveTextContent("Invalid action.");
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
   });
 
   it("renders a labeled loading progress region", () => {
-    mockedUseKopperDocument.mockReturnValue(
-      contextValue({ pendingAction: "load" }),
-    );
-
+    mockedUseKopperDocument.mockReturnValue(contextValue({ pendingAction: "load" }));
     render(<App />);
-
-    expect(
-      screen.getByRole("progressbar", { name: "Loading notes" }),
-    ).toBeVisible();
-  });
-
-  it("renders the exact structured repository error", () => {
-    mockedUseKopperDocument.mockReturnValue(
-      contextValue({
-        error: {
-          code: "read_failed",
-          message: "The ledger could not be read.",
-          retryable: true,
-          recoveryAction: "retry",
-        },
-      }),
-    );
-
-    render(<App />);
-
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "The ledger could not be read.",
-    );
+    expect(screen.getByRole("progressbar", { name: "Loading notes" })).toBeVisible();
   });
 });
