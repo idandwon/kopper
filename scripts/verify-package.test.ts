@@ -128,15 +128,78 @@ describe("package verifier", () => {
     ["single-quoted dynamic import", "void import('https://cdn.example.invalid/module.js')"],
     ["double-quoted dynamic import", 'void import("http://cdn.example.invalid/module.js")'],
     ["template dynamic import", "void import(`https://cdn.example.invalid/module.js`)"],
+    [
+      "commented dynamic import",
+      "void import /* webpackIgnore: true */ ('https://cdn.example.invalid/module.js')",
+    ],
+    [
+      "interpolated remote-prefix dynamic import",
+      "void import(`https://cdn.example.invalid/${moduleName}.js`)",
+    ],
     ["single-quoted importScripts", "importScripts('https://cdn.example.invalid/worker.js')"],
     ["double-quoted importScripts", 'importScripts("http://cdn.example.invalid/worker.js")'],
     ["template importScripts", "importScripts(`https://cdn.example.invalid/worker.js`)"],
+    [
+      "later importScripts argument",
+      "self.importScripts('./local.js', /* fallback */ 'https://cdn.example.invalid/worker.js')",
+    ],
     ["static side-effect import", "import 'https://cdn.example.invalid/module.js'"],
-    ["static import-from", "import remote from 'https://cdn.example.invalid/module.js'"],
-    ["static export-from", "export { remote } from `https://cdn.example.invalid/module.js`"],
-  ])("rejects a %s remote renderer source", async (_name, content) => {
+    [
+      "commented static import-from",
+      "import remote /* binding */ from /* source */ 'https://cdn.example.invalid/module.js'",
+    ],
+    ["static export-from", "export { remote } from 'https://cdn.example.invalid/module.js'"],
+    ["static export-all", "export * from 'https://cdn.example.invalid/module.js'"],
+  ])("rejects a %s remote renderer source", async (name, content) => {
+    const entry = name.includes("HTML")
+      ? "/out/renderer/index.html"
+      : "/out/renderer/assets/index.js";
+    const fixture = await createFixture({
+      asarFiles: { [entry]: content },
+    });
+
+    const result = await verifyPackage(fixture.appPath, fixture.ports);
+
+    expect(failureCodes(result)).toContain("remote_renderer_script_source");
+  });
+
+  it.each([
+    [
+      "commented examples",
+      [
+        "// void import('https://cdn.example.invalid/example.js')",
+        "/* importScripts('https://cdn.example.invalid/example.js') */",
+      ].join("\n"),
+    ],
+    [
+      "static example strings",
+      [
+        "const dynamicExample = \"import('https://cdn.example.invalid/example.js')\";",
+        "const workerExample = \"importScripts('http://cdn.example.invalid/example.js')\";",
+      ].join("\n"),
+    ],
+  ])("allows %s in renderer JavaScript", async (_name, content) => {
     const fixture = await createFixture({
       asarFiles: { "/out/renderer/assets/index.js": content },
+    });
+
+    const result = await verifyPackage(fixture.appPath, fixture.ports);
+
+    expect(result.ok).toBe(true);
+    expect(failureCodes(result)).not.toContain("remote_renderer_script_source");
+  });
+
+  it("parses executable inline scripts but ignores HTML comments and inert script data", async () => {
+    const fixture = await createFixture({
+      asarFiles: {
+        "/out/renderer/index.html": [
+          "<!-- <script src=https://cdn.example.invalid/commented.js></script> -->",
+          '<script type="application/ld+json">',
+          '{"@context":"https://schema.org","example":"import(\\"https://cdn.example.invalid/example.js\\")"}',
+          "</script>",
+          "<script>void import /* comment */ ('https://cdn.example.invalid/inline.js')</script>",
+        ].join(""),
+      },
     });
 
     const result = await verifyPackage(fixture.appPath, fixture.ports);
@@ -148,6 +211,7 @@ describe("package verifier", () => {
     const fixture = await createFixture({
       asarFiles: {
         "/out/renderer/index.html": [
+          "<!-- import('https://cdn.example.invalid/example.js') -->",
           '<script type="application/ld+json">',
           '{"@context":"https://schema.org","url":"https://kopper.example.invalid"}',
           "</script>",
@@ -162,6 +226,40 @@ describe("package verifier", () => {
 
     expect(result.ok).toBe(true);
     expect(failureCodes(result)).not.toContain("remote_renderer_script_source");
+  });
+
+  it("falls back from module parsing for valid classic scripts", async () => {
+    const fixture = await createFixture({
+      asarFiles: {
+        "/out/renderer/assets/index.js":
+          "with ({ localValue: 1 }) { console.log(localValue) }",
+      },
+    });
+
+    const result = await verifyPackage(fixture.appPath, fixture.ports);
+
+    expect(result.ok).toBe(true);
+  });
+
+  it.each([
+    ["standalone renderer JavaScript", "/out/renderer/assets/index.js", "const = broken syntax"],
+    [
+      "inline renderer JavaScript",
+      "/out/renderer/index.html",
+      "<script>const = broken syntax</script>",
+    ],
+  ])("returns a structured failure for invalid %s", async (_name, entry, content) => {
+    const fixture = await createFixture({
+      asarFiles: { [entry]: content },
+    });
+
+    const result = await verifyPackage(fixture.appPath, fixture.ports);
+
+    expect(result.ok).toBe(false);
+    expect(result.failures).toContainEqual({
+      code: "invalid_renderer_javascript",
+      message: "A renderer JavaScript source could not be parsed.",
+    });
   });
 
   it("rejects a missing unpacked uiohook native module", async () => {

@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 
 import { extractFile, listPackage } from "@electron/asar";
+import { parse } from "acorn";
 
 const execFile = promisify(execFileCallback);
 const REQUIRED_ARCHITECTURES = ["arm64", "x86_64"];
@@ -99,17 +100,192 @@ function hasRequiredArchitectures(architectures) {
   );
 }
 
-function remoteScriptSource(content) {
+const REMOTE_URL = /^https?:\/\//iu;
+const JAVASCRIPT_TYPES = new Set([
+  "application/ecmascript",
+  "application/javascript",
+  "application/x-ecmascript",
+  "application/x-javascript",
+  "module",
+  "text/ecmascript",
+  "text/javascript",
+  "text/javascript1.0",
+  "text/javascript1.1",
+  "text/javascript1.2",
+  "text/javascript1.3",
+  "text/javascript1.4",
+  "text/javascript1.5",
+  "text/jscript",
+  "text/livescript",
+  "text/x-ecmascript",
+  "text/x-javascript",
+]);
+
+function staticStringStartsWithRemoteUrl(node) {
+  if (node?.type === "Literal" && typeof node.value === "string") {
+    return REMOTE_URL.test(node.value);
+  }
+  if (node?.type !== "TemplateLiteral" || node.quasis.length === 0) {
+    return false;
+  }
+  const firstQuasi = node.quasis[0].value;
+  return REMOTE_URL.test(firstQuasi.cooked ?? firstQuasi.raw);
+}
+
+function parseJavaScript(content) {
+  const options = { ecmaVersion: "latest", allowHashBang: true };
+  try {
+    return parse(content, { ...options, sourceType: "module" });
+  } catch {
+    try {
+      return parse(content, { ...options, sourceType: "script" });
+    } catch {
+      return null;
+    }
+  }
+}
+
+function isImportScriptsCall(node) {
+  if (node.type !== "CallExpression") return false;
+  if (node.callee?.type === "Identifier") {
+    return node.callee.name === "importScripts";
+  }
   return (
-    /<script\b[^>]*\bsrc\s*=\s*["'`]?https?:\/\//iu.test(content) ||
-    /\bimportScripts\s*\(\s*["'`]https?:\/\//u.test(content) ||
-    /\bimport\s*\(\s*["'`]https?:\/\//u.test(content) ||
-    /\bimport\s*["'`]https?:\/\//u.test(content) ||
-    /\bimport\s+(?:[\w$*{},]+\s*)+\bfrom\s*["'`]https?:\/\//u.test(content) ||
-    /\bexport\s+(?:\*(?:\s+as\s+[\w$]+)?|\{[^}\r\n]*\})\s+from\s*["'`]https?:\/\//u.test(
-      content,
-    )
+    node.callee?.type === "MemberExpression" &&
+    ((node.callee.computed &&
+      node.callee.property?.type === "Literal" &&
+      node.callee.property.value === "importScripts") ||
+      (!node.callee.computed &&
+        node.callee.property?.type === "Identifier" &&
+        node.callee.property.name === "importScripts"))
   );
+}
+
+function inspectJavaScript(content) {
+  const tree = parseJavaScript(content);
+  if (!tree) return { parseError: true, remote: false };
+
+  const stack = [tree];
+  while (stack.length > 0) {
+    const node = stack.pop();
+    if (!node || typeof node !== "object") continue;
+
+    if (
+      (node.type === "ImportExpression" &&
+        staticStringStartsWithRemoteUrl(node.source)) ||
+      ((node.type === "ImportDeclaration" ||
+        node.type === "ExportNamedDeclaration" ||
+        node.type === "ExportAllDeclaration") &&
+        staticStringStartsWithRemoteUrl(node.source)) ||
+      (isImportScriptsCall(node) &&
+        node.arguments.some(staticStringStartsWithRemoteUrl))
+    ) {
+      return { parseError: false, remote: true };
+    }
+
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) stack.push(...value);
+      else if (value && typeof value === "object") stack.push(value);
+    }
+  }
+
+  return { parseError: false, remote: false };
+}
+
+function readTag(content, start) {
+  let quote = null;
+  for (let index = start; index < content.length; index += 1) {
+    const character = content[index];
+    if (quote) {
+      if (character === quote) quote = null;
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === ">") {
+      return { end: index + 1, text: content.slice(start, index) };
+    }
+  }
+  return { end: content.length, text: content.slice(start) };
+}
+
+function parseAttributes(text) {
+  const attributes = new Map();
+  let index = 0;
+  while (index < text.length) {
+    while (/\s/u.test(text[index] ?? "")) index += 1;
+    if (index >= text.length || text[index] === "/") break;
+
+    const nameStart = index;
+    while (index < text.length && !/[\s=/>]/u.test(text[index])) index += 1;
+    const name = text.slice(nameStart, index).toLowerCase();
+    while (/\s/u.test(text[index] ?? "")) index += 1;
+
+    let value = "";
+    if (text[index] === "=") {
+      index += 1;
+      while (/\s/u.test(text[index] ?? "")) index += 1;
+      const quote = text[index];
+      if (quote === '"' || quote === "'") {
+        index += 1;
+        const valueStart = index;
+        while (index < text.length && text[index] !== quote) index += 1;
+        value = text.slice(valueStart, index);
+        if (text[index] === quote) index += 1;
+      } else {
+        const valueStart = index;
+        while (index < text.length && !/[\s>]/u.test(text[index])) index += 1;
+        value = text.slice(valueStart, index);
+      }
+    }
+    if (name && !attributes.has(name)) attributes.set(name, value);
+  }
+  return attributes;
+}
+
+function executableScript(attributes) {
+  if (!attributes.has("type")) return true;
+  const type = attributes.get("type").trim().toLowerCase().split(";", 1)[0];
+  return type === "" || JAVASCRIPT_TYPES.has(type);
+}
+
+function inspectHtml(content) {
+  const openingTag = /<script(?=[\s/>])/giu;
+  let match;
+  while ((match = openingTag.exec(content))) {
+    const commentStart = content.lastIndexOf("<!--", match.index);
+    const commentEnd = content.lastIndexOf("-->", match.index);
+    if (commentStart > commentEnd) {
+      const closingComment = content.indexOf("-->", openingTag.lastIndex);
+      openingTag.lastIndex = closingComment === -1 ? content.length : closingComment + 3;
+      continue;
+    }
+
+    const tag = readTag(content, openingTag.lastIndex);
+    const attributes = parseAttributes(tag.text);
+    const closingTag = /<\/script(?=[\s>])/giu;
+    closingTag.lastIndex = tag.end;
+    const closingMatch = closingTag.exec(content);
+    const scriptEnd = closingMatch?.index ?? content.length;
+    const afterScript = closingMatch ? readTag(content, closingTag.lastIndex).end : content.length;
+    openingTag.lastIndex = afterScript;
+
+    if (attributes.has("src")) {
+      if (REMOTE_URL.test(attributes.get("src"))) {
+        return { parseError: false, remote: true };
+      }
+      continue;
+    }
+    if (!executableScript(attributes)) continue;
+
+    const result = inspectJavaScript(content.slice(tag.end, scriptEnd));
+    if (result.remote || result.parseError) return result;
+  }
+  return { parseError: false, remote: false };
+}
+
+function inspectRendererSource(entry, content) {
+  return entry.toLowerCase().endsWith(".html")
+    ? inspectHtml(content)
+    : inspectJavaScript(content);
 }
 
 function updaterEntries(entries) {
@@ -221,7 +397,17 @@ export async function verifyPackage(appPath, injectedPorts = {}) {
   for (const entry of rendererEntries) {
     try {
       const content = (await ports.readAsarEntry(asarPath, entry)).toString("utf8");
-      if (remoteScriptSource(content)) {
+      const inspection = inspectRendererSource(entry, content);
+      if (inspection.parseError) {
+        failures.push(
+          failure(
+            "invalid_renderer_javascript",
+            "A renderer JavaScript source could not be parsed.",
+          ),
+        );
+        break;
+      }
+      if (inspection.remote) {
         failures.push(
           failure(
             "remote_renderer_script_source",
