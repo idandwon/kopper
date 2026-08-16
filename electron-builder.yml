@@ -1,5 +1,9 @@
+---
 appId: com.kopper.app
 productName: Kopper
+artifactName: Kopper-${version}-${arch}.${ext}
+directories:
+  output: release
 files:
   - out/**
   - package.json
@@ -8,7 +12,24 @@ asarUnpack:
   - node_modules/uiohook-napi/**
 npmRebuild: true
 mac:
+  icon: build/icon.icns
   category: public.app-category.productivity
-  target:
-    - dir
   minimumSystemVersion: "14.0"
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  notarize: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.inherit.plist
+  x64ArchFiles: >-
+    Contents/Resources/app.asar.unpacked/node_modules/uiohook-napi/prebuilds/darwin-*/uiohook-napi.node
+  target:
+    - target: dmg
+      arch:
+        - universal
+  extendInfo:
+    NSAppleEventsUsageDescription: >-
+      Kopper uses System Events only when you invoke capture, so it can copy the
+      text you selected.
+    NSHumanReadableCopyright: Copyright © 2026 Kopper contributors.
+dmg:
+  sign: false

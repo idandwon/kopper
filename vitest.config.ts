@@ -7,7 +7,10 @@ export default defineConfig({
         test: {
           name: "node",
           environment: "node",
-          include: ["src/{main,shared,preload}/**/*.test.ts"],
+          include: [
+            "src/{main,shared,preload}/**/*.test.ts",
+            "scripts/**/*.test.ts",
+          ],
         },
       },
       {

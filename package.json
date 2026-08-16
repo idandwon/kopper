@@ -12,14 +12,18 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "package:dir": "pnpm build && electron-builder --dir --mac",
-    "package:dmg": "pnpm build && electron-builder --mac dmg"
+    "icons": "node scripts/build-icons.mjs",
+    "package:dir": "pnpm package:unsigned",
+    "package:unsigned": "pnpm build && electron-builder --mac dir --universal -c.mac.identity=null -c.mac.notarize=false",
+    "package:release": "node scripts/release.mjs",
+    "verify:package": "node scripts/verify-package.mjs"
   },
   "packageManager": "pnpm@10.15.0",
   "pnpm": {
     "onlyBuiltDependencies": [
       "electron",
       "esbuild",
+      "sharp",
       "uiohook-napi"
     ],
     "ignoredBuiltDependencies": [
@@ -40,6 +44,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@electron/asar": "3.4.1",
     "@playwright/test": "^1.62.1",
     "@tailwindcss/vite": "^4.3.3",
     "@testing-library/jest-dom": "^7.0.1",
@@ -53,6 +58,7 @@
     "electron-builder": "^26.15.3",
     "electron-vite": "^5.0.0",
     "jsdom": "^30.0.1",
+    "sharp": "0.34.3",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
     "vite": "^7.3.6",

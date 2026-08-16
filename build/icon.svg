@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">Kopper Oxide Ledger icon</title>
+  <desc id="desc">A mineral tile with a copper-to-verdigris rail and dark oxide K.</desc>
+  <defs>
+    <linearGradient id="mineral" x1="96" y1="64" x2="928" y2="960" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F6F9F6"/>
+      <stop offset="1" stop-color="#C7D9D5"/>
+    </linearGradient>
+    <linearGradient id="rail" x1="0" y1="176" x2="0" y2="848" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#B86138"/>
+      <stop offset="0.52" stop-color="#8B6E4F"/>
+      <stop offset="1" stop-color="#2E8775"/>
+    </linearGradient>
+  </defs>
+  <rect x="48" y="48" width="928" height="928" rx="224" fill="#173D35"/>
+  <rect x="80" y="80" width="864" height="864" rx="196" fill="url(#mineral)"/>
+  <rect x="176" y="176" width="104" height="672" rx="52" fill="url(#rail)"/>
+  <path d="M392 264c0-22 18-40 40-40h60c22 0 40 18 40 40v181l202-205c15-16 41-16 57-1l43 42c16 16 16 41 1 57L619 557l223 223c16 16 16 41 0 57l-43 43c-16 16-41 16-57 0L532 670v90c0 22-18 40-40 40h-60c-22 0-40-18-40-40V264Z" fill="#173D35"/>
+</svg>
