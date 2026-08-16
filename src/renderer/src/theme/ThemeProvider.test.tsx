@@ -95,6 +95,22 @@ function wrapper({ children }: { children: ReactNode }) {
   return <ThemeProvider>{children}</ThemeProvider>;
 }
 
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve(value: T): void;
+} {
+  let resolvePromise: ((value: T) => void) | undefined;
+  const promise = new Promise<T>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return {
+    promise,
+    resolve(value) {
+      resolvePromise?.(value);
+    },
+  };
+}
+
 function flushFrames(): void {
   const queued = frames;
   frames = [];
@@ -189,6 +205,16 @@ describe("ThemeProvider resolution and root application", () => {
     expect(result.current.resolvedMode).toBe("light");
   });
 
+  it("accepts a successful native getter for system mode without a prior event", async () => {
+    getNativeAppearance.mockResolvedValue({ ok: true, value: true });
+    setDocumentContext(makeDocument({ mode: "system" }));
+    const { result } = renderHook(() => useTheme(), { wrapper });
+
+    await waitFor(() => expect(result.current.resolvedMode).toBe("dark"));
+    expect(document.documentElement).toHaveClass("dark");
+    expect(document.documentElement.style.colorScheme).toBe("dark");
+  });
+
   it("defaults a failed native getter to light until an event arrives", async () => {
     getNativeAppearance.mockRejectedValue(new Error("unavailable"));
     setDocumentContext(makeDocument({ mode: "system" }));
@@ -198,6 +224,83 @@ describe("ThemeProvider resolution and root application", () => {
     expect(result.current.resolvedMode).toBe("light");
     act(() => nativeListener?.(true));
     expect(result.current.resolvedMode).toBe("dark");
+  });
+
+  it("restores pre-existing root dark membership and prioritized color scheme", () => {
+    document.documentElement.classList.add("dark");
+    document.documentElement.style.setProperty(
+      "color-scheme",
+      "only light",
+      "important",
+    );
+    setDocumentContext(makeDocument({ mode: "light" }));
+
+    const rendered = renderHook(() => useTheme(), { wrapper });
+    expect(document.documentElement).not.toHaveClass("dark");
+    expect(document.documentElement.style.getPropertyValue("color-scheme")).toBe(
+      "light",
+    );
+    expect(
+      document.documentElement.style.getPropertyPriority("color-scheme"),
+    ).toBe("");
+
+    rendered.unmount();
+    expect(document.documentElement).toHaveClass("dark");
+    expect(document.documentElement.style.getPropertyValue("color-scheme")).toBe(
+      "only light",
+    );
+    expect(
+      document.documentElement.style.getPropertyPriority("color-scheme"),
+    ).toBe("important");
+  });
+
+  it("survives StrictMode effect cycling with one live native subscription and clean restoration", async () => {
+    const listeners = new Set<(useDarkColors: boolean) => void>();
+    const getterResults = [
+      deferred<{ ok: true; value: boolean }>(),
+      deferred<{ ok: true; value: boolean }>(),
+    ];
+    getNativeAppearance.mockImplementation(
+      () => getterResults[getNativeAppearance.mock.calls.length - 1].promise,
+    );
+    window.kopper.onNativeAppearanceChanged = vi.fn((listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    });
+    document.documentElement.classList.add("dark");
+    document.documentElement.style.setProperty(
+      "color-scheme",
+      "only light",
+      "important",
+    );
+    setDocumentContext(makeDocument({ mode: "system" }));
+
+    const rendered = renderHook(() => useTheme(), {
+      wrapper,
+      reactStrictMode: true,
+    });
+    expect(window.kopper.onNativeAppearanceChanged).toHaveBeenCalledTimes(2);
+    expect(getNativeAppearance).toHaveBeenCalledTimes(2);
+    expect(listeners.size).toBe(1);
+    expect(rendered.result.current.resolvedMode).toBe("light");
+
+    await act(async () => getterResults[0].resolve({ ok: true, value: true }));
+    expect(rendered.result.current.resolvedMode).toBe("light");
+
+    act(() => listeners.forEach((listener) => listener(true)));
+    expect(rendered.result.current.resolvedMode).toBe("dark");
+    await act(async () => getterResults[1].resolve({ ok: true, value: false }));
+    expect(rendered.result.current.resolvedMode).toBe("dark");
+
+    rendered.unmount();
+    expect(listeners.size).toBe(0);
+    expect(document.documentElement).toHaveClass("dark");
+    expect(document.documentElement.style.getPropertyValue("color-scheme")).toBe(
+      "only light",
+    );
+    expect(
+      document.documentElement.style.getPropertyPriority("color-scheme"),
+    ).toBe("important");
   });
 
   it("keeps explicit mode independent of native events and unsubscribes", () => {
@@ -321,5 +424,41 @@ describe("ThemeProvider previews", () => {
       OXIDE_LEDGER_THEME.id,
     );
     expect(persistedDocument.customThemes).toEqual([]);
+  });
+
+  it("does not clear a newer same-ID preview when an earlier save completes", async () => {
+    const savedTheme = customTheme();
+    const newerPreview = {
+      ...customTheme(savedTheme.id),
+      name: "Workshop Custom Revised",
+    };
+    const upsert = deferred<boolean>();
+    const activate = deferred<boolean>();
+    execute
+      .mockImplementationOnce(() => upsert.promise)
+      .mockImplementationOnce(() => activate.promise);
+    const { result } = renderHook(() => useTheme(), { wrapper });
+    act(() => result.current.previewTheme(savedTheme));
+
+    let saving: Promise<boolean> | undefined;
+    act(() => {
+      saving = result.current.savePreview(savedTheme);
+    });
+    expect(execute).toHaveBeenCalledOnce();
+
+    act(() => result.current.previewTheme(newerPreview));
+    expect(result.current.activeTheme).toBe(newerPreview);
+
+    await act(async () => upsert.resolve(true));
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(result.current.activeTheme).toBe(newerPreview);
+
+    await act(async () => activate.resolve(true));
+    await expect(saving).resolves.toBe(true);
+    expect(execute.mock.calls).toEqual([
+      [{ type: "appearance.upsertCustomTheme", theme: savedTheme }],
+      [{ type: "appearance.setActiveTheme", themeId: savedTheme.id }],
+    ]);
+    expect(result.current.activeTheme).toBe(newerPreview);
   });
 });

@@ -130,7 +130,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       });
       if (!activated) return false;
 
-      setPreview(null);
+      setPreview((current) => (current === theme ? null : current));
       return true;
     },
     [execute],
