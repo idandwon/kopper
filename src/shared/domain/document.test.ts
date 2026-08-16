@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { OXIDE_LEDGER_THEME } from "../theme/presets";
 import {
   createEmptyDocument,
   parseDocument,
@@ -61,7 +62,7 @@ describe("createEmptyDocument", () => {
           togglePanel: "CommandOrControl+Shift+Space",
         },
         window: { pinned: false, bounds: null },
-        appearance: { mode: "system", activeThemeId: "oxide-ledger" },
+        appearance: { mode: "system", activeThemeId: "builtin:oxide-ledger" },
         customThemes: [],
         draft: null,
       }),
@@ -114,11 +115,9 @@ describe("parseDocument", () => {
     const base = withKnownSection(createEmptyDocument(new Date(timestamp)));
     const section = base.sections[0];
     const theme = {
+      ...OXIDE_LEDGER_THEME,
       id: "theme-1",
       name: "Theme",
-      version: 1 as const,
-      light: { background: "#fff" },
-      dark: { background: "#000" },
     };
 
     expect(
@@ -132,6 +131,38 @@ describe("parseDocument", () => {
     ).toBe(false);
     expect(
       parseDocument({ ...base, customThemes: [theme, { ...theme }] }).ok,
+    ).toBe(false);
+  });
+
+  it("requires complete, strict persisted theme definitions without external metadata", () => {
+    const base = withKnownSection(createEmptyDocument(new Date(timestamp)));
+    const theme = {
+      ...OXIDE_LEDGER_THEME,
+      id: "theme-1",
+      name: "Custom theme",
+    };
+    expect(parseDocument({ ...base, customThemes: [theme] }).ok).toBe(true);
+
+    const { capture: _capture, ...missingCapture } = theme.light;
+    expect(
+      parseDocument({
+        ...base,
+        customThemes: [{ ...theme, light: missingCapture }],
+      }).ok,
+    ).toBe(false);
+    expect(
+      parseDocument({
+        ...base,
+        customThemes: [{ ...theme, $schema: "not-persisted" }],
+      }).ok,
+    ).toBe(false);
+    expect(
+      parseDocument({
+        ...base,
+        customThemes: [
+          { ...theme, light: { ...theme.light, constructor: "#000000" } },
+        ],
+      }).ok,
     ).toBe(false);
   });
 

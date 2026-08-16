@@ -1,5 +1,9 @@
 import { z } from "zod";
 
+import {
+  CompleteThemeModeSchema,
+  type CompleteThemeMode,
+} from "../theme/themeSchema";
 import type { KopperError, Result } from "./errors";
 
 export type AppearanceMode = "system" | "light" | "dark";
@@ -32,8 +36,8 @@ export interface ThemeDefinition {
   id: string;
   name: string;
   version: 1;
-  light: Record<string, string>;
-  dark: Record<string, string>;
+  light: CompleteThemeMode;
+  dark: CompleteThemeMode;
 }
 
 export interface WindowBounds {
@@ -103,10 +107,10 @@ const NoteSchema: z.ZodType<Note> = z.strictObject({
 
 const ThemeDefinitionSchema: z.ZodType<ThemeDefinition> = z.strictObject({
   id: identifierSchema,
-  name: z.string(),
+  name: z.string().trim().min(1),
   version: z.literal(1),
-  light: z.record(z.string(), z.string()),
-  dark: z.record(z.string(), z.string()),
+  light: CompleteThemeModeSchema,
+  dark: CompleteThemeModeSchema,
 });
 
 const WindowBoundsSchema: z.ZodType<WindowBounds> = z.strictObject({
@@ -186,7 +190,7 @@ export function createEmptyDocument(now: Date = new Date()): KopperDocument {
       togglePanel: "CommandOrControl+Shift+Space",
     },
     window: { pinned: false, bounds: null },
-    appearance: { mode: "system", activeThemeId: "oxide-ledger" },
+    appearance: { mode: "system", activeThemeId: "builtin:oxide-ledger" },
     customThemes: [],
     draft: null,
   };

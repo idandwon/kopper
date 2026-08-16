@@ -28,6 +28,7 @@
   "dependencies": {
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "culori": "^4.0.2",
     "electron": "^43.4.0",
     "radix-ui": "^1.6.7",
     "react": "^19.2.8",
@@ -43,6 +44,7 @@
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.4",
+    "@types/culori": "^4.0.1",
     "@types/node": "^26.2.0",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
