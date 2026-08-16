@@ -128,6 +128,7 @@ export function NoteCard({
     >
       <div
         className="relative"
+        data-note-owner-id={note.id}
         onContextMenu={() => {
           if (!disabled) onContextSelect(note.id);
         }}

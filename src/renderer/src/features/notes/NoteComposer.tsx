@@ -26,6 +26,10 @@ export function NoteComposer() {
   const [sectionId, setSectionId] = useState(
     initialDraft?.sectionId ?? document.activeSectionId,
   );
+  const [awaitingDraftClear, setAwaitingDraftClear] = useState<{
+    body: string;
+    sectionId: string;
+  } | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
   const submittingRef = useRef(false);
@@ -87,6 +91,21 @@ export function NoteComposer() {
     document.sections,
     sectionId,
   ]);
+
+  useEffect(() => {
+    if (awaitingDraftClear === null || document.draft !== null) return;
+
+    acknowledgedRef.current = draftKey(awaitingDraftClear.sectionId, "");
+    if (latestRef.current.body === awaitingDraftClear.body) {
+      latestRef.current = {
+        body: "",
+        sectionId: awaitingDraftClear.sectionId,
+      };
+      setBody("");
+    }
+    submittingRef.current = false;
+    setAwaitingDraftClear(null);
+  }, [awaitingDraftClear, document.draft]);
 
   useEffect(() => {
     const currentKey = draftKey(sectionId, body);
@@ -170,15 +189,8 @@ export function NoteComposer() {
       return;
     }
 
-    const cleared = await execute({ type: "draft.clear" });
-    if (!mountedRef.current) return;
-    submittingRef.current = false;
-    if (cleared) {
-      const emptyKey = draftKey(latest.sectionId, "");
-      acknowledgedRef.current = emptyKey;
-      latestRef.current = { body: "", sectionId: latest.sectionId };
-      setBody("");
-    }
+    setAwaitingDraftClear(latest);
+    await execute({ type: "draft.clear" });
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -214,7 +226,11 @@ export function NoteComposer() {
           type="button"
           size="xs"
           onClick={() => void submit()}
-          disabled={body.trim().length === 0 || pendingAction !== null}
+          disabled={
+            body.trim().length === 0 ||
+            pendingAction !== null ||
+            awaitingDraftClear !== null
+          }
           aria-label="Add note"
         >
           Add <kbd className="font-mono text-[10px]">⌘↵</kbd>

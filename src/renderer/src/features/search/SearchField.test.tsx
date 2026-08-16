@@ -31,6 +31,26 @@ describe("SearchField", () => {
     ).toHaveFocus();
   });
 
+  it.each(["checkbox", "color", "range", "button"])(
+    "focuses search from a non-text %s input",
+    (type) => {
+      render(
+        <>
+          <input type={type} aria-label={`${type} control`} />
+          <ControlledSearch />
+        </>,
+      );
+      const control = screen.getByLabelText(`${type} control`);
+      control.focus();
+
+      fireEvent.keyDown(window, { key: "k", metaKey: true });
+
+      expect(
+        screen.getByRole("searchbox", { name: "Search notes" }),
+      ).toHaveFocus();
+    },
+  );
+
   it("does not steal Cmd+K from another text editor", () => {
     render(
       <>
@@ -43,6 +63,48 @@ describe("SearchField", () => {
     fireEvent.keyDown(window, { key: "k", metaKey: true });
 
     expect(screen.getByRole("textbox", { name: "Editor" })).toHaveFocus();
+  });
+
+  it.each(["text", "search", "email", "number", "password", "tel", "url"])(
+    "does not steal Cmd+K from a text-editable %s input",
+    (type) => {
+      render(
+        <>
+          <input type={type} aria-label={`${type} editor`} />
+          <ControlledSearch />
+        </>,
+      );
+      const editor = screen.getByLabelText(`${type} editor`);
+      editor.focus();
+
+      fireEvent.keyDown(window, { key: "k", metaKey: true });
+
+      expect(editor).toHaveFocus();
+    },
+  );
+
+  it("suppresses Cmd+K in editable content but not contenteditable=false", () => {
+    const { rerender } = render(
+      <>
+        <div contentEditable tabIndex={0} aria-label="Rich editor" />
+        <ControlledSearch />
+      </>,
+    );
+    const editor = screen.getByLabelText("Rich editor");
+    editor.focus();
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    expect(editor).toHaveFocus();
+
+    rerender(
+      <>
+        <div contentEditable={false} tabIndex={0} aria-label="Static content" />
+        <ControlledSearch />
+      </>,
+    );
+    const staticContent = screen.getByLabelText("Static content");
+    staticContent.focus();
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    expect(screen.getByRole("searchbox", { name: "Search notes" })).toHaveFocus();
   });
 
   it("does not run Cmd+K while focus is inside a dialog", () => {

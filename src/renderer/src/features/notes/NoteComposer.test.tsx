@@ -144,6 +144,53 @@ describe("NoteComposer", () => {
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
+  it("blocks duplicate submission after clear failure until retry removes the acknowledged draft", async () => {
+    const submittedDocument: KopperDocument = {
+      ...document,
+      draft: {
+        body: "Persisted note",
+        sectionId: "inbox",
+        updatedAt: timestamp,
+      },
+    };
+    const context = {
+      ...mockedUseKopperDocument(),
+      document: submittedDocument,
+    };
+    mockedUseKopperDocument.mockReturnValue(context);
+    execute.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    const { rerender } = render(<NoteComposer />);
+    const composer = screen.getByRole("textbox", {
+      name: "Add a note or prompt",
+    });
+
+    await act(async () =>
+      fireEvent.keyDown(composer, { key: "Enter", metaKey: true }),
+    );
+
+    expect(execute).toHaveBeenNthCalledWith(1, {
+      type: "note.add",
+      sectionId: "inbox",
+      body: "Persisted note",
+    });
+    expect(execute).toHaveBeenNthCalledWith(2, { type: "draft.clear" });
+    expect(composer).toHaveValue("Persisted note");
+    expect(screen.getByRole("button", { name: "Add note" })).toBeDisabled();
+
+    fireEvent.keyDown(composer, { key: "Enter", metaKey: true });
+    expect(execute).toHaveBeenCalledTimes(2);
+
+    mockedUseKopperDocument.mockReturnValue({
+      ...context,
+      document: { ...submittedDocument, draft: null },
+    });
+    rerender(<NoteComposer />);
+
+    expect(composer).toHaveValue("");
+    fireEvent.change(composer, { target: { value: "Another note" } });
+    expect(screen.getByRole("button", { name: "Add note" })).toBeEnabled();
+  });
+
   it("allows Enter to insert a newline and prevents whitespace-only submission", async () => {
     vi.useRealTimers();
     const user = userEvent.setup();

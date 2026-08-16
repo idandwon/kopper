@@ -45,6 +45,10 @@ const commandFailure = (): KopperError => ({
   recoveryAction: "retry",
 });
 
+type RetryIntent =
+  | { kind: "command"; command: DocumentCommand }
+  | { kind: "undo" };
+
 export function DocumentProvider({ children }: { children: ReactNode }) {
   const [document, setDocument] = useState<KopperDocument>(() =>
     createEmptyDocument(new Date(0)),
@@ -55,7 +59,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   const mountedRef = useRef(true);
   const readyRef = useRef(false);
   const mutationPendingRef = useRef(false);
-  const retryCommandRef = useRef<DocumentCommand | undefined>(undefined);
+  const retryIntentRef = useRef<RetryIntent | undefined>(undefined);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -105,11 +109,11 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const runCommand = useCallback(
-    async (command: DocumentCommand, retrying: boolean): Promise<boolean> => {
+    async (command: DocumentCommand): Promise<boolean> => {
       if (mutationPendingRef.current || !readyRef.current) return false;
 
       mutationPendingRef.current = true;
-      if (!retrying) retryCommandRef.current = undefined;
+      retryIntentRef.current = undefined;
       if (mountedRef.current) setPendingAction(command.type);
 
       try {
@@ -124,12 +128,13 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         if (result.ok) {
           setDocument(result.value);
           setError(null);
-          retryCommandRef.current = undefined;
           return true;
         }
 
         setError(result.error);
-        retryCommandRef.current = result.error.retryable ? command : undefined;
+        retryIntentRef.current = result.error.retryable
+          ? { kind: "command", command }
+          : undefined;
         return false;
       } finally {
         mutationPendingRef.current = false;
@@ -140,7 +145,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   );
 
   const execute = useCallback(
-    (command: DocumentCommand) => runCommand(command, false),
+    (command: DocumentCommand) => runCommand(command),
     [runCommand],
   );
 
@@ -148,7 +153,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     if (mutationPendingRef.current || !readyRef.current) return false;
 
     mutationPendingRef.current = true;
-    retryCommandRef.current = undefined;
+    retryIntentRef.current = undefined;
     if (mountedRef.current) setPendingAction("undo");
 
     try {
@@ -167,6 +172,9 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       }
 
       setError(result.error);
+      retryIntentRef.current = result.error.retryable
+        ? { kind: "undo" }
+        : undefined;
       return false;
     } finally {
       mutationPendingRef.current = false;
@@ -175,11 +183,10 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const retryLastAction = useCallback((): Promise<boolean> => {
-    const command = retryCommandRef.current;
-    return command === undefined
-      ? Promise.resolve(false)
-      : runCommand(command, true);
-  }, [runCommand]);
+    const intent = retryIntentRef.current;
+    if (intent === undefined) return Promise.resolve(false);
+    return intent.kind === "command" ? runCommand(intent.command) : undo();
+  }, [runCommand, undo]);
 
   const clearError = useCallback(() => {
     if (mountedRef.current) setError(null);

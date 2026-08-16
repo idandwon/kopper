@@ -3,7 +3,6 @@ import { join } from "node:path";
 import { app, BrowserWindow, clipboard, dialog, ipcMain } from "electron";
 
 import { APP_NAME, STORE_FILE_NAME } from "../shared/appIdentity";
-import { IPC_CHANNELS } from "../shared/ipc/contract";
 import {
   createMainWindow,
   openExpandedEditorWindow,
@@ -13,6 +12,7 @@ import { CommandService } from "./domain/commandService";
 import { MainOperationCoordinator } from "./domain/mainOperationCoordinator";
 import { registerIpcHandlers } from "./ipc/registerIpcHandlers";
 import { NoteRepository } from "./persistence/noteRepository";
+import { publishDocument } from "./publishDocument";
 
 app.setName(APP_NAME);
 
@@ -25,11 +25,7 @@ void app.whenReady().then(async () => {
   await repository.load();
 
   const publish = (document: ReturnType<NoteRepository["snapshot"]>) => {
-    for (const window of BrowserWindow.getAllWindows()) {
-      if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
-        window.webContents.send(IPC_CHANNELS.documentChanged, document);
-      }
-    }
+    publishDocument(BrowserWindow.getAllWindows(), document);
   };
   const operationCoordinator = new MainOperationCoordinator();
   const commandService = new CommandService(

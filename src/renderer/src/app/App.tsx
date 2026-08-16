@@ -2,6 +2,7 @@ import {
   useEffect,
   useMemo,
   useReducer,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -148,16 +149,54 @@ function DocumentPanel({ document }: { document: KopperDocument }) {
     () => projections.flatMap(({ notes }) => notes.map(({ id }) => id)),
     [projections],
   );
+  const previousDisplayedIdsRef = useRef(displayedIds);
+  const activeElement = globalThis.document.activeElement;
+  const focusedNoteElement =
+    activeElement instanceof HTMLElement
+      ? activeElement.closest<HTMLElement>(
+          "[data-note-id], [data-note-owner-id]",
+        )
+      : null;
+  const focusWasInNoteCollection =
+    activeElement instanceof HTMLElement &&
+    activeElement.closest("[role=listbox]") !== null;
+  const previousFocusedId =
+    focusedNoteElement?.dataset.noteId ??
+    focusedNoteElement?.dataset.noteOwnerId ??
+    selection.focusedId;
+  const previousFocusedIndex =
+    previousFocusedId === null || previousFocusedId === undefined
+      ? -1
+      : previousDisplayedIdsRef.current.indexOf(previousFocusedId);
+  const fallbackFocusedId =
+    focusWasInNoteCollection &&
+    previousFocusedId !== null &&
+    previousFocusedId !== undefined &&
+    previousFocusedIndex >= 0 &&
+    !displayedIds.includes(previousFocusedId) &&
+    displayedIds.length > 0
+      ? displayedIds[Math.min(previousFocusedIndex, displayedIds.length - 1)]
+      : undefined;
   const visibleSelection = useMemo(
-    () => selectionReducer(selection, { type: "reconcile", displayedIds }),
-    [displayedIds, selection],
+    () =>
+      selectionReducer(selection, {
+        type: "reconcile",
+        displayedIds,
+        fallbackFocusedId,
+      }),
+    [displayedIds, fallbackFocusedId, selection],
   );
   const dark = document.appearance.mode === "dark";
   const busy = pendingAction !== null;
 
   useEffect(() => {
-    dispatchSelection({ type: "reconcile", displayedIds });
-  }, [displayedIds]);
+    dispatchSelection({
+      type: "reconcile",
+      displayedIds,
+      fallbackFocusedId,
+    });
+    previousDisplayedIdsRef.current = displayedIds;
+  }, [displayedIds, fallbackFocusedId]);
 
   useEffect(() => {
     if (visibleSelection.focusedId === null) return;

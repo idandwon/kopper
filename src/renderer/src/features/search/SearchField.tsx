@@ -7,12 +7,31 @@ export interface SearchFieldProps {
   onQueryChange(query: string): void;
 }
 
+const TEXT_EDITABLE_INPUT_TYPES = new Set([
+  "email",
+  "number",
+  "password",
+  "search",
+  "tel",
+  "text",
+  "url",
+]);
+
+function isEditableContent(element: HTMLElement): boolean {
+  if (element.isContentEditable) return true;
+  const editableRoot = element.closest<HTMLElement>("[contenteditable]");
+  const value = editableRoot?.getAttribute("contenteditable")?.toLowerCase();
+  return value === "" || value === "true" || value === "plaintext-only";
+}
+
 function stopsApplicationShortcuts(element: Element | null): boolean {
+  if (!(element instanceof HTMLElement)) return false;
   return (
-    element instanceof HTMLInputElement ||
     element instanceof HTMLTextAreaElement ||
-    (element instanceof HTMLElement &&
-      (element.isContentEditable || element.closest("[role=dialog]") !== null))
+    (element instanceof HTMLInputElement &&
+      TEXT_EDITABLE_INPUT_TYPES.has(element.type)) ||
+    isEditableContent(element) ||
+    element.closest("[role=dialog]") !== null
   );
 }
 

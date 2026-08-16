@@ -352,7 +352,7 @@ describe("DocumentProvider", () => {
     expect(api.undo).not.toHaveBeenCalled();
   });
 
-  it("clears stale retry intent for non-retryable execute failures and accepted undo", async () => {
+  it("clears stale retry intent for a non-retryable execute failure", async () => {
     const { api } = installApi();
     vi.mocked(api.execute)
       .mockResolvedValueOnce({ ok: false, error: retryableError })
@@ -363,9 +363,7 @@ describe("DocumentProvider", () => {
           message: "The note no longer exists.",
           retryable: false,
         },
-      })
-      .mockResolvedValueOnce({ ok: false, error: retryableError });
-    vi.mocked(api.undo).mockResolvedValue({ ok: false, error: retryableError });
+      });
     const { result } = renderHook(() => useKopperDocument(), { wrapper });
     await waitFor(() => expect(result.current.pendingAction).toBeNull());
 
@@ -374,11 +372,31 @@ describe("DocumentProvider", () => {
       await result.current.execute(edit("Second"));
     });
     await expect(result.current.retryLastAction()).resolves.toBe(false);
+  });
+
+  it("retries a failed undo as undo and clears the intent on success", async () => {
+    const changed = documentWith("Undone");
+    const { api } = installApi();
+    vi.mocked(api.execute).mockResolvedValue({
+      ok: false,
+      error: retryableError,
+    });
+    vi.mocked(api.undo)
+      .mockResolvedValueOnce({ ok: false, error: retryableError })
+      .mockResolvedValueOnce({ ok: true, value: changed });
+    const { result } = renderHook(() => useKopperDocument(), { wrapper });
+    await waitFor(() => expect(result.current.pendingAction).toBeNull());
 
     await act(async () => {
-      await result.current.execute(edit("Third"));
-      await result.current.undo();
+      await result.current.execute(edit("Superseded command"));
+      await expect(result.current.undo()).resolves.toBe(false);
+      await expect(result.current.retryLastAction()).resolves.toBe(true);
     });
+
+    expect(api.undo).toHaveBeenCalledTimes(2);
+    expect(api.execute).toHaveBeenCalledTimes(1);
+    expect(result.current.document).toEqual(changed);
+    expect(result.current.error).toBeNull();
     await expect(result.current.retryLastAction()).resolves.toBe(false);
   });
 

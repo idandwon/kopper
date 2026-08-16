@@ -102,6 +102,113 @@ describe("Oxide Ledger App", () => {
     expect(extendedCard).toHaveAttribute("aria-selected", "true");
   });
 
+  it("restores focus to the nearest card when the focused card is completed or deleted", () => {
+    const activeNotes = [
+      document.notes[0],
+      {
+        ...document.notes[0],
+        id: "note-2",
+        body: "Middle note",
+        order: 1,
+      },
+      {
+        ...document.notes[0],
+        id: "note-3",
+        body: "Last note",
+        order: 2,
+      },
+    ];
+    const activeDocument = { ...document, notes: activeNotes };
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({ document: activeDocument }),
+    );
+    const firstRender = render(<App />);
+    const middleCard = screen.getByRole("option", { name: "Note: Middle note" });
+    middleCard.focus();
+    fireEvent.click(middleCard);
+    fireEvent.keyDown(middleCard, { key: " " });
+    expect(execute).toHaveBeenCalledWith({
+      type: "note.complete",
+      noteIds: ["note-2"],
+    });
+
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({
+        document: {
+          ...activeDocument,
+          notes: activeNotes.filter(({ id }) => id !== "note-2"),
+        },
+      }),
+    );
+    firstRender.rerender(<App />);
+    expect(
+      screen.getByRole("option", { name: "Note: Last note" }),
+    ).toHaveFocus();
+
+    firstRender.unmount();
+    execute.mockClear();
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({ document: activeDocument }),
+    );
+    const secondRender = render(<App />);
+    const lastCard = screen.getByRole("option", { name: "Note: Last note" });
+    lastCard.focus();
+    fireEvent.click(lastCard);
+    fireEvent.keyDown(lastCard, { key: "Delete" });
+    expect(execute).toHaveBeenCalledWith({
+      type: "note.delete",
+      noteIds: ["note-3"],
+    });
+
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({
+        document: {
+          ...activeDocument,
+          notes: activeNotes.filter(({ id }) => id !== "note-3"),
+        },
+      }),
+    );
+    secondRender.rerender(<App />);
+    expect(
+      screen.getByRole("option", { name: "Note: Middle note" }),
+    ).toHaveFocus();
+  });
+
+  it("does not steal external focus when a logically focused card disappears", () => {
+    const activeDocument: KopperDocument = {
+      ...document,
+      notes: [
+        document.notes[0],
+        {
+          ...document.notes[0],
+          id: "note-2",
+          body: "Second active note",
+          order: 1,
+        },
+      ],
+    };
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({ document: activeDocument }),
+    );
+    const view = render(<App />);
+    const firstCard = screen.getByRole("option", { name: "Note: Captured note" });
+    fireEvent.click(firstCard);
+    const search = screen.getByRole("searchbox", { name: "Search notes" });
+    search.focus();
+
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({
+        document: { ...activeDocument, notes: [activeDocument.notes[1]] },
+      }),
+    );
+    view.rerender(<App />);
+
+    expect(search).toHaveFocus();
+    expect(
+      screen.getByRole("option", { name: "Note: Second active note" }),
+    ).toHaveAttribute("data-focused", "false");
+  });
+
   it("switches to completed projections, hides the composer, and filters by search", async () => {
     const user = userEvent.setup();
     render(<App />);

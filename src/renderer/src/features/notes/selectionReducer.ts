@@ -20,7 +20,11 @@ export type SelectionAction =
       sourceId?: string;
     }
   | { type: "context"; id: string; displayedIds: string[] }
-  | { type: "reconcile"; displayedIds: string[] };
+  | {
+      type: "reconcile";
+      displayedIds: string[];
+      fallbackFocusedId?: string;
+    };
 
 export const initialSelectionState: SelectionState = {
   focusedId: null,
@@ -140,7 +144,10 @@ export function selectionReducer(
         focusedId:
           state.focusedId !== null && visible.has(state.focusedId)
             ? state.focusedId
-            : null,
+            : action.fallbackFocusedId !== undefined &&
+                visible.has(action.fallbackFocusedId)
+              ? action.fallbackFocusedId
+              : null,
         anchorId:
           state.anchorId !== null && visible.has(state.anchorId)
             ? state.anchorId
