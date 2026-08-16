@@ -56,6 +56,7 @@ export class GlobalKeyboardMonitor {
   private acceptingEvents = false;
   private keydownSubscribed = false;
   private keyupSubscribed = false;
+  private readonly heldOtherKeycodes = new Set<number>();
 
   private readonly onKeydown: GlobalKeyboardHookListener = (event) => {
     this.handleKeyboardEvent("down", event);
@@ -72,7 +73,7 @@ export class GlobalKeyboardMonitor {
   start(): GlobalKeyboardMonitorStartResult {
     if (this.running) return { ok: true, value: undefined };
 
-    this.recognizer.reset();
+    this.resetTracking();
     let nativeStartAttempted = false;
     try {
       this.dependencies.hook.on("keydown", this.onKeydown);
@@ -89,7 +90,7 @@ export class GlobalKeyboardMonitor {
       this.running = false;
       this.unsubscribe();
       if (nativeStartAttempted) this.stopNativeSafely();
-      this.recognizer.reset();
+      this.resetTracking();
       return { ok: false, error: { ...START_PERMISSION_DENIED } };
     }
   }
@@ -101,7 +102,7 @@ export class GlobalKeyboardMonitor {
     this.acceptingEvents = false;
     this.unsubscribe();
     this.stopNativeSafely();
-    this.recognizer.reset();
+    this.resetTracking();
   }
 
   private handleKeyboardEvent(
@@ -111,9 +112,17 @@ export class GlobalKeyboardMonitor {
     if (!this.acceptingEvents) return;
 
     try {
+      const key = this.mapKey(event.keycode);
+      if (
+        key === "other" &&
+        !this.shouldForwardOtherEvent(type, event.keycode)
+      ) {
+        return;
+      }
+
       const result = this.recognizer.feed({
         type,
-        key: this.mapKey(event.keycode),
+        key,
         at: this.dependencies.now(),
       });
       if (result === "capture") this.dependencies.onCapture();
@@ -126,6 +135,26 @@ export class GlobalKeyboardMonitor {
     if (keycode === this.dependencies.keyCodes.shiftLeft) return "shift-left";
     if (keycode === this.dependencies.keyCodes.shiftRight) return "shift-right";
     return "other";
+  }
+
+  private shouldForwardOtherEvent(
+    type: ModifierEvent["type"],
+    keycode: number,
+  ): boolean {
+    if (type === "down") {
+      if (this.heldOtherKeycodes.has(keycode)) return false;
+      const isFirstHeld = this.heldOtherKeycodes.size === 0;
+      this.heldOtherKeycodes.add(keycode);
+      return isFirstHeld;
+    }
+
+    if (!this.heldOtherKeycodes.delete(keycode)) return false;
+    return this.heldOtherKeycodes.size === 0;
+  }
+
+  private resetTracking(): void {
+    this.heldOtherKeycodes.clear();
+    this.recognizer.reset();
   }
 
   private unsubscribe(): void {

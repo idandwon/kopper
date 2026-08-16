@@ -14,10 +14,11 @@ export class DoubleShiftRecognizer {
   private readonly armed = new Set<ShiftKey>();
   private firstTapAt: number | null = null;
   private state: RecognitionState = "ready";
+  private otherHeld = false;
 
   feed(event: ModifierEvent): "capture" | null {
     if (event.key === "other") {
-      this.cancelGesture();
+      this.handleOther(event.type);
       return null;
     }
 
@@ -32,6 +33,7 @@ export class DoubleShiftRecognizer {
     this.armed.clear();
     this.firstTapAt = null;
     this.state = "ready";
+    this.otherHeld = false;
   }
 
   private handleShiftDown(key: ShiftKey): null {
@@ -59,7 +61,7 @@ export class DoubleShiftRecognizer {
 
     if (this.state !== "ready") {
       this.armed.delete(key);
-      if (this.held.size === 0) this.state = "ready";
+      this.releaseCancellationIfAllKeysAreUp();
       return null;
     }
 
@@ -82,9 +84,26 @@ export class DoubleShiftRecognizer {
     return "capture";
   }
 
+  private handleOther(type: ModifierEvent["type"]): void {
+    if (type === "down") {
+      this.otherHeld = true;
+      this.cancelGesture();
+      return;
+    }
+
+    if (!this.otherHeld) return;
+    this.otherHeld = false;
+    this.releaseCancellationIfAllKeysAreUp();
+  }
+
   private cancelGesture(): void {
     this.armed.clear();
     this.firstTapAt = null;
-    this.state = this.held.size > 0 ? "cancelled" : "ready";
+    this.state =
+      this.held.size > 0 || this.otherHeld ? "cancelled" : "ready";
+  }
+
+  private releaseCancellationIfAllKeysAreUp(): void {
+    if (this.held.size === 0 && !this.otherHeld) this.state = "ready";
   }
 }

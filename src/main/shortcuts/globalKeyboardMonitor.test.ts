@@ -15,6 +15,7 @@ class FakeHook implements GlobalKeyboardHook {
     keyup: new Set<(event: { keycode: number }) => void>(),
   };
   startError: unknown;
+  startEventKeycode: number | null = null;
   throwOnSubscribe: "keydown" | "keyup" | null = null;
   startCount = 0;
   stopCount = 0;
@@ -41,6 +42,9 @@ class FakeHook implements GlobalKeyboardHook {
   start(): void {
     this.calls.push("start");
     this.startCount += 1;
+    if (this.startEventKeycode !== null) {
+      this.emit("keydown", this.startEventKeycode);
+    }
     if (this.startError !== undefined) throw this.startError;
   }
 
@@ -115,6 +119,63 @@ describe("GlobalKeyboardMonitor", () => {
     ]);
   });
 
+  it("coalesces repeated non-Shift keydown events", () => {
+    const hook = new FakeHook();
+    const { events, recognizer } = recordingRecognizer();
+    const monitor = createMonitor(hook, { recognizer });
+    monitor.start();
+
+    hook.emit("keydown", 100);
+    hook.emit("keydown", 100);
+    hook.emit("keydown", 100);
+    hook.emit("keyup", 100);
+
+    expect(events).toEqual([
+      { type: "down", key: "other", at: 100 },
+      { type: "up", key: "other", at: 100 },
+    ]);
+  });
+
+  it("ignores duplicate and unpaired non-Shift keyup events", () => {
+    const hook = new FakeHook();
+    const { events, recognizer } = recordingRecognizer();
+    const monitor = createMonitor(hook, { recognizer });
+    monitor.start();
+
+    hook.emit("keyup", 100);
+    hook.emit("keydown", 100);
+    hook.emit("keyup", 100);
+    hook.emit("keyup", 100);
+
+    expect(events).toEqual([
+      { type: "down", key: "other", at: 100 },
+      { type: "up", key: "other", at: 100 },
+    ]);
+  });
+
+  it("keeps recognition cancelled until every physical non-Shift key is up", () => {
+    const hook = new FakeHook();
+    const onCapture = vi.fn();
+    const monitor = createMonitor(hook, { onCapture });
+    monitor.start();
+
+    hook.emit("keydown", 100);
+    hook.emit("keydown", 101);
+    hook.emit("keyup", 100);
+    hook.emit("keydown", 42);
+    hook.emit("keyup", 42);
+    hook.emit("keydown", 54);
+    hook.emit("keyup", 54);
+    expect(onCapture).not.toHaveBeenCalled();
+
+    hook.emit("keyup", 101);
+    hook.emit("keydown", 42);
+    hook.emit("keyup", 42);
+    hook.emit("keydown", 54);
+    hook.emit("keyup", 54);
+    expect(onCapture).toHaveBeenCalledTimes(1);
+  });
+
   it("publishes capture and contains callback exceptions inside the listener", () => {
     const hook = new FakeHook();
     const onCapture = vi.fn(() => {
@@ -174,6 +235,30 @@ describe("GlobalKeyboardMonitor", () => {
     expect(hook.listeners.keyup.size).toBe(1);
   });
 
+  it("clears held non-Shift keys after a failed native start", () => {
+    const hook = new FakeHook();
+    const { events, recognizer } = recordingRecognizer();
+    const monitor = createMonitor(hook, { recognizer });
+    hook.startEventKeycode = 100;
+    hook.startError = new Error("sensitive native detail");
+
+    expect(monitor.start()).toEqual(permissionDenied);
+    events.length = 0;
+    hook.startEventKeycode = null;
+    hook.startError = undefined;
+
+    expect(monitor.start()).toEqual({ ok: true, value: undefined });
+    hook.emit("keyup", 100);
+    expect(events).toEqual([]);
+
+    hook.emit("keydown", 100);
+    hook.emit("keyup", 100);
+    expect(events).toEqual([
+      { type: "down", key: "other", at: 100 },
+      { type: "up", key: "other", at: 100 },
+    ]);
+  });
+
   it("removes a partial subscription without stopping when subscription fails", () => {
     const hook = new FakeHook();
     const { recognizer } = recordingRecognizer();
@@ -185,6 +270,28 @@ describe("GlobalKeyboardMonitor", () => {
     expect(hook.startCount).toBe(0);
     expect(hook.stopCount).toBe(0);
     expect(recognizer.reset).toHaveBeenCalledTimes(2);
+  });
+
+  it("clears held non-Shift keys across stop and restart", () => {
+    const hook = new FakeHook();
+    const { events, recognizer } = recordingRecognizer();
+    const monitor = createMonitor(hook, { recognizer });
+
+    monitor.start();
+    hook.emit("keydown", 100);
+    monitor.stop();
+    events.length = 0;
+
+    monitor.start();
+    hook.emit("keyup", 100);
+    expect(events).toEqual([]);
+
+    hook.emit("keydown", 100);
+    hook.emit("keyup", 100);
+    expect(events).toEqual([
+      { type: "down", key: "other", at: 100 },
+      { type: "up", key: "other", at: 100 },
+    ]);
   });
 
   it("a stopped adapter restarts without a partial first tap", () => {
