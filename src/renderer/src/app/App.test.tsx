@@ -9,6 +9,8 @@ import { App } from "./App";
 import { useKopperDocument, type KopperDocumentContextValue } from "./DocumentProvider";
 
 vi.mock("./DocumentProvider", () => ({ useKopperDocument: vi.fn() }));
+vi.mock("../features/settings/AppearanceSettings", () => ({ AppearanceSettings: () => <div>Appearance controls</div> }));
+vi.mock("../features/settings/DataSettings", () => ({ DataSettings: () => <div>Data controls</div> }));
 
 const timestamp = "2026-08-16T12:00:00.000Z";
 const document: KopperDocument = {
@@ -36,6 +38,8 @@ function contextValue(overrides: Partial<KopperDocumentContextValue> = {}): Kopp
 }
 
 beforeEach(() => {
+  HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
+  HTMLElement.prototype.releasePointerCapture = vi.fn();
   execute.mockReset().mockResolvedValue(true);
   undo.mockReset().mockResolvedValue(true);
   retryLastAction.mockReset().mockResolvedValue(true);
@@ -56,6 +60,17 @@ describe("Oxide Ledger App", () => {
     expect(screen.getByRole("button", { name: "Undo" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Add section" })).toBeVisible();
     expect(screen.getByText("Lifecycle: captured to completed")).toBeInTheDocument();
+  });
+
+  it("restores focus to the panel menu trigger when the controlled settings sheet closes", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    const trigger = screen.getByRole("button", { name: "Panel menu" });
+    await user.click(trigger);
+    await user.click(screen.getByRole("menuitem", { name: "Settings…" }));
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Appearance controls");
+    await user.click(screen.getByRole("button", { name: "Close settings" }));
+    expect(trigger).toHaveFocus();
   });
 
   it("moves from the initial tabbable card and extends selection from that card", () => {

@@ -127,10 +127,17 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
   }, [initial.id, name, raw]);
 
   const updateToken = (token: ThemeToken, value: string) => {
+    if (saving) return;
     const nextRaw = { ...raw, [mode]: { ...raw[mode], [token]: value } };
     setRaw(nextRaw);
     setMessage(null);
-    const modeParsed = CompleteThemeModeSchema.safeParse(nextRaw[mode]);
+    // Parse this value against the last applied mode, not every raw field. An
+    // incomplete sibling remains editable while an independently valid token
+    // still reaches live preview immediately.
+    const modeParsed = CompleteThemeModeSchema.safeParse({
+      ...draft[mode],
+      [token]: value,
+    });
     if (modeParsed.success) {
       const next = { ...draft, [mode]: modeParsed.data };
       setDraft(next);
@@ -138,9 +145,12 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
     }
   };
 
-  const resetToken = (token: ThemeToken) => updateToken(token, immutableBaseRef.current[mode][token]);
+  const resetToken = (token: ThemeToken) => {
+    if (!saving) updateToken(token, immutableBaseRef.current[mode][token]);
+  };
 
   const resetAll = () => {
+    if (saving) return;
     const next: ThemeDefinition = {
       ...structuredClone(immutableBaseRef.current),
       id: initial.id,
@@ -154,25 +164,38 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
   };
 
   const discardAndClose = () => {
+    if (saving) return;
     cancelPreview();
     setConfirmClose(false);
     onOpenChange(false);
   };
 
   const requestClose = () => {
+    if (saving) return;
     if (dirty) setConfirmClose(true);
     else discardAndClose();
   };
 
   const save = async () => {
+    if (saving) return;
     const parsed = candidateFromRaw(initial.id, name, raw);
     const currentValidation = validateDraft(initial.id, name, raw);
     if (!parsed.success || !currentValidation.valid || !validation.valid || validating) return;
+    setConfirmClose(false);
     setSaving(true);
-    const saved = await savePreview(parsed.data);
+    const result = await savePreview(parsed.data);
     setSaving(false);
-    if (saved) onOpenChange(false);
-    else setMessage("Theme could not be saved. Your changes are still open.");
+    switch (result.status) {
+      case "saved":
+        onOpenChange(false);
+        return;
+      case "upsert_failed":
+        setMessage("Theme was not saved. Your changes are still open.");
+        return;
+      case "activation_failed":
+        setMessage("Theme was saved, but could not be activated. Your preview remains open so you can retry.");
+        return;
+    }
   };
 
   const rows = useMemo(() => TOKEN_GROUPS.map((group) => (
@@ -187,9 +210,9 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
             <div key={token} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-1 px-1 py-2">
               <label htmlFor={`${mode}-${token}`} className="self-center text-xs">{token}</label>
               <div className="flex items-center gap-1.5">
-                {hex !== null && <input aria-label={`${token} color picker`} type="color" value={hex} className="h-7 w-7 cursor-pointer border-0 bg-transparent p-0" onChange={(event) => updateToken(token, event.target.value)} />}
-                <Input id={`${mode}-${token}`} aria-invalid={problem !== undefined} value={value} onChange={(event) => updateToken(token, event.target.value)} className="h-7 w-40 font-mono text-[11px]" />
-                <Button type="button" size="xs" variant="ghost" onClick={() => resetToken(token)} aria-label={`Reset ${token}`}>Reset</Button>
+                {hex !== null && <input disabled={saving} aria-label={`${token} color picker`} type="color" value={hex} className="h-7 w-7 cursor-pointer border-0 bg-transparent p-0" onChange={(event) => updateToken(token, event.target.value)} />}
+                <Input disabled={saving} id={`${mode}-${token}`} aria-invalid={problem !== undefined} value={value} onChange={(event) => updateToken(token, event.target.value)} className="h-7 w-40 font-mono text-[11px]" />
+                <Button type="button" size="xs" variant="ghost" disabled={saving} onClick={() => resetToken(token)} aria-label={`Reset ${token}`}>Reset</Button>
               </div>
               {problem !== undefined && <p role="alert" className="col-span-2 m-0 text-[11px] text-destructive">{problem}</p>}
             </div>
@@ -197,36 +220,42 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
         })}
       </div>
     </section>
-  )), [mode, raw, validation]);
+  )), [mode, raw, saving, validation]);
 
   return (
     <>
-      <Dialog open={open} onOpenChange={(next) => !next && requestClose()}>
-        <DialogContent className="flex max-h-[92vh] max-w-xl flex-col gap-3 p-4">
+      <Dialog open={open} onOpenChange={(next) => !next && !saving && requestClose()}>
+        <DialogContent
+          closeDisabled={saving}
+          onEscapeKeyDown={(event) => { if (saving) event.preventDefault(); }}
+          onPointerDownOutside={(event) => { if (saving) event.preventDefault(); }}
+          onInteractOutside={(event) => { if (saving) event.preventDefault(); }}
+          className="flex max-h-[92vh] max-w-xl flex-col gap-3 p-4"
+        >
           <DialogHeader>
             <DialogTitle>{custom ? "Edit custom theme" : "Customize theme"}</DialogTitle>
             <DialogDescription>Changes preview immediately after each value becomes valid.</DialogDescription>
           </DialogHeader>
-          <label className="grid gap-1 text-xs">Theme name<Input value={name} onChange={(event) => { setName(event.target.value); setMessage(null); }} /></label>
-          <Tabs value={mode} onValueChange={(value) => setMode(value as EditorMode)} className="min-h-0">
-            <TabsList aria-label="Theme mode"><TabsTrigger value="light">Light</TabsTrigger><TabsTrigger value="dark">Dark</TabsTrigger></TabsList>
+          <label className="grid gap-1 text-xs">Theme name<Input disabled={saving} value={name} onChange={(event) => { if (!saving) { setName(event.target.value); setMessage(null); } }} /></label>
+          <Tabs value={mode} onValueChange={(value) => { if (!saving) setMode(value as EditorMode); }} className="min-h-0">
+            <TabsList aria-label="Theme mode"><TabsTrigger disabled={saving} value="light">Light</TabsTrigger><TabsTrigger disabled={saving} value="dark">Dark</TabsTrigger></TabsList>
             <TabsContent value="light" className="max-h-[55vh] overflow-y-auto pr-1">{rows}</TabsContent>
             <TabsContent value="dark" className="max-h-[55vh] overflow-y-auto pr-1">{rows}</TabsContent>
           </Tabs>
           <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
             <div><p role="status" aria-live="polite" className="m-0 text-[11px] text-muted-foreground">{validating ? "Validating…" : validation.message}</p>{message && <p role="alert" className="m-0 text-[11px] text-destructive">{message}</p>}</div>
             <DialogFooter>
-              <Button type="button" size="sm" variant="ghost" onClick={resetAll}>Reset all</Button>
-              <Button type="button" size="sm" variant="outline" onClick={requestClose}>Cancel</Button>
+              <Button type="button" size="sm" variant="ghost" disabled={saving} onClick={resetAll}>Reset all</Button>
+              <Button type="button" size="sm" variant="outline" disabled={saving} onClick={requestClose}>Cancel</Button>
               <Button type="button" size="sm" disabled={saving || validating || !validation.valid} onClick={() => void save()}>Save theme</Button>
             </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>
-      <AlertDialog open={confirmClose} onOpenChange={setConfirmClose}>
+      <AlertDialog open={confirmClose} onOpenChange={(next) => { if (!saving) setConfirmClose(next); }}>
         <AlertDialogContent>
           <AlertDialogHeader><AlertDialogTitle>Discard theme changes?</AlertDialogTitle><AlertDialogDescription>Your unsaved values will be lost and the persisted theme will be restored.</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel>Keep editing</AlertDialogCancel><AlertDialogAction onClick={discardAndClose}>Discard changes</AlertDialogAction></AlertDialogFooter>
+          <AlertDialogFooter><AlertDialogCancel disabled={saving}>Keep editing</AlertDialogCancel><AlertDialogAction disabled={saving} onClick={discardAndClose}>Discard changes</AlertDialogAction></AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>

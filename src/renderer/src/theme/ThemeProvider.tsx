@@ -20,12 +20,17 @@ import {
 import { useKopperDocument } from "../app/DocumentProvider";
 import { applyTheme } from "./applyTheme";
 
+export type ThemeSaveResult =
+  | { status: "saved" }
+  | { status: "upsert_failed" }
+  | { status: "activation_failed" };
+
 export interface ThemeContextValue {
   resolvedMode: "light" | "dark";
   activeTheme: ThemeDefinition;
   previewTheme(theme: ThemeDefinition): void;
   cancelPreview(): void;
-  savePreview(theme: ThemeDefinition): Promise<boolean>;
+  savePreview(theme: ThemeDefinition): Promise<ThemeSaveResult>;
 }
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
@@ -117,21 +122,24 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const savePreview = useCallback(
-    async (theme: ThemeDefinition): Promise<boolean> => {
+    async (theme: ThemeDefinition): Promise<ThemeSaveResult> => {
+      // The persisted object must also be the authoritative preview identity so
+      // a successful save can clear it without clearing a newer draft.
+      setPreview(theme);
       const upserted = await execute({
         type: "appearance.upsertCustomTheme",
         theme,
       });
-      if (!upserted) return false;
+      if (!upserted) return { status: "upsert_failed" };
 
       const activated = await execute({
         type: "appearance.setActiveTheme",
         themeId: theme.id,
       });
-      if (!activated) return false;
+      if (!activated) return { status: "activation_failed" };
 
       setPreview((current) => (current === theme ? null : current));
-      return true;
+      return { status: "saved" };
     },
     [execute],
   );

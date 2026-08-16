@@ -68,7 +68,10 @@ function fileSystem(
     close: vi.fn<ThemeFileHandle["close"]>().mockResolvedValue(undefined),
   };
   return {
-    open: vi.fn<ThemeFileSystem["open"]>().mockResolvedValue(handle),
+    open: vi.fn<ThemeFileSystem["open"]>().mockImplementation(async () => {
+      position = 0;
+      return handle;
+    }),
     writeFile: vi.fn<ThemeFileSystem["writeFile"]>().mockResolvedValue(undefined),
     handle,
   };
@@ -112,6 +115,28 @@ describe("ThemeFiles", () => {
     });
     expect(createId).toHaveBeenCalledTimes(1);
     expect(fs.writeFile).not.toHaveBeenCalled();
+  });
+
+  it("assigns distinct IDs when the same file is imported repeatedly", async () => {
+    const fs = fileSystem();
+    const createId = vi.fn()
+      .mockReturnValueOnce("0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5")
+      .mockReturnValueOnce("cfa93939-a334-4396-83bf-b61f13a3bbbc");
+    const files = new ThemeFiles(
+      dialog({
+        showOpenDialog: vi.fn().mockResolvedValue({
+          canceled: false,
+          filePaths: ["/private/theme.kopper-theme.json"],
+        }),
+      }),
+      { fileSystem: fs, createId },
+    );
+
+    const first = await files.importForPreview();
+    const second = await files.importForPreview();
+    expect(first).toMatchObject({ ok: true, value: { theme: { id: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5" } } });
+    expect(second).toMatchObject({ ok: true, value: { theme: { id: "cfa93939-a334-4396-83bf-b61f13a3bbbc" } } });
+    expect(createId).toHaveBeenCalledTimes(2);
   });
 
   it("does not assign an ID to invalid, unreadable, oversized, or malformed UTF-8 imports", async () => {

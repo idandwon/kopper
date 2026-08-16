@@ -34,7 +34,7 @@ beforeEach(() => {
   HTMLElement.prototype.releasePointerCapture = vi.fn();
   execute.mockReset().mockResolvedValue(true);
   vi.mocked(useKopperDocument).mockReturnValue({ document, ready: true, pendingAction: null, error: null, execute, undo: vi.fn(), retryLastAction: vi.fn(), clearError: vi.fn() });
-  vi.mocked(useTheme).mockReturnValue({ resolvedMode: "dark", activeTheme: OXIDE_LEDGER_THEME, previewTheme: vi.fn(), cancelPreview: vi.fn(), savePreview: vi.fn() });
+  vi.mocked(useTheme).mockReturnValue({ resolvedMode: "dark", activeTheme: OXIDE_LEDGER_THEME, previewTheme: vi.fn(), cancelPreview: vi.fn(), savePreview: vi.fn().mockResolvedValue({ status: "saved" }) });
   window.kopper = { exportTheme: vi.fn().mockResolvedValue({ ok: true, value: { path: "/theme.json" } }) } as never;
 });
 
@@ -49,6 +49,12 @@ describe("AppearanceSettings", () => {
     select.focus();
     await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
     expect(execute).toHaveBeenCalledWith({ type: "appearance.setMode", mode: "light" });
+    expect(await screen.findByText("Appearance mode changed to light.")).toBeInTheDocument();
+
+    execute.mockResolvedValueOnce(false);
+    await user.click(select);
+    await user.click(screen.getByRole("option", { name: "Dark" }));
+    expect(await screen.findByText("Appearance mode could not be changed.")).toBeInTheDocument();
   });
 
   it("renders bundled presets, activates by authoritative ID, and exports that ID", async () => {
@@ -56,9 +62,10 @@ describe("AppearanceSettings", () => {
     expect(screen.getByText("Night Workshop")).toBeInTheDocument();
     const row = screen.getByText("Night Workshop").parentElement?.parentElement;
     expect(row).not.toBeNull();
-    await userEvent.click(screen.getAllByRole("button", { name: "Activate" })[0]);
+    await userEvent.click(screen.getByRole("button", { name: "Activate Night Workshop" }));
     expect(execute).toHaveBeenCalledWith({ type: "appearance.setActiveTheme", themeId: "builtin:night-workshop" });
-    await userEvent.click(row!.querySelector<HTMLButtonElement>("button:nth-of-type(3)")!);
+    expect(screen.getByRole("button", { name: "Customize Night Workshop" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Export Night Workshop" }));
     expect(window.kopper.exportTheme).toHaveBeenCalledWith("builtin:night-workshop");
   });
 });

@@ -1,6 +1,8 @@
 import { useState } from "react";
 
 import type { KopperApi, ThemeImportPreview } from "../../../../shared/ipc/contract";
+import { measureThemeContrast } from "../../../../shared/theme/deriveTheme";
+import { THEME_FILE_SCHEMA_URL } from "../../../../shared/theme/themeSchema";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { useTheme } from "../../theme/ThemeProvider";
@@ -8,17 +10,31 @@ import { useTheme } from "../../theme/ThemeProvider";
 function ModePreview({ mode, preview }: { mode: "light" | "dark"; preview: ThemeImportPreview }) {
   const tokens = preview.theme[mode];
   const derived = preview.derivedTokens[mode];
+  const measured = measureThemeContrast({
+    $schema: THEME_FILE_SCHEMA_URL,
+    version: 1,
+    name: preview.theme.name,
+    light: preview.theme.light,
+    dark: preview.theme.dark,
+  }).measurements.filter((measurement) => measurement.mode === mode);
   return (
     <section className="grid gap-2 border-t border-border py-3" aria-labelledby={`import-${mode}`}>
-      <div className="flex items-center justify-between gap-2">
-        <h3 id={`import-${mode}`} className="m-0 font-mono text-xs font-semibold capitalize">{mode}</h3>
-        <span className="text-[11px] text-muted-foreground">Readable · contrast checked</span>
-      </div>
-      <div className="flex gap-1.5" aria-label={`${mode} theme swatches`}>
-        {["background", "foreground", "primary", "accent", "capture", "completed"].map((token) => (
-          <span key={token} title={`${token}: ${tokens[token as keyof typeof tokens]}`} className="h-5 flex-1 border border-border" style={{ backgroundColor: tokens[token as keyof typeof tokens] }} />
+      <h3 id={`import-${mode}`} className="m-0 font-mono text-xs font-semibold capitalize">{mode}</h3>
+      <ul className="m-0 grid list-none gap-1 p-0 text-[11px] text-muted-foreground" aria-label={`${mode} contrast measurements`}>
+        {measured.map(({ backgroundToken, foregroundToken, ratio, meetsMinimum }) => (
+          <li key={`${backgroundToken}:${foregroundToken}`}>
+            {backgroundToken} / {foregroundToken}: {ratio}:1 contrast · {meetsMinimum ? "Pass" : "Fail"}
+          </li>
         ))}
-      </div>
+      </ul>
+      <ul className="m-0 grid list-none grid-cols-2 gap-1.5 p-0" aria-label={`${mode} theme swatches`}>
+        {(["background", "foreground", "primary", "accent", "capture", "completed"] as const).map((token) => (
+          <li key={token} className="flex min-w-0 items-center gap-1.5 font-mono text-[10px]">
+            <span aria-hidden="true" className="h-5 w-5 shrink-0 border border-border" style={{ backgroundColor: tokens[token] }} />
+            <span className="truncate">{token}: {tokens[token]}</span>
+          </li>
+        ))}
+      </ul>
       <p className="m-0 text-[11px] text-muted-foreground">Derived lifecycle tokens: {derived.length === 0 ? "None" : derived.join(", ")}</p>
     </section>
   );
@@ -51,44 +67,60 @@ export function ThemeImportDialog({ api = window.kopper }: { api?: Pick<KopperAp
   };
 
   const close = () => {
+    if (busy) return;
     if (didPreview) cancelPreview();
     setDidPreview(false);
     setPreview(null);
   };
 
   const applyPreview = () => {
-    if (preview === null) return;
+    if (preview === null || busy) return;
     previewTheme(preview.theme);
     setDidPreview(true);
   };
 
   const save = async () => {
-    if (preview === null) return;
+    if (preview === null || busy) return;
     setBusy(true);
-    const saved = await savePreview(preview.theme);
+    setError(false);
+    const result = await savePreview(preview.theme);
     setBusy(false);
-    if (saved) {
-      setDidPreview(false);
-      setPreview(null);
-      setMessage(`${preview.theme.name} saved and activated. Export is now available.`);
-    } else {
-      setMessage("The imported theme could not be saved. The preview remains available.");
+    switch (result.status) {
+      case "saved":
+        setDidPreview(false);
+        setPreview(null);
+        setMessage(`${preview.theme.name} saved and activated. Export is now available.`);
+        return;
+      case "upsert_failed":
+        setError(true);
+        setMessage("The imported theme was not saved. The preview remains available.");
+        return;
+      case "activation_failed":
+        setError(true);
+        setMessage("The imported theme was saved, but could not be activated. The preview remains available so you can retry.");
+        return;
     }
   };
 
   return (
     <>
       <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void chooseImport()}>Import theme</Button>
-      {message !== null && <p role={error ? "alert" : "status"} className="m-0 text-[11px] text-muted-foreground">{message}</p>}
-      <Dialog open={preview !== null} onOpenChange={(open) => !open && close()}>
-        <DialogContent>
+      {message !== null && preview === null && <p role={error ? "alert" : "status"} className="m-0 text-[11px] text-muted-foreground">{message}</p>}
+      <Dialog open={preview !== null} onOpenChange={(open) => !open && !busy && close()}>
+        <DialogContent
+          closeDisabled={busy}
+          onEscapeKeyDown={(event) => { if (busy) event.preventDefault(); }}
+          onPointerDownOutside={(event) => { if (busy) event.preventDefault(); }}
+          onInteractOutside={(event) => { if (busy) event.preventDefault(); }}
+        >
           <DialogHeader>
             <DialogTitle>{preview?.theme.name ?? "Imported theme"}</DialogTitle>
             <DialogDescription>Validated preview only. Nothing is persisted until you save.</DialogDescription>
           </DialogHeader>
+          {message !== null && <p role={error ? "alert" : "status"} className="m-0 text-[11px] text-muted-foreground">{message}</p>}
           {preview !== null && <div><ModePreview mode="light" preview={preview} /><ModePreview mode="dark" preview={preview} /></div>}
           <DialogFooter>
-            <Button type="button" size="sm" variant="ghost" onClick={close}>Cancel</Button>
+            <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={close}>Cancel</Button>
             <Button type="button" size="sm" variant="outline" disabled={busy} onClick={applyPreview}>Preview</Button>
             <Button type="button" size="sm" disabled={busy} onClick={() => void save()}>Save imported theme</Button>
           </DialogFooter>

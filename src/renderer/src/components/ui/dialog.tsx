@@ -26,8 +26,11 @@ function DialogOverlay({
 function DialogContent({
   className,
   children,
+  closeDisabled = false,
   ...props
-}: React.ComponentProps<typeof DialogPrimitive.Content>) {
+}: React.ComponentProps<typeof DialogPrimitive.Content> & {
+  closeDisabled?: boolean;
+}) {
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -39,7 +42,7 @@ function DialogContent({
         {...props}
       >
         {children}
-        <DialogPrimitive.Close className="absolute top-3 right-3 rounded-sm px-2 py-1 text-muted-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50">
+        <DialogPrimitive.Close disabled={closeDisabled} className="absolute top-3 right-3 rounded-sm px-2 py-1 text-muted-foreground outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50">
           <span aria-hidden="true">×</span>
           <span className="sr-only">Close</span>
         </DialogPrimitive.Close>

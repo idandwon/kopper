@@ -369,7 +369,9 @@ describe("ThemeProvider previews", () => {
     act(() => result.current.previewTheme(theme));
 
     await act(async () => {
-      await expect(result.current.savePreview(theme)).resolves.toBe(false);
+      await expect(result.current.savePreview(theme)).resolves.toEqual({
+        status: "upsert_failed",
+      });
     });
     expect(execute).toHaveBeenCalledOnce();
     expect(execute).toHaveBeenCalledWith({
@@ -393,7 +395,7 @@ describe("ThemeProvider previews", () => {
     const { result } = renderHook(() => useTheme(), { wrapper });
     act(() => result.current.previewTheme(theme));
 
-    let saving: Promise<boolean> | undefined;
+    let saving: ReturnType<typeof result.current.savePreview> | undefined;
     act(() => {
       saving = result.current.savePreview(theme);
     });
@@ -401,7 +403,7 @@ describe("ThemeProvider previews", () => {
     expect(result.current.activeTheme).toBe(theme);
 
     await act(async () => resolveUpsert?.(true));
-    await expect(saving).resolves.toBe(false);
+    await expect(saving).resolves.toEqual({ status: "activation_failed" });
     expect(execute.mock.calls).toEqual([
       [{ type: "appearance.upsertCustomTheme", theme }],
       [{ type: "appearance.setActiveTheme", themeId: theme.id }],
@@ -418,7 +420,9 @@ describe("ThemeProvider previews", () => {
     act(() => result.current.previewTheme(theme));
 
     await act(async () => {
-      await expect(result.current.savePreview(theme)).resolves.toBe(true);
+      await expect(result.current.savePreview(theme)).resolves.toEqual({
+        status: "saved",
+      });
     });
     expect(execute.mock.calls).toEqual([
       [{ type: "appearance.upsertCustomTheme", theme }],
@@ -429,6 +433,34 @@ describe("ThemeProvider previews", () => {
       OXIDE_LEDGER_THEME.id,
     );
     expect(persistedDocument.customThemes).toEqual([]);
+  });
+
+  it("installs the exact saved object, clears it on success, and renders a later activation", async () => {
+    const editedPreview = customTheme();
+    const persistedCopy = structuredClone(editedPreview);
+    const laterTheme = { ...customTheme("custom:later"), name: "Later Theme" };
+    const rendered = renderHook(() => useTheme(), { wrapper });
+
+    act(() => rendered.result.current.previewTheme(editedPreview));
+    await act(async () => {
+      await expect(
+        rendered.result.current.savePreview(persistedCopy),
+      ).resolves.toEqual({ status: "saved" });
+    });
+    expect(rendered.result.current.activeTheme).toBe(OXIDE_LEDGER_THEME);
+
+    setDocumentContext(
+      makeDocument({ mode: "light", activeThemeId: laterTheme.id }, [
+        persistedCopy,
+        laterTheme,
+      ]),
+    );
+    rendered.rerender();
+    expect(rendered.result.current.activeTheme).toBe(laterTheme);
+    flushFrames();
+    expect(
+      document.documentElement.style.getPropertyValue("--background"),
+    ).toBe(laterTheme.light.background);
   });
 
   it("does not clear a newer same-ID preview when an earlier save completes", async () => {
@@ -445,7 +477,7 @@ describe("ThemeProvider previews", () => {
     const { result } = renderHook(() => useTheme(), { wrapper });
     act(() => result.current.previewTheme(savedTheme));
 
-    let saving: Promise<boolean> | undefined;
+    let saving: ReturnType<typeof result.current.savePreview> | undefined;
     act(() => {
       saving = result.current.savePreview(savedTheme);
     });
@@ -459,7 +491,7 @@ describe("ThemeProvider previews", () => {
     expect(result.current.activeTheme).toBe(newerPreview);
 
     await act(async () => activate.resolve(true));
-    await expect(saving).resolves.toBe(true);
+    await expect(saving).resolves.toEqual({ status: "saved" });
     expect(execute.mock.calls).toEqual([
       [{ type: "appearance.upsertCustomTheme", theme: savedTheme }],
       [{ type: "appearance.setActiveTheme", themeId: savedTheme.id }],

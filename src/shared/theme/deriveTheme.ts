@@ -29,7 +29,7 @@ export type ThemeReadabilityResult = Result<
   ThemeReadabilityError
 >;
 
-const REQUIRED_CONTRAST_PAIRS = [
+export const REQUIRED_CONTRAST_PAIRS = [
   ["background", "foreground"],
   ["card", "card-foreground"],
   ["popover", "popover-foreground"],
@@ -91,19 +91,25 @@ function roundedRatio(ratio: number): number {
   return Number(ratio.toFixed(2));
 }
 
-export function validateReadableTheme(
-  theme: CompleteThemeFile,
-): ThemeReadabilityResult {
-  const failures: ThemeContrastFailure[] = [];
+export interface ThemeContrastMeasurement {
+  mode: "light" | "dark";
+  backgroundToken: (typeof REQUIRED_CONTRAST_PAIRS)[number][0];
+  foregroundToken: (typeof REQUIRED_CONTRAST_PAIRS)[number][1];
+  ratio: number;
+  meetsMinimum: boolean;
+}
+
+export function measureThemeContrast(theme: CompleteThemeFile): {
+  measurements: ThemeContrastMeasurement[];
+  opaqueBackgroundModes: Array<"light" | "dark">;
+} {
+  const measurements: ThemeContrastMeasurement[] = [];
   const opaqueBackgroundModes: Array<"light" | "dark"> = [];
 
   for (const modeName of ["light", "dark"] as const) {
     const mode = theme[modeName];
     const rootBackground = parsedRgb(mode.background);
-    if ((rootBackground.alpha ?? 1) < 1) {
-      opaqueBackgroundModes.push(modeName);
-      continue;
-    }
+    if ((rootBackground.alpha ?? 1) < 1) opaqueBackgroundModes.push(modeName);
 
     for (const [backgroundToken, foregroundToken] of REQUIRED_CONTRAST_PAIRS) {
       const semanticBackground =
@@ -115,16 +121,33 @@ export function validateReadableTheme(
         semanticBackground,
       );
       const ratio = wcagContrast(semanticBackground, semanticForeground);
-      if (ratio < 4.5) {
-        failures.push({
-          mode: modeName,
-          backgroundToken,
-          foregroundToken,
-          ratio: roundedRatio(ratio),
-        });
-      }
+      measurements.push({
+        mode: modeName,
+        backgroundToken,
+        foregroundToken,
+        ratio: roundedRatio(ratio),
+        meetsMinimum: ratio >= 4.5,
+      });
     }
   }
+
+  return { measurements, opaqueBackgroundModes };
+}
+
+export function validateReadableTheme(
+  theme: CompleteThemeFile,
+): ThemeReadabilityResult {
+  const measured = measureThemeContrast(theme);
+  const failures: ThemeContrastFailure[] = measured.measurements
+    .filter(({ mode }) => !measured.opaqueBackgroundModes.includes(mode))
+    .filter(({ meetsMinimum }) => !meetsMinimum)
+    .map(({ mode, backgroundToken, foregroundToken, ratio }) => ({
+      mode,
+      backgroundToken,
+      foregroundToken,
+      ratio,
+    }));
+  const { opaqueBackgroundModes } = measured;
 
   if (failures.length === 0 && opaqueBackgroundModes.length === 0) {
     return { ok: true, value: theme };

@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -13,14 +13,14 @@ vi.mock("../../theme/ThemeProvider", () => ({ useTheme: vi.fn() }));
 
 const previewTheme = vi.fn();
 const cancelPreview = vi.fn();
-const savePreview = vi.fn().mockResolvedValue(true);
+const savePreview = vi.fn().mockResolvedValue({ status: "saved" });
 const preview: ThemeImportPreview = {
   theme: { ...structuredClone(OXIDE_LEDGER_THEME), id: "71e13585-a167-4fe6-9819-34f3c2522237", name: "Imported Ledger" },
   derivedTokens: { light: ["capture"], dark: [] },
 };
 
 beforeEach(() => {
-  previewTheme.mockReset(); cancelPreview.mockReset(); savePreview.mockReset().mockResolvedValue(true);
+  previewTheme.mockReset(); cancelPreview.mockReset(); savePreview.mockReset().mockResolvedValue({ status: "saved" });
   vi.mocked(useTheme).mockReturnValue({ resolvedMode: "light", activeTheme: OXIDE_LEDGER_THEME, previewTheme, cancelPreview, savePreview });
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
@@ -49,6 +49,8 @@ describe("ThemeImportDialog", () => {
     await user.click(screen.getByRole("button", { name: "Import theme" }));
     expect(await screen.findByRole("dialog")).toHaveTextContent("Imported Ledger");
     expect(screen.getByText("Derived lifecycle tokens: capture")).toBeInTheDocument();
+    expect(screen.getAllByText(/:1 contrast/)).toHaveLength(10);
+    expect(screen.getByText(`background: ${preview.theme.light.background}`)).toBeVisible();
     expect(previewTheme).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Preview" }));
@@ -60,5 +62,39 @@ describe("ThemeImportDialog", () => {
     await user.click(await screen.findByRole("button", { name: "Save imported theme" }));
     expect(savePreview).toHaveBeenCalledWith(preview.theme);
     expect(await screen.findByRole("status")).toHaveTextContent("Export is now available");
+  });
+
+  it("prevents cancel, Escape, outside close, and preview while Save is pending", async () => {
+    let resolveSave: ((value: { status: "saved" }) => void) | undefined;
+    savePreview.mockImplementationOnce(() => new Promise((resolve) => { resolveSave = resolve; }));
+    const user = userEvent.setup();
+    render(<ThemeImportDialog api={api({ ok: true, value: preview })} />);
+    await user.click(screen.getByRole("button", { name: "Import theme" }));
+    await user.click(screen.getByRole("button", { name: "Save imported theme" }));
+
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Preview" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Close" })).toBeDisabled();
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    fireEvent.pointerDown(document.body);
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(cancelPreview).not.toHaveBeenCalled();
+
+    await act(async () => resolveSave?.({ status: "saved" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("announces not-saved and saved-but-not-activated outcomes as alerts", async () => {
+    const user = userEvent.setup();
+    savePreview.mockResolvedValueOnce({ status: "upsert_failed" });
+    render(<ThemeImportDialog api={api({ ok: true, value: preview })} />);
+    await user.click(screen.getByRole("button", { name: "Import theme" }));
+    await user.click(screen.getByRole("button", { name: "Save imported theme" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("was not saved");
+
+    savePreview.mockResolvedValueOnce({ status: "activation_failed" });
+    await user.click(screen.getByRole("button", { name: "Save imported theme" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("saved, but could not be activated");
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
 });
