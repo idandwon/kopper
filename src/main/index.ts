@@ -18,6 +18,7 @@ import { DocumentFiles } from "./files/documentFiles";
 import { CommandService } from "./domain/commandService";
 import { MainOperationCoordinator } from "./domain/mainOperationCoordinator";
 import { registerIpcHandlers } from "./ipc/registerIpcHandlers";
+import { registerNativeAppearance } from "./nativeAppearance";
 import { NoteRepository } from "./persistence/noteRepository";
 import {
   publishDocument,
@@ -67,16 +68,15 @@ void app.whenReady().then(async () => {
       publish,
     },
   );
-  const nativeAppearanceUpdated = () => {
-    publishNativeAppearance(
-      BrowserWindow.getAllWindows(),
-      nativeTheme.shouldUseDarkColors,
-    );
-  };
-  nativeTheme.on("updated", nativeAppearanceUpdated);
-  cleanupNativeAppearance = () => {
-    nativeTheme.off("updated", nativeAppearanceUpdated);
-  };
+  cleanupNativeAppearance = registerNativeAppearance(
+    nativeTheme,
+    (shouldUseDarkColors) => {
+      publishNativeAppearance(
+        BrowserWindow.getAllWindows(),
+        shouldUseDarkColors,
+      );
+    },
+  );
   createMainWindow();
 
   app.on("activate", () => {

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { open, writeFile } from "node:fs/promises";
 
 import {
   ThemeDefinitionSchema,
@@ -32,9 +32,19 @@ export interface ThemeDialog {
   }): Promise<{ canceled: boolean; filePath?: string }>;
 }
 
+export interface ThemeFileHandle {
+  stat(): Promise<{ size: number; isFile(): boolean }>;
+  read(
+    buffer: Buffer,
+    offset: number,
+    length: number,
+    position: null,
+  ): Promise<{ bytesRead: number }>;
+  close(): Promise<void>;
+}
+
 export interface ThemeFileSystem {
-  stat(path: string): Promise<{ size: number }>;
-  readFile(path: string): Promise<Buffer>;
+  open(path: string): Promise<ThemeFileHandle>;
   writeFile(path: string, contents: string): Promise<void>;
 }
 
@@ -44,8 +54,7 @@ export interface ThemeFilesOptions {
 }
 
 const nodeFileSystem: ThemeFileSystem = {
-  stat: async (path) => stat(path),
-  readFile,
+  open: async (path) => open(path, "r"),
   writeFile: async (path, contents) => {
     await writeFile(path, contents, { mode: 0o600 });
   },
@@ -110,23 +119,50 @@ export class ThemeFiles {
 
     const path = chosen.filePaths[0];
     let raw: Buffer;
+    let handle: ThemeFileHandle | undefined;
     try {
-      const metadata = await this.fileSystem.stat(path);
+      handle = await this.fileSystem.open(path);
+      const metadata = await handle.stat();
+      if (!metadata.isFile()) {
+        return failure("read_failed", "The selected theme could not be read.");
+      }
       if (metadata.size > MAX_THEME_FILE_BYTES) {
         return failure(
           "validation_failed",
           "The selected theme exceeds the 256 KiB size limit.",
         );
       }
-      raw = await this.fileSystem.readFile(path);
+
+      const bounded = Buffer.allocUnsafe(MAX_THEME_FILE_BYTES + 1);
+      let bytesRead = 0;
+      while (bytesRead < bounded.byteLength) {
+        const read = await handle.read(
+          bounded,
+          bytesRead,
+          bounded.byteLength - bytesRead,
+          null,
+        );
+        if (read.bytesRead === 0) break;
+        if (read.bytesRead < 0 || read.bytesRead > bounded.byteLength - bytesRead) {
+          throw new Error("Invalid file read length");
+        }
+        bytesRead += read.bytesRead;
+      }
+      if (bytesRead > MAX_THEME_FILE_BYTES) {
+        return failure(
+          "validation_failed",
+          "The selected theme exceeds the 256 KiB size limit.",
+        );
+      }
+      raw = bounded.subarray(0, bytesRead);
     } catch {
       return failure("read_failed", "The selected theme could not be read.");
-    }
-    if (raw.byteLength > MAX_THEME_FILE_BYTES) {
-      return failure(
-        "validation_failed",
-        "The selected theme exceeds the 256 KiB size limit.",
-      );
+    } finally {
+      try {
+        await handle?.close();
+      } catch {
+        // A close failure must not expose filesystem details or replace the bounded read result.
+      }
     }
 
     let decoded: string;

@@ -361,6 +361,56 @@ describe("registerIpcHandlers", () => {
     }
   });
 
+  it("returns unreadable import and appearance-upsert diagnostics as normal error envelopes", async () => {
+    const repository = new NoteRepository("unused.json");
+    const unreadableTheme = structuredClone(OXIDE_LEDGER_THEME);
+    unreadableTheme.id = "custom:unreadable";
+    unreadableTheme.light.foreground = unreadableTheme.light.background;
+    const readabilityError = {
+      code: "validation_failed" as const,
+      message: "Theme readability validation found 1 problem.",
+      retryable: false,
+      failures: [
+        {
+          mode: "light" as const,
+          backgroundToken: "background" as const,
+          foregroundToken: "foreground" as const,
+          ratio: 1,
+        },
+      ],
+      opaqueBackgroundModes: [],
+    };
+    const commandExecutor = makeCommandExecutor();
+    commandExecutor.execute.mockResolvedValue({ ok: false, error: readabilityError });
+    const ipcMain = new FakeIpcMain();
+    registerIpcHandlers(
+      repository,
+      commandExecutor,
+      ipcMain,
+      makeClipboardWriter(),
+      {
+        themeFiles: {
+          importForPreview: vi.fn().mockResolvedValue({
+            ok: false,
+            error: readabilityError,
+          }),
+          exportTheme: vi.fn(),
+        },
+      },
+    );
+
+    await expect(ipcMain.invoke(IPC_CHANNELS.importTheme)).resolves.toEqual({
+      ok: false,
+      error: readabilityError,
+    });
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.executeCommand, {
+        type: "appearance.upsertCustomTheme",
+        theme: unreadableTheme,
+      }),
+    ).resolves.toEqual({ ok: false, error: readabilityError });
+  });
+
   it("rejects malformed theme service responses at the main boundary", async () => {
     const repository = new NoteRepository("unused.json");
     const ipcMain = new FakeIpcMain();

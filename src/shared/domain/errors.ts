@@ -14,9 +14,23 @@ export type KopperErrorCode =
   | "nothing_selected"
   | "shortcut_conflict";
 
+export interface ThemeContrastFailure {
+  mode: "light" | "dark";
+  backgroundToken: "background" | "card" | "popover" | "primary" | "accent";
+  foregroundToken:
+    | "foreground"
+    | "card-foreground"
+    | "popover-foreground"
+    | "primary-foreground"
+    | "accent-foreground";
+  ratio: number;
+}
+
 export interface KopperError {
   code: KopperErrorCode;
   message: string;
   retryable: boolean;
   recoveryAction?: "retry" | "open_settings" | "choose_file" | "create_store";
+  failures?: ThemeContrastFailure[];
+  opaqueBackgroundModes?: Array<"light" | "dark">;
 }

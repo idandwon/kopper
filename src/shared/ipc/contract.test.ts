@@ -10,6 +10,7 @@ import {
   DocumentResultSchema,
   FileOperationResultSchema,
   IPC_CHANNELS,
+  KopperErrorSchema,
   NativeAppearanceResultSchema,
   ThemeExportResultSchema,
   ThemeImportResultSchema,
@@ -106,6 +107,56 @@ describe("IPC contract", () => {
       ThemeImportResultSchema.parse({
         ok: true,
         value: { ...customTheme, unexpected: true },
+      }),
+    ).toThrow();
+
+    const readabilityError = {
+      code: "validation_failed" as const,
+      message: "Theme readability validation found 2 problems.",
+      retryable: false,
+      failures: [
+        {
+          mode: "light" as const,
+          backgroundToken: "background" as const,
+          foregroundToken: "foreground" as const,
+          ratio: 1,
+        },
+      ],
+      opaqueBackgroundModes: ["dark" as const],
+    };
+    expect(
+      ThemeImportResultSchema.parse({ ok: false, error: readabilityError }),
+    ).toEqual({ ok: false, error: readabilityError });
+    expect(
+      KopperErrorSchema.parse({
+        code: "read_failed",
+        message: "Could not read the theme.",
+        retryable: false,
+      }),
+    ).toEqual({
+      code: "read_failed",
+      message: "Could not read the theme.",
+      retryable: false,
+    });
+    for (const malformedFailure of [
+      { ...readabilityError.failures[0], mode: "system" },
+      { ...readabilityError.failures[0], backgroundToken: "muted" },
+      { ...readabilityError.failures[0], foregroundToken: "muted-foreground" },
+      { ...readabilityError.failures[0], ratio: Number.NaN },
+      { ...readabilityError.failures[0], ratio: 22 },
+      { ...readabilityError.failures[0], secret: "raw theme bytes" },
+    ]) {
+      expect(() =>
+        ThemeImportResultSchema.parse({
+          ok: false,
+          error: { ...readabilityError, failures: [malformedFailure] },
+        }),
+      ).toThrow();
+    }
+    expect(() =>
+      ThemeImportResultSchema.parse({
+        ok: false,
+        error: { ...readabilityError, opaqueBackgroundModes: ["system"] },
       }),
     ).toThrow();
     expect(

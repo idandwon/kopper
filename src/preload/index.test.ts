@@ -168,13 +168,29 @@ describe("preload bridge", () => {
       ...structuredClone(OXIDE_LEDGER_THEME),
       id: "custom:preview",
     };
+    const readabilityError = {
+      code: "validation_failed" as const,
+      message: "Theme readability validation found 1 problem.",
+      retryable: false,
+      failures: [
+        {
+          mode: "light" as const,
+          backgroundToken: "background" as const,
+          foregroundToken: "foreground" as const,
+          ratio: 1,
+        },
+      ],
+      opaqueBackgroundModes: [],
+    };
     electron.invoke
       .mockResolvedValueOnce({ ok: true, value: customTheme })
       .mockResolvedValueOnce({
         ok: true,
         value: { path: "/private/theme.kopper-theme.json" },
       })
-      .mockResolvedValueOnce({ ok: true, value: false });
+      .mockResolvedValueOnce({ ok: true, value: false })
+      .mockResolvedValueOnce({ ok: false, error: readabilityError })
+      .mockResolvedValueOnce({ ok: false, error: readabilityError });
 
     await expect(exposedApi().importTheme()).resolves.toEqual({
       ok: true,
@@ -188,10 +204,27 @@ describe("preload bridge", () => {
       ok: true,
       value: false,
     });
-    expect(electron.invoke.mock.calls.slice(0, 3)).toEqual([
+    await expect(exposedApi().importTheme()).resolves.toEqual({
+      ok: false,
+      error: readabilityError,
+    });
+    const unreadableTheme = structuredClone(customTheme);
+    unreadableTheme.light.foreground = unreadableTheme.light.background;
+    await expect(
+      exposedApi().execute({
+        type: "appearance.upsertCustomTheme",
+        theme: unreadableTheme,
+      }),
+    ).resolves.toEqual({ ok: false, error: readabilityError });
+    expect(electron.invoke.mock.calls.slice(0, 5)).toEqual([
       [IPC_CHANNELS.importTheme],
       [IPC_CHANNELS.exportTheme, customTheme.id],
       [IPC_CHANNELS.getNativeAppearance],
+      [IPC_CHANNELS.importTheme],
+      [
+        IPC_CHANNELS.executeCommand,
+        { type: "appearance.upsertCustomTheme", theme: unreadableTheme },
+      ],
     ]);
 
     await expect(exposedApi().exportTheme("")).rejects.toThrow();
@@ -199,6 +232,14 @@ describe("preload bridge", () => {
     await expect(exposedApi().importTheme()).rejects.toThrow();
     electron.invoke.mockResolvedValueOnce({ ok: true, value: "dark" });
     await expect(exposedApi().getNativeAppearance()).rejects.toThrow();
+    electron.invoke.mockResolvedValueOnce({
+      ok: false,
+      error: {
+        ...readabilityError,
+        failures: [{ ...readabilityError.failures[0], mode: "system" }],
+      },
+    });
+    await expect(exposedApi().importTheme()).rejects.toThrow();
   });
 
   it("validates native appearance events and unsubscribes exactly its listener", () => {

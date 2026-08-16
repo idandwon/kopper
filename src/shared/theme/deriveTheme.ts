@@ -1,6 +1,10 @@
 import { clampRgb, converter, wcagContrast, type Rgb } from "culori";
 
-import type { KopperError, Result } from "../domain/errors";
+import type {
+  KopperError,
+  Result,
+  ThemeContrastFailure,
+} from "../domain/errors";
 import type {
   CompleteThemeMode,
   ThemeFile,
@@ -12,23 +16,6 @@ export interface CompleteThemeFile
   extends Omit<ThemeFile, "light" | "dark"> {
   light: CompleteThemeMode;
   dark: CompleteThemeMode;
-}
-
-export interface ThemeContrastFailure {
-  mode: "light" | "dark";
-  backgroundToken:
-    | "background"
-    | "card"
-    | "popover"
-    | "primary"
-    | "accent";
-  foregroundToken:
-    | "foreground"
-    | "card-foreground"
-    | "popover-foreground"
-    | "primary-foreground"
-    | "accent-foreground";
-  ratio: number;
 }
 
 export interface ThemeReadabilityError extends KopperError {

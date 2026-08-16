@@ -9,6 +9,7 @@ import {
 import {
   ThemeFiles,
   type ThemeDialog,
+  type ThemeFileHandle,
   type ThemeFileSystem,
 } from "./themeFiles";
 
@@ -32,15 +33,44 @@ function dialog(overrides: Partial<ThemeDialog> = {}): ThemeDialog {
   };
 }
 
-function fileSystem(raw = Buffer.from(JSON.stringify(externalTheme()))): ThemeFileSystem & {
-  readFile: ReturnType<typeof vi.fn<ThemeFileSystem["readFile"]>>;
-  stat: ReturnType<typeof vi.fn<ThemeFileSystem["stat"]>>;
+type MockThemeFileSystem = ThemeFileSystem & {
+  open: ReturnType<typeof vi.fn<ThemeFileSystem["open"]>>;
   writeFile: ReturnType<typeof vi.fn<ThemeFileSystem["writeFile"]>>;
-} {
+  handle: {
+    stat: ReturnType<typeof vi.fn<ThemeFileHandle["stat"]>>;
+    read: ReturnType<typeof vi.fn<ThemeFileHandle["read"]>>;
+    close: ReturnType<typeof vi.fn<ThemeFileHandle["close"]>>;
+  };
+};
+
+function fileSystem(
+  raw = Buffer.from(JSON.stringify(externalTheme())),
+  options: { statSize?: number; maxReadBytes?: number; isFile?: boolean } = {},
+): MockThemeFileSystem {
+  let position = 0;
+  const handle = {
+    stat: vi.fn<ThemeFileHandle["stat"]>().mockResolvedValue({
+      size: options.statSize ?? raw.byteLength,
+      isFile: () => options.isFile ?? true,
+    }),
+    read: vi.fn<ThemeFileHandle["read"]>().mockImplementation(
+      async (buffer, offset, length) => {
+        const bytesRead = Math.min(
+          length,
+          options.maxReadBytes ?? length,
+          raw.byteLength - position,
+        );
+        if (bytesRead > 0) raw.copy(buffer, offset, position, position + bytesRead);
+        position += bytesRead;
+        return { bytesRead };
+      },
+    ),
+    close: vi.fn<ThemeFileHandle["close"]>().mockResolvedValue(undefined),
+  };
   return {
-    stat: vi.fn<ThemeFileSystem["stat"]>().mockResolvedValue({ size: raw.byteLength }),
-    readFile: vi.fn<ThemeFileSystem["readFile"]>().mockResolvedValue(raw),
+    open: vi.fn<ThemeFileSystem["open"]>().mockResolvedValue(handle),
     writeFile: vi.fn<ThemeFileSystem["writeFile"]>().mockResolvedValue(undefined),
+    handle,
   };
 }
 
@@ -114,6 +144,112 @@ describe("ThemeFiles", () => {
       });
     }
     expect(createId).not.toHaveBeenCalled();
+  });
+
+  it("bounds reads from one opened descriptor when a small stat races a growing or replaced path", async () => {
+    const fs = fileSystem(Buffer.alloc(256 * 1024 + 1), { statSize: 1 });
+    const files = new ThemeFiles(
+      dialog({
+        showOpenDialog: vi.fn().mockResolvedValue({
+          canceled: false,
+          filePaths: ["/private/theme.json"],
+        }),
+      }),
+      { fileSystem: fs },
+    );
+
+    await expect(files.importForPreview()).resolves.toEqual({
+      ok: false,
+      error: {
+        code: "validation_failed",
+        message: "The selected theme exceeds the 256 KiB size limit.",
+        retryable: false,
+      },
+    });
+    expect(fs.open).toHaveBeenCalledTimes(1);
+    expect(fs.open).toHaveBeenCalledWith("/private/theme.json");
+    expect(fs.handle.stat).toHaveBeenCalledTimes(1);
+    expect(fs.handle.read).toHaveBeenCalledTimes(1);
+    expect(fs.handle.read.mock.calls[0]?.slice(1)).toEqual([
+      0,
+      256 * 1024 + 1,
+      null,
+    ]);
+    expect(fs.handle.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("handles partial descriptor reads and closes after a successful import", async () => {
+    const fs = fileSystem(Buffer.from(JSON.stringify(externalTheme())), {
+      maxReadBytes: 7,
+    });
+    const files = new ThemeFiles(
+      dialog({
+        showOpenDialog: vi.fn().mockResolvedValue({
+          canceled: false,
+          filePaths: ["/private/theme.json"],
+        }),
+      }),
+      {
+        fileSystem: fs,
+        createId: () => "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
+      },
+    );
+
+    await expect(files.importForPreview()).resolves.toMatchObject({
+      ok: true,
+      value: { id: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5" },
+    });
+    expect(fs.handle.read.mock.calls.length).toBeGreaterThan(2);
+    expect(fs.handle.close).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects special files and closes after stat, read, and decode failures", async () => {
+    const chosenDialog = dialog({
+      showOpenDialog: vi.fn().mockResolvedValue({
+        canceled: false,
+        filePaths: ["/private/theme.json"],
+      }),
+    });
+
+    const special = fileSystem(undefined, { isFile: false });
+    await expect(
+      new ThemeFiles(chosenDialog, { fileSystem: special }).importForPreview(),
+    ).resolves.toMatchObject({ ok: false, error: { code: "read_failed" } });
+    expect(special.handle.read).not.toHaveBeenCalled();
+    expect(special.handle.close).toHaveBeenCalledTimes(1);
+
+    const statOversize = fileSystem(undefined, { statSize: 256 * 1024 + 1 });
+    await expect(
+      new ThemeFiles(chosenDialog, { fileSystem: statOversize }).importForPreview(),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation_failed" },
+    });
+    expect(statOversize.handle.read).not.toHaveBeenCalled();
+    expect(statOversize.handle.close).toHaveBeenCalledTimes(1);
+
+    const readFailure = fileSystem();
+    readFailure.handle.read.mockRejectedValueOnce(new Error("private read error"));
+    await expect(
+      new ThemeFiles(chosenDialog, { fileSystem: readFailure }).importForPreview(),
+    ).resolves.toEqual({
+      ok: false,
+      error: {
+        code: "read_failed",
+        message: "The selected theme could not be read.",
+        retryable: false,
+      },
+    });
+    expect(readFailure.handle.close).toHaveBeenCalledTimes(1);
+
+    const decodeFailure = fileSystem(Buffer.from([0xc3, 0x28]));
+    await expect(
+      new ThemeFiles(chosenDialog, { fileSystem: decodeFailure }).importForPreview(),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation_failed" },
+    });
+    expect(decodeFailure.handle.close).toHaveBeenCalledTimes(1);
   });
 
   it("exports the exact strict external shape without the internal ID", async () => {

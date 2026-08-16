@@ -45,6 +45,25 @@ export interface ClipboardCopySuccess {
 
 export type ClipboardCopyResult = Result<ClipboardCopySuccess, KopperError>;
 
+const ThemeContrastFailureSchema = z.strictObject({
+  mode: z.enum(["light", "dark"]),
+  backgroundToken: z.enum([
+    "background",
+    "card",
+    "popover",
+    "primary",
+    "accent",
+  ]),
+  foregroundToken: z.enum([
+    "foreground",
+    "card-foreground",
+    "popover-foreground",
+    "primary-foreground",
+    "accent-foreground",
+  ]),
+  ratio: z.number().finite().min(1).max(21),
+});
+
 export const KopperErrorSchema: z.ZodType<KopperError> = z.strictObject({
   code: z.enum([
     "invalid_document",
@@ -63,6 +82,8 @@ export const KopperErrorSchema: z.ZodType<KopperError> = z.strictObject({
   recoveryAction: z
     .enum(["retry", "open_settings", "choose_file", "create_store"])
     .optional(),
+  failures: z.array(ThemeContrastFailureSchema).optional(),
+  opaqueBackgroundModes: z.array(z.enum(["light", "dark"])).optional(),
 });
 
 export const DocumentResultSchema: z.ZodType<
