@@ -40,8 +40,10 @@ beforeEach(() => {
 describe("preload bridge", () => {
   it("exposes only the typed Kopper API", () => {
     expect(Object.keys(exposedApi()).sort()).toEqual([
+      "execute",
       "getDocument",
       "subscribeDocument",
+      "undo",
     ]);
   });
 
@@ -57,6 +59,42 @@ describe("preload bridge", () => {
 
     electron.invoke.mockResolvedValueOnce({ ok: true });
     await expect(exposedApi().getDocument()).rejects.toThrow();
+  });
+
+  it("forwards commands and validates command result envelopes", async () => {
+    const document = createEmptyDocument(new Date("2026-08-16T12:00:00.000Z"));
+    const command = {
+      type: "note.add" as const,
+      sectionId: document.activeSectionId,
+      body: "Captured",
+    };
+    electron.invoke.mockResolvedValueOnce({ ok: true, value: document });
+
+    await expect(exposedApi().execute(command)).resolves.toEqual({
+      ok: true,
+      value: document,
+    });
+    expect(electron.invoke).toHaveBeenCalledWith(
+      IPC_CHANNELS.executeCommand,
+      command,
+    );
+
+    electron.invoke.mockResolvedValueOnce({ ok: true });
+    await expect(exposedApi().execute(command)).rejects.toThrow();
+  });
+
+  it("invokes undo without arguments and validates its result", async () => {
+    const document = createEmptyDocument(new Date("2026-08-16T12:00:00.000Z"));
+    electron.invoke.mockResolvedValueOnce({ ok: true, value: document });
+
+    await expect(exposedApi().undo()).resolves.toEqual({
+      ok: true,
+      value: document,
+    });
+    expect(electron.invoke).toHaveBeenCalledWith(IPC_CHANNELS.undo);
+
+    electron.invoke.mockResolvedValueOnce({ ok: false });
+    await expect(exposedApi().undo()).rejects.toThrow();
   });
 
   it("validates document events before notifying subscribers", () => {

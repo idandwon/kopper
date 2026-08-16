@@ -4,7 +4,7 @@ import type { KopperDocument, Note, Section } from "../../../shared/domain/docum
 import { Input } from "../components/ui/input";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { cn } from "../lib/utils";
-import { useDocument } from "./useDocument";
+import { useKopperDocument } from "./DocumentProvider";
 
 function notesInSection(document: KopperDocument, section: Section): Note[] {
   return document.notes
@@ -158,9 +158,9 @@ function DocumentShell({ document }: { document: KopperDocument }) {
 }
 
 export function App() {
-  const state = useDocument();
+  const { document, error, pendingAction } = useKopperDocument();
 
-  if (state.status === "loading") return <LoadingState />;
-  if (state.status === "error") return <ErrorState message={state.error.message} />;
-  return <DocumentShell document={state.document} />;
+  if (pendingAction === "load") return <LoadingState />;
+  if (error !== null) return <ErrorState message={error.message} />;
+  return <DocumentShell document={document} />;
 }

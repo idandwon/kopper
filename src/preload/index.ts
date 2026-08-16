@@ -14,6 +14,16 @@ const api: KopperApi = {
     );
   },
 
+  async execute(command) {
+    return parseDocumentResult(
+      await ipcRenderer.invoke(IPC_CHANNELS.executeCommand, command),
+    );
+  },
+
+  async undo() {
+    return parseDocumentResult(await ipcRenderer.invoke(IPC_CHANNELS.undo));
+  },
+
   subscribeDocument(listener) {
     const wrappedListener = (_event: Electron.IpcRendererEvent, input: unknown) => {
       listener(KopperDocumentSchema.parse(input));

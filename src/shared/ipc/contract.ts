@@ -1,11 +1,14 @@
 import { z } from "zod";
 
+import type { DocumentCommand } from "../domain/commands";
 import { KopperDocumentSchema, type KopperDocument } from "../domain/document";
 import type { KopperError, Result } from "../domain/errors";
 
 export const IPC_CHANNELS = {
   getDocument: "kopper:document:get",
   documentChanged: "kopper:document:changed",
+  executeCommand: "kopper:command:execute",
+  undo: "kopper:command:undo",
 } as const;
 
 const KopperErrorSchema: z.ZodType<KopperError> = z.strictObject({
@@ -49,5 +52,9 @@ export function parseDocumentResult(
 
 export interface KopperApi {
   getDocument(): Promise<Result<KopperDocument, KopperError>>;
+  execute(
+    command: DocumentCommand,
+  ): Promise<Result<KopperDocument, KopperError>>;
+  undo(): Promise<Result<KopperDocument, KopperError>>;
   subscribeDocument(listener: (document: KopperDocument) => void): () => void;
 }

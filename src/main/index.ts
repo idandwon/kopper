@@ -1,8 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { app, BrowserWindow, ipcMain } from "electron";
 
 import { APP_NAME, STORE_FILE_NAME } from "../shared/appIdentity";
+import { IPC_CHANNELS } from "../shared/ipc/contract";
 import { createMainWindow } from "./createMainWindow";
+import { CommandService } from "./domain/commandService";
 import { registerIpcHandlers } from "./ipc/registerIpcHandlers";
 import { NoteRepository } from "./persistence/noteRepository";
 
@@ -16,7 +19,22 @@ void app.whenReady().then(async () => {
   );
   await repository.load();
 
-  cleanupIpcHandlers = registerIpcHandlers(repository, ipcMain);
+  const commandService = new CommandService(repository, {
+    now: () => new Date().toISOString(),
+    createId: randomUUID,
+    publish: (document) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+          window.webContents.send(IPC_CHANNELS.documentChanged, document);
+        }
+      }
+    },
+  });
+  cleanupIpcHandlers = registerIpcHandlers(
+    repository,
+    commandService,
+    ipcMain,
+  );
   createMainWindow();
 
   app.on("activate", () => {

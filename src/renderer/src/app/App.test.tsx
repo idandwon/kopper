@@ -5,10 +5,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KopperDocument } from "../../../shared/domain/document";
 import { App } from "./App";
-import { useDocument } from "./useDocument";
+import {
+  useKopperDocument,
+  type KopperDocumentContextValue,
+} from "./DocumentProvider";
 
-vi.mock("./useDocument", () => ({
-  useDocument: vi.fn(),
+vi.mock("./DocumentProvider", () => ({
+  useKopperDocument: vi.fn(),
 }));
 
 const timestamp = "2026-08-16T12:00:00.000Z";
@@ -46,10 +49,25 @@ const document: KopperDocument = {
   draft: null,
 };
 
-const mockedUseDocument = vi.mocked(useDocument);
+const mockedUseKopperDocument = vi.mocked(useKopperDocument);
+
+function contextValue(
+  overrides: Partial<KopperDocumentContextValue> = {},
+): KopperDocumentContextValue {
+  return {
+    document,
+    pendingAction: null,
+    error: null,
+    execute: vi.fn(),
+    undo: vi.fn(),
+    retryLastAction: vi.fn(),
+    clearError: vi.fn(),
+    ...overrides,
+  };
+}
 
 beforeEach(() => {
-  mockedUseDocument.mockReturnValue({ status: "ready", document });
+  mockedUseKopperDocument.mockReturnValue(contextValue());
 });
 
 describe("Oxide Ledger App", () => {
@@ -83,10 +101,9 @@ describe("Oxide Ledger App", () => {
       completedAt: timestamp,
       previousPlacement: { sectionId: "inbox", order: 1 },
     });
-    mockedUseDocument.mockReturnValue({
-      status: "ready",
-      document: withCompleted,
-    });
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({ document: withCompleted }),
+    );
 
     const { container } = render(<App />);
 
@@ -95,7 +112,9 @@ describe("Oxide Ledger App", () => {
   });
 
   it("renders a labeled loading progress region", () => {
-    mockedUseDocument.mockReturnValue({ status: "loading" });
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({ pendingAction: "load" }),
+    );
 
     render(<App />);
 
@@ -105,15 +124,16 @@ describe("Oxide Ledger App", () => {
   });
 
   it("renders the exact structured repository error", () => {
-    mockedUseDocument.mockReturnValue({
-      status: "error",
-      error: {
-        code: "read_failed",
-        message: "The ledger could not be read.",
-        retryable: true,
-        recoveryAction: "retry",
-      },
-    });
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({
+        error: {
+          code: "read_failed",
+          message: "The ledger could not be read.",
+          retryable: true,
+          recoveryAction: "retry",
+        },
+      }),
+    );
 
     render(<App />);
 

@@ -5,11 +5,13 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { DocumentCommand } from "../../shared/domain/commands";
 import { createEmptyDocument } from "../../shared/domain/document";
 import { IPC_CHANNELS, parseDocumentResult } from "../../shared/ipc/contract";
 import { NoteRepository } from "../persistence/noteRepository";
 import {
   registerIpcHandlers,
+  type CommandExecutor,
   type IpcMainRegistrar,
 } from "./registerIpcHandlers";
 
@@ -44,6 +46,16 @@ class FakeIpcMain implements IpcMainRegistrar {
 
 const temporaryDirectories: string[] = [];
 
+function makeCommandExecutor(): CommandExecutor & {
+  execute: ReturnType<typeof vi.fn<CommandExecutor["execute"]>>;
+  undo: ReturnType<typeof vi.fn<CommandExecutor["undo"]>>;
+} {
+  return {
+    execute: vi.fn<CommandExecutor["execute"]>(),
+    undo: vi.fn<CommandExecutor["undo"]>(),
+  };
+}
+
 afterEach(async () => {
   await Promise.all(
     temporaryDirectories
@@ -56,7 +68,7 @@ describe("registerIpcHandlers", () => {
   it("returns cloned snapshots after a successful initial load", async () => {
     const repository = new NoteRepository("unused.json");
     const ipcMain = new FakeIpcMain();
-    registerIpcHandlers(repository, ipcMain);
+    registerIpcHandlers(repository, makeCommandExecutor(), ipcMain);
 
     const first = parseDocumentResult(
       await ipcMain.invoke(IPC_CHANNELS.getDocument),
@@ -82,7 +94,7 @@ describe("registerIpcHandlers", () => {
     if (failedLoad.ok) return;
 
     const ipcMain = new FakeIpcMain();
-    registerIpcHandlers(repository, ipcMain);
+    registerIpcHandlers(repository, makeCommandExecutor(), ipcMain);
 
     expect(
       parseDocumentResult(await ipcMain.invoke(IPC_CHANNELS.getDocument)),
@@ -98,13 +110,17 @@ describe("registerIpcHandlers", () => {
     expect(
       parseDocumentResult(await ipcMain.invoke(IPC_CHANNELS.getDocument)),
     ).toEqual({ ok: true, value: recovered });
-    expect([...ipcMain.handlers.keys()]).toEqual([IPC_CHANNELS.getDocument]);
+    expect([...ipcMain.handlers.keys()]).toEqual([
+      IPC_CHANNELS.getDocument,
+      IPC_CHANNELS.executeCommand,
+      IPC_CHANNELS.undo,
+    ]);
   });
 
   it("returns a structured validation error for unexpected handler input", async () => {
     const repository = new NoteRepository("unused.json");
     const ipcMain = new FakeIpcMain();
-    registerIpcHandlers(repository, ipcMain);
+    registerIpcHandlers(repository, makeCommandExecutor(), ipcMain);
 
     expect(
       parseDocumentResult(
@@ -120,23 +136,105 @@ describe("registerIpcHandlers", () => {
     });
   });
 
+  it("runtime-parses commands before dispatching them", async () => {
+    const repository = new NoteRepository("unused.json");
+    const commandExecutor = makeCommandExecutor();
+    const document = repository.snapshot();
+    commandExecutor.execute.mockResolvedValue({ ok: true, value: document });
+    const ipcMain = new FakeIpcMain();
+    registerIpcHandlers(repository, commandExecutor, ipcMain);
+    const command: DocumentCommand = {
+      type: "note.add",
+      sectionId: document.activeSectionId,
+      body: "Captured",
+    };
+
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.executeCommand, command),
+    ).resolves.toEqual({ ok: true, value: document });
+    expect(commandExecutor.execute).toHaveBeenCalledWith(command);
+
+    for (const args of [
+      [],
+      [{ ...command, unexpected: true }],
+      [command, "extra"],
+    ]) {
+      await expect(
+        ipcMain.invoke(IPC_CHANNELS.executeCommand, ...args),
+      ).resolves.toEqual({
+        ok: false,
+        error: {
+          code: "validation_failed",
+          message: "The document command was invalid.",
+          retryable: false,
+        },
+      });
+    }
+    expect(commandExecutor.execute).toHaveBeenCalledTimes(1);
+  });
+
+  it("dispatches argument-free undo and rejects malformed undo requests", async () => {
+    const repository = new NoteRepository("unused.json");
+    const commandExecutor = makeCommandExecutor();
+    const emptyUndoError = {
+      code: "validation_failed" as const,
+      message: "There is no document action to undo.",
+      retryable: false,
+    };
+    commandExecutor.undo.mockResolvedValue({ ok: false, error: emptyUndoError });
+    const ipcMain = new FakeIpcMain();
+    registerIpcHandlers(repository, commandExecutor, ipcMain);
+
+    await expect(ipcMain.invoke(IPC_CHANNELS.undo)).resolves.toEqual({
+      ok: false,
+      error: emptyUndoError,
+    });
+    expect(commandExecutor.undo).toHaveBeenCalledTimes(1);
+
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.undo, "unexpected"),
+    ).resolves.toEqual({
+      ok: false,
+      error: {
+        code: "validation_failed",
+        message: "The undo request was invalid.",
+        retryable: false,
+      },
+    });
+    expect(commandExecutor.undo).toHaveBeenCalledTimes(1);
+  });
+
   it("removes only registered handlers and can register again after cleanup", () => {
     const repository = new NoteRepository("unused.json");
     const ipcMain = new FakeIpcMain();
-    const cleanup = registerIpcHandlers(repository, ipcMain);
+    const cleanup = registerIpcHandlers(
+      repository,
+      makeCommandExecutor(),
+      ipcMain,
+    );
 
-    expect([...ipcMain.handlers.keys()]).toEqual([IPC_CHANNELS.getDocument]);
+    expect([...ipcMain.handlers.keys()]).toEqual([
+      IPC_CHANNELS.getDocument,
+      IPC_CHANNELS.executeCommand,
+      IPC_CHANNELS.undo,
+    ]);
     cleanup();
     cleanup();
-    expect(ipcMain.removedChannels).toEqual([IPC_CHANNELS.getDocument]);
+    expect(ipcMain.removedChannels).toEqual([
+      IPC_CHANNELS.getDocument,
+      IPC_CHANNELS.executeCommand,
+      IPC_CHANNELS.undo,
+    ]);
 
-    expect(() => registerIpcHandlers(repository, ipcMain)).not.toThrow();
+    expect(() =>
+      registerIpcHandlers(repository, makeCommandExecutor(), ipcMain),
+    ).not.toThrow();
   });
 
   it("returns runtime-valid envelopes", async () => {
     const repository = new NoteRepository("unused.json");
     const ipcMain = new FakeIpcMain();
-    registerIpcHandlers(repository, ipcMain);
+    registerIpcHandlers(repository, makeCommandExecutor(), ipcMain);
 
     const result = await ipcMain.invoke(IPC_CHANNELS.getDocument);
     expect(() => parseDocumentResult(result)).not.toThrow();
