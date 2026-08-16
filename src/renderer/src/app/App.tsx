@@ -38,7 +38,6 @@ import {
   projectNotes,
   type NoteProjectionView,
 } from "../features/search/projectNotes";
-import { cn } from "../lib/utils";
 import { useKopperDocument } from "./DocumentProvider";
 
 function LifecycleRail() {
@@ -186,7 +185,6 @@ function DocumentPanel({ document }: { document: KopperDocument }) {
       }),
     [displayedIds, fallbackFocusedId, selection],
   );
-  const dark = document.appearance.mode === "dark";
   const busy = pendingAction !== null;
 
   useEffect(() => {
@@ -207,7 +205,7 @@ function DocumentPanel({ document }: { document: KopperDocument }) {
   }, [visibleSelection.focusedId]);
 
   return (
-    <div className={cn("contents", dark && "dark")}>
+    <div className="contents">
       <Panel>
         <header className="grid gap-2 px-4 pt-4 pb-3 pl-5">
           <SearchField query={query} onQueryChange={setQuery} />

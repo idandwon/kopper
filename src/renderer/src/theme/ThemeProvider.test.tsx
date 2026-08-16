@@ -1,0 +1,325 @@
+import "@testing-library/jest-dom/vitest";
+
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { KopperDocument, ThemeDefinition } from "../../../shared/domain/document";
+import type { KopperApi } from "../../../shared/ipc/contract";
+import { OXIDE_LEDGER_THEME } from "../../../shared/theme/presets";
+import {
+  useKopperDocument,
+  type KopperDocumentContextValue,
+} from "../app/DocumentProvider";
+import { ThemeProvider, useTheme } from "./ThemeProvider";
+
+vi.mock("../app/DocumentProvider", () => ({ useKopperDocument: vi.fn() }));
+
+const mockedUseKopperDocument = vi.mocked(useKopperDocument);
+const execute = vi.fn<KopperDocumentContextValue["execute"]>();
+let frames: FrameRequestCallback[];
+let nativeListener: ((useDarkColors: boolean) => void) | undefined;
+let unsubscribeNative: ReturnType<typeof vi.fn>;
+let getNativeAppearance: ReturnType<typeof vi.fn>;
+let subscriptionOrder: string[];
+
+function makeDocument(
+  overrides: Partial<KopperDocument["appearance"]> = {},
+  customThemes: ThemeDefinition[] = [],
+): KopperDocument {
+  return {
+    schemaVersion: 1,
+    sections: [
+      {
+        id: "inbox",
+        title: "Inbox",
+        order: 0,
+        createdAt: "2026-08-16T12:00:00.000Z",
+        updatedAt: "2026-08-16T12:00:00.000Z",
+      },
+    ],
+    notes: [],
+    activeSectionId: "inbox",
+    shortcuts: {
+      capture: { kind: "double-modifier", modifier: "shift" },
+      togglePanel: "CommandOrControl+Shift+Space",
+    },
+    window: { pinned: false, bounds: null },
+    appearance: {
+      mode: "system",
+      activeThemeId: OXIDE_LEDGER_THEME.id,
+      ...overrides,
+    },
+    customThemes,
+    draft: null,
+  };
+}
+
+function customTheme(id = "custom:workshop"): ThemeDefinition {
+  return {
+    ...structuredClone(OXIDE_LEDGER_THEME),
+    id,
+    name: "Workshop Custom",
+    light: {
+      ...OXIDE_LEDGER_THEME.light,
+      background: "rgb(240 241 242)",
+      radius: "1.125rem",
+    },
+    dark: {
+      ...OXIDE_LEDGER_THEME.dark,
+      background: "rgb(20 21 22)",
+      radius: "1.125rem",
+    },
+  };
+}
+
+function setDocumentContext(
+  document: KopperDocument,
+  ready = true,
+): KopperDocumentContextValue {
+  const value: KopperDocumentContextValue = {
+    document,
+    ready,
+    pendingAction: null,
+    error: null,
+    execute,
+    undo: vi.fn(),
+    retryLastAction: vi.fn(),
+    clearError: vi.fn(),
+  };
+  mockedUseKopperDocument.mockReturnValue(value);
+  return value;
+}
+
+function wrapper({ children }: { children: ReactNode }) {
+  return <ThemeProvider>{children}</ThemeProvider>;
+}
+
+function flushFrames(): void {
+  const queued = frames;
+  frames = [];
+  queued.forEach((callback) => callback(0));
+}
+
+beforeEach(() => {
+  frames = [];
+  subscriptionOrder = [];
+  nativeListener = undefined;
+  unsubscribeNative = vi.fn();
+  execute.mockReset().mockResolvedValue(true);
+  getNativeAppearance = vi.fn(async () => {
+    subscriptionOrder.push("get");
+    return { ok: true as const, value: false };
+  });
+  window.kopper = {
+    getNativeAppearance,
+    onNativeAppearanceChanged: vi.fn((listener) => {
+      subscriptionOrder.push("subscribe");
+      nativeListener = listener;
+      return unsubscribeNative;
+    }),
+  } as unknown as KopperApi;
+  vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+    frames.push(callback);
+    return frames.length;
+  });
+  vi.stubGlobal("cancelAnimationFrame", vi.fn());
+  document.documentElement.className = "";
+  document.documentElement.removeAttribute("style");
+  setDocumentContext(makeDocument({ mode: "light" }));
+});
+
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  document.documentElement.className = "";
+  document.documentElement.removeAttribute("style");
+});
+
+describe("ThemeProvider resolution and root application", () => {
+  it("resolves explicit light and dark modes and applies root state", async () => {
+    const lightDocument = makeDocument({ mode: "light" });
+    setDocumentContext(lightDocument);
+    const rendered = renderHook(() => useTheme(), { wrapper });
+
+    expect(rendered.result.current.resolvedMode).toBe("light");
+    expect(document.documentElement).not.toHaveClass("dark");
+    expect(document.documentElement.style.colorScheme).toBe("light");
+    flushFrames();
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe(
+      OXIDE_LEDGER_THEME.light.background,
+    );
+
+    setDocumentContext(makeDocument({ mode: "dark" }));
+    rendered.rerender();
+    expect(rendered.result.current.resolvedMode).toBe("dark");
+    expect(document.documentElement).toHaveClass("dark");
+    expect(document.documentElement.style.colorScheme).toBe("dark");
+    flushFrames();
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe(
+      OXIDE_LEDGER_THEME.dark.background,
+    );
+  });
+
+  it("subscribes before getting native appearance and ignores a stale getter", async () => {
+    let resolveGetter:
+      | ((result: { ok: true; value: boolean }) => void)
+      | undefined;
+    getNativeAppearance.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          subscriptionOrder.push("get");
+          resolveGetter = resolve;
+        }),
+    );
+    setDocumentContext(makeDocument({ mode: "system" }));
+
+    const { result } = renderHook(() => useTheme(), { wrapper });
+    expect(subscriptionOrder).toEqual(["subscribe", "get"]);
+
+    act(() => nativeListener?.(true));
+    expect(result.current.resolvedMode).toBe("dark");
+    expect(document.documentElement.style.colorScheme).toBe("dark");
+
+    await act(async () => resolveGetter?.({ ok: true, value: false }));
+    expect(result.current.resolvedMode).toBe("dark");
+
+    act(() => nativeListener?.(false));
+    expect(result.current.resolvedMode).toBe("light");
+  });
+
+  it("defaults a failed native getter to light until an event arrives", async () => {
+    getNativeAppearance.mockRejectedValue(new Error("unavailable"));
+    setDocumentContext(makeDocument({ mode: "system" }));
+    const { result } = renderHook(() => useTheme(), { wrapper });
+
+    await waitFor(() => expect(getNativeAppearance).toHaveBeenCalledOnce());
+    expect(result.current.resolvedMode).toBe("light");
+    act(() => nativeListener?.(true));
+    expect(result.current.resolvedMode).toBe("dark");
+  });
+
+  it("keeps explicit mode independent of native events and unsubscribes", () => {
+    setDocumentContext(makeDocument({ mode: "dark" }));
+    const rendered = renderHook(() => useTheme(), { wrapper });
+
+    act(() => nativeListener?.(false));
+    expect(rendered.result.current.resolvedMode).toBe("dark");
+
+    rendered.unmount();
+    expect(unsubscribeNative).toHaveBeenCalledOnce();
+  });
+
+  it("uses Oxide while unloaded and for a missing active ID without persistence", () => {
+    const availableCustom = customTheme();
+    const renderedDocument = makeDocument(
+      { mode: "light", activeThemeId: availableCustom.id },
+      [availableCustom],
+    );
+    setDocumentContext(renderedDocument, false);
+    const rendered = renderHook(() => useTheme(), { wrapper });
+    expect(rendered.result.current.activeTheme).toBe(OXIDE_LEDGER_THEME);
+
+    setDocumentContext(
+      makeDocument({ mode: "light", activeThemeId: "custom:missing" }, [availableCustom]),
+      true,
+    );
+    rendered.rerender();
+    expect(rendered.result.current.activeTheme).toBe(OXIDE_LEDGER_THEME);
+    expect(execute).not.toHaveBeenCalled();
+  });
+});
+
+describe("ThemeProvider previews", () => {
+  it("keeps preview in renderer memory and cancel restores persisted tokens", () => {
+    setDocumentContext(makeDocument({ mode: "light" }));
+    const theme = customTheme();
+    const { result } = renderHook(() => useTheme(), { wrapper });
+
+    act(() => result.current.previewTheme(theme));
+    expect(result.current.activeTheme).toBe(theme);
+    flushFrames();
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe(
+      theme.light.background,
+    );
+    expect(execute).not.toHaveBeenCalled();
+
+    act(() => result.current.cancelPreview());
+    expect(result.current.activeTheme).toBe(OXIDE_LEDGER_THEME);
+    flushFrames();
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe(
+      OXIDE_LEDGER_THEME.light.background,
+    );
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("retains preview when upsert fails and does not attempt activation", async () => {
+    const theme = customTheme();
+    execute.mockResolvedValueOnce(false);
+    const { result } = renderHook(() => useTheme(), { wrapper });
+    act(() => result.current.previewTheme(theme));
+
+    await act(async () => {
+      await expect(result.current.savePreview(theme)).resolves.toBe(false);
+    });
+    expect(execute).toHaveBeenCalledOnce();
+    expect(execute).toHaveBeenCalledWith({
+      type: "appearance.upsertCustomTheme",
+      theme,
+    });
+    expect(result.current.activeTheme).toBe(theme);
+  });
+
+  it("waits for upsert before activation and retains preview if activation fails", async () => {
+    const theme = customTheme();
+    let resolveUpsert: ((value: boolean) => void) | undefined;
+    execute
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveUpsert = resolve;
+          }),
+      )
+      .mockResolvedValueOnce(false);
+    const { result } = renderHook(() => useTheme(), { wrapper });
+    act(() => result.current.previewTheme(theme));
+
+    let saving: Promise<boolean> | undefined;
+    act(() => {
+      saving = result.current.savePreview(theme);
+    });
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(result.current.activeTheme).toBe(theme);
+
+    await act(async () => resolveUpsert?.(true));
+    await expect(saving).resolves.toBe(false);
+    expect(execute.mock.calls).toEqual([
+      [{ type: "appearance.upsertCustomTheme", theme }],
+      [{ type: "appearance.setActiveTheme", themeId: theme.id }],
+    ]);
+    expect(result.current.activeTheme).toBe(theme);
+  });
+
+  it("clears preview only after both save commands succeed", async () => {
+    const theme = customTheme();
+    execute.mockResolvedValue(true);
+    const persistedDocument = makeDocument({ mode: "light" });
+    setDocumentContext(persistedDocument);
+    const { result } = renderHook(() => useTheme(), { wrapper });
+    act(() => result.current.previewTheme(theme));
+
+    await act(async () => {
+      await expect(result.current.savePreview(theme)).resolves.toBe(true);
+    });
+    expect(execute.mock.calls).toEqual([
+      [{ type: "appearance.upsertCustomTheme", theme }],
+      [{ type: "appearance.setActiveTheme", themeId: theme.id }],
+    ]);
+    expect(result.current.activeTheme).toBe(OXIDE_LEDGER_THEME);
+    expect(persistedDocument.appearance.activeThemeId).toBe(
+      OXIDE_LEDGER_THEME.id,
+    );
+    expect(persistedDocument.customThemes).toEqual([]);
+  });
+});

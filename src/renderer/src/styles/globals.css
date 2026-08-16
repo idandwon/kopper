@@ -29,66 +29,9 @@
   --font-mono: "SF Mono", "SFMono-Regular", Menlo, Monaco, Consolas, monospace;
 }
 
-:root {
-  --radius: 0.75rem;
-  --background: #F6F9F6;
-  --foreground: #173D35;
-  --card: #F6F9F6;
-  --card-foreground: #173D35;
-  --popover: #F6F9F6;
-  --popover-foreground: #173D35;
-  --primary: #173D35;
-  --primary-foreground: #F6F9F6;
-  --secondary: #C7D9D5;
-  --secondary-foreground: #173D35;
-  --muted: #C7D9D5;
-  --muted-foreground: #173D35;
-  --accent: #C7D9D5;
-  --accent-foreground: #173D35;
-  --destructive: #B86138;
-  --destructive-foreground: #F6F9F6;
-  --border: #C7D9D5;
-  --input: #C7D9D5;
-  --ring: #2E8775;
-  --capture: #B86138;
-  --completed: #2E8775;
-}
-
-.dark {
-  --background: #173D35;
-  --foreground: #F6F9F6;
-  --card: #173D35;
-  --card-foreground: #F6F9F6;
-  --popover: #173D35;
-  --popover-foreground: #F6F9F6;
-  --primary: #F6F9F6;
-  --primary-foreground: #173D35;
-  --secondary: #2E8775;
-  --secondary-foreground: #F6F9F6;
-  --muted: #2E8775;
-  --muted-foreground: #F6F9F6;
-  --accent: #2E8775;
-  --accent-foreground: #F6F9F6;
-  --destructive: #B86138;
-  --destructive-foreground: #F6F9F6;
-  --border: #2E8775;
-  --input: #2E8775;
-  --ring: #C7D9D5;
-  --capture: #B86138;
-  --completed: #2E8775;
-}
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
-  }
-
-  html {
-    color-scheme: light;
-  }
-
-  html.dark {
-    color-scheme: dark;
   }
 
   body {
