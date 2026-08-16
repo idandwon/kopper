@@ -6,6 +6,7 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
+    "postinstall": "install-electron",
     "build": "pnpm typecheck && electron-vite build",
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
@@ -15,6 +16,15 @@
     "package:dmg": "pnpm build && electron-builder --mac dmg"
   },
   "packageManager": "pnpm@10.15.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild"
+    ],
+    "ignoredBuiltDependencies": [
+      "electron-winstaller"
+    ]
+  },
   "dependencies": {
     "electron": "^43.4.0",
     "react": "^19.2.8",
