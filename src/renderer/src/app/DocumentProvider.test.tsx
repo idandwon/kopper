@@ -74,6 +74,7 @@ function fileApiMocks(): Pick<
   | "getNativeAppearance"
   | "onNativeAppearanceChanged"
   | "getAccessibilityPermission"
+  | "getAccessibilitySession"
   | "openAccessibilitySettings"
   | "continueWithoutCapture"
   | "onAccessibilityPermissionChanged"
@@ -91,6 +92,7 @@ function fileApiMocks(): Pick<
     getNativeAppearance: vi.fn(),
     onNativeAppearanceChanged: vi.fn(() => vi.fn()),
     getAccessibilityPermission: vi.fn(),
+    getAccessibilitySession: vi.fn(),
     openAccessibilitySettings: vi.fn(),
     continueWithoutCapture: vi.fn(),
     onAccessibilityPermissionChanged: vi.fn(() => vi.fn()),

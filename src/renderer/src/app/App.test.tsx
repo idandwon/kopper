@@ -19,30 +19,29 @@ import {
 
 const onboardingMock = vi.hoisted(() => ({
   mode: "grant" as "grant" | "hold",
+  mounts: 0,
 }));
 
 vi.mock("./DocumentProvider", () => ({ useKopperDocument: vi.fn() }));
-vi.mock("../features/onboarding/AccessibilityOnboarding", async () => {
-  const { useEffect } = await import("react");
+vi.mock("../features/onboarding/AccessibilityPermissionGate", async () => {
+  const { useState } = await import("react");
   return {
-    AccessibilityOnboarding: ({
-      onGranted,
-      onContinueWithoutCapture,
+    AccessibilityPermissionGate: ({
+      renderPanel,
     }: {
-      onGranted(): void;
-      onContinueWithoutCapture(): void;
+      renderPanel(captureUnavailable: boolean): React.ReactNode;
     }) => {
-      useEffect(() => {
-        if (onboardingMock.mode === "grant") onGranted();
-      }, [onGranted]);
-      if (onboardingMock.mode === "grant") return null;
+      onboardingMock.mounts += 1;
+      const [continued, setContinued] = useState(false);
+      if (onboardingMock.mode === "grant") return renderPanel(false);
+      if (continued) return renderPanel(true);
       return (
         <div>
           <h1>Accessibility onboarding</h1>
-          <button type="button" onClick={onGranted}>
+          <button type="button" onClick={() => setContinued(false)}>
             Grant mock access
           </button>
-          <button type="button" onClick={onContinueWithoutCapture}>
+          <button type="button" onClick={() => setContinued(true)}>
             Continue mock without capture
           </button>
         </div>
@@ -129,6 +128,7 @@ function contextValue(
 beforeEach(() => {
   globalThis.location.hash = "";
   onboardingMock.mode = "grant";
+  onboardingMock.mounts = 0;
   HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
   HTMLElement.prototype.releasePointerCapture = vi.fn();
   execute.mockReset().mockResolvedValue(true);
@@ -177,6 +177,7 @@ describe("Oxide Ledger App", () => {
     expect(
       screen.getByRole("heading", { name: "Kopper needs recovery" }),
     ).toBeVisible();
+    expect(onboardingMock.mounts).toBe(2);
   });
 
   it("lets expanded editor windows bypass capture onboarding", () => {
@@ -188,6 +189,7 @@ describe("Oxide Ledger App", () => {
       screen.queryByRole("heading", { name: "Accessibility onboarding" }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Edit note" })).toBeVisible();
+    expect(onboardingMock.mounts).toBe(0);
   });
 
   it("renders the interactive active panel and lifecycle rail", () => {

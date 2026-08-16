@@ -31,6 +31,7 @@ export const IPC_CHANNELS = {
   getNativeAppearance: "kopper:appearance:native:get",
   nativeAppearanceChanged: "kopper:appearance:native:changed",
   getAccessibilityPermission: "kopper:permission:get",
+  getAccessibilitySession: "kopper:permission:session:get",
   openAccessibilitySettings: "kopper:permission:settings:open",
   continueWithoutCapture: "kopper:onboarding:continue-without-capture",
   accessibilityPermissionChanged: "kopper:permission:changed",
@@ -248,6 +249,20 @@ export const PermissionResultSchema: z.ZodType<
   z.strictObject({ ok: z.literal(false), error: KopperErrorSchema }),
 ]);
 
+export interface AccessibilitySessionState {
+  continuedWithoutCapture: boolean;
+}
+
+export const AccessibilitySessionResultSchema: z.ZodType<
+  Result<AccessibilitySessionState, KopperError>
+> = z.discriminatedUnion("ok", [
+  z.strictObject({
+    ok: z.literal(true),
+    value: z.strictObject({ continuedWithoutCapture: z.boolean() }),
+  }),
+  z.strictObject({ ok: z.literal(false), error: KopperErrorSchema }),
+]);
+
 export interface PermissionActionSuccess {
   acknowledged: true;
 }
@@ -297,6 +312,9 @@ export interface KopperApi {
   getAccessibilityPermission(
     prompt: boolean,
   ): Promise<Result<PermissionState, KopperError>>;
+  getAccessibilitySession(): Promise<
+    Result<AccessibilitySessionState, KopperError>
+  >;
   openAccessibilitySettings(): Promise<
     Result<PermissionActionSuccess, KopperError>
   >;

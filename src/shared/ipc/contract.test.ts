@@ -4,6 +4,7 @@ import type { DocumentCommand } from "../domain/commands";
 import { createEmptyDocument } from "../domain/document";
 import { OXIDE_LEDGER_THEME } from "../theme/presets";
 import {
+  AccessibilitySessionResultSchema,
   ClipboardCopyResultSchema,
   CopyNotesArgumentsSchema,
   DataImportPreviewResultSchema,
@@ -124,10 +125,23 @@ describe("IPC contract", () => {
         value: { acknowledged: true, permission: "granted" },
       }),
     ).toThrow();
+    expect(
+      AccessibilitySessionResultSchema.parse({
+        ok: true,
+        value: { continuedWithoutCapture: true },
+      }),
+    ).toEqual({ ok: true, value: { continuedWithoutCapture: true } });
+    expect(() =>
+      AccessibilitySessionResultSchema.parse({
+        ok: true,
+        value: { continuedWithoutCapture: true, persisted: true },
+      }),
+    ).toThrow();
 
     expectTypeOf<KopperApi["getAccessibilityPermission"]>().toBeCallableWith(
       false,
     );
+    expectTypeOf<KopperApi["getAccessibilitySession"]>().toBeCallableWith();
     expectTypeOf<KopperApi["continueWithoutCapture"]>().toBeCallableWith();
   });
 

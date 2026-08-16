@@ -1,68 +1,62 @@
 import "@testing-library/jest-dom/vitest";
 
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { KopperApi } from "../../../../shared/ipc/contract";
-import { AccessibilityOnboarding } from "./AccessibilityOnboarding";
+import {
+  AccessibilityOnboarding,
+  type AccessibilityOnboardingProps,
+} from "./AccessibilityOnboarding";
 
-const getAccessibilityPermission =
-  vi.fn<KopperApi["getAccessibilityPermission"]>();
-const openAccessibilitySettings =
-  vi.fn<KopperApi["openAccessibilitySettings"]>();
-const continueWithoutCapture = vi.fn<KopperApi["continueWithoutCapture"]>();
-const unsubscribe = vi.fn();
-let permissionListener:
-  | Parameters<KopperApi["onAccessibilityPermissionChanged"]>[0]
-  | undefined;
+const checkPermission = vi.fn<AccessibilityOnboardingProps["checkPermission"]>();
+const openSettings = vi.fn<AccessibilityOnboardingProps["openSettings"]>();
+const continueWithoutCapture =
+  vi.fn<AccessibilityOnboardingProps["continueWithoutCapture"]>();
+
+function setVisibility(state: DocumentVisibilityState) {
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: state,
+  });
+  fireEvent(document, new Event("visibilitychange"));
+}
+
+function onboarding(
+  overrides: Partial<AccessibilityOnboardingProps> = {},
+) {
+  return (
+    <AccessibilityOnboarding
+      permission="unknown"
+      operationError={null}
+      initialCheckComplete
+      permissionEventVersion={0}
+      checkPermission={checkPermission}
+      openSettings={openSettings}
+      continueWithoutCapture={continueWithoutCapture}
+      {...overrides}
+    />
+  );
+}
 
 beforeEach(() => {
-  getAccessibilityPermission.mockReset().mockResolvedValue({
-    ok: true,
-    value: "unknown",
+  checkPermission.mockReset().mockResolvedValue(undefined);
+  openSettings.mockReset().mockResolvedValue(undefined);
+  continueWithoutCapture.mockReset().mockResolvedValue(true);
+  Object.defineProperty(document, "visibilityState", {
+    configurable: true,
+    value: "visible",
   });
-  openAccessibilitySettings.mockReset().mockResolvedValue({
-    ok: true,
-    value: { acknowledged: true },
-  });
-  continueWithoutCapture.mockReset().mockResolvedValue({
-    ok: true,
-    value: { acknowledged: true },
-  });
-  unsubscribe.mockReset();
-  permissionListener = undefined;
-  window.kopper = {
-    getAccessibilityPermission,
-    openAccessibilitySettings,
-    continueWithoutCapture,
-    onAccessibilityPermissionChanged: vi.fn((listener) => {
-      permissionListener = listener;
-      return unsubscribe;
-    }),
-  } as unknown as KopperApi;
 });
 
 afterEach(() => {
-  vi.useRealTimers();
   cleanup();
+  vi.useRealTimers();
 });
 
 describe("AccessibilityOnboarding", () => {
-  it("uses explicit privacy copy and offers every onboarding action", async () => {
-    render(
-      <AccessibilityOnboarding
-        onGranted={vi.fn()}
-        onContinueWithoutCapture={vi.fn()}
-      />,
-    );
+  it("uses explicit privacy copy and offers every onboarding action", () => {
+    render(onboarding());
 
     expect(
       screen.getByText(
@@ -74,9 +68,7 @@ describe("AccessibilityOnboarding", () => {
         "Kopper reads a selection only after you use your configured capture shortcut.",
       ),
     ).toBeVisible();
-    expect(
-      screen.getByRole("button", { name: "Enable Capture" }),
-    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Enable Capture" })).toBeVisible();
     expect(
       screen.getByRole("button", { name: "Open System Settings" }),
     ).toBeVisible();
@@ -84,201 +76,87 @@ describe("AccessibilityOnboarding", () => {
     expect(
       screen.getByRole("button", { name: "Continue without capture" }),
     ).toBeVisible();
-    await waitFor(() =>
-      expect(getAccessibilityPermission).toHaveBeenCalledExactlyOnceWith(false),
-    );
   });
 
-  it("prompts only from Enable Capture and announces denial", async () => {
-    getAccessibilityPermission
-      .mockResolvedValueOnce({ ok: true, value: "unknown" })
-      .mockResolvedValueOnce({ ok: true, value: "denied" })
-      .mockResolvedValueOnce({ ok: true, value: "denied" });
-    render(
-      <AccessibilityOnboarding
-        onGranted={vi.fn()}
-        onContinueWithoutCapture={vi.fn()}
-      />,
-    );
-    await waitFor(() =>
-      expect(getAccessibilityPermission).toHaveBeenCalledWith(false),
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "Enable Capture" }));
-    await waitFor(() =>
-      expect(getAccessibilityPermission).toHaveBeenLastCalledWith(true),
-    );
+  it("uses prompt only for Enable Capture and announces denial", async () => {
+    const view = render(onboarding({ permission: "denied" }));
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Accessibility access is not enabled.",
     );
 
+    fireEvent.click(screen.getByRole("button", { name: "Enable Capture" }));
+    await waitFor(() => expect(checkPermission).toHaveBeenCalledWith(true));
     fireEvent.click(screen.getByRole("button", { name: "Check again" }));
-    await waitFor(() =>
-      expect(getAccessibilityPermission).toHaveBeenLastCalledWith(false),
-    );
+    await waitFor(() => expect(checkPermission).toHaveBeenLastCalledWith(false));
     fireEvent.click(
       screen.getByRole("button", { name: "Open System Settings" }),
     );
-    await waitFor(() =>
-      expect(openAccessibilitySettings).toHaveBeenCalledOnce(),
-    );
+    await waitFor(() => expect(openSettings).toHaveBeenCalledOnce());
+    view.rerender(onboarding({ permission: "restricted" }));
+    expect(screen.getByRole("button", { name: "Enable Capture" })).toBeDisabled();
   });
 
-  it("settles an in-flight action when a permission event arrives first", async () => {
-    let resolvePrompt: ((value: Awaited<ReturnType<KopperApi["getAccessibilityPermission"]>>) => void) | undefined;
-    getAccessibilityPermission
-      .mockResolvedValueOnce({ ok: true, value: "unknown" })
-      .mockReturnValueOnce(
-        new Promise((resolve) => {
-          resolvePrompt = resolve;
-        }),
-      );
-    render(
-      <AccessibilityOnboarding
-        onGranted={vi.fn()}
-        onContinueWithoutCapture={vi.fn()}
-      />,
-    );
-    await waitFor(() => expect(getAccessibilityPermission).toHaveBeenCalledOnce());
-    fireEvent.click(screen.getByRole("button", { name: "Enable Capture" }));
-    expect(screen.getByRole("button", { name: "Enable Capture" })).toBeDisabled();
+  it("does not check while hidden and resumes with one immediate passive check before polling", async () => {
+    vi.useFakeTimers();
+    const intervalSpy = vi.spyOn(window, "setInterval");
+    const clearIntervalSpy = vi.spyOn(window, "clearInterval");
+    const view = render(onboarding());
+    expect(intervalSpy).toHaveBeenCalledOnce();
+    expect(intervalSpy.mock.calls.length - clearIntervalSpy.mock.calls.length).toBe(1);
 
-    act(() => permissionListener?.("denied"));
-    expect(screen.getByRole("button", { name: "Enable Capture" })).toBeEnabled();
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "Accessibility access is not enabled.",
-    );
+    act(() => setVisibility("hidden"));
+    expect(intervalSpy.mock.calls.length - clearIntervalSpy.mock.calls.length).toBe(0);
+    await act(async () => vi.advanceTimersByTimeAsync(2_250));
+    expect(checkPermission).not.toHaveBeenCalled();
+
     await act(async () => {
-      resolvePrompt?.({ ok: true, value: "denied" });
+      setVisibility("visible");
       await Promise.resolve();
     });
+    expect(checkPermission).toHaveBeenCalledExactlyOnceWith(false);
+    expect(intervalSpy.mock.calls.length - clearIntervalSpy.mock.calls.length).toBe(1);
+
+    await act(async () => vi.advanceTimersByTimeAsync(750));
+    expect(checkPermission).toHaveBeenCalledTimes(2);
+    expect(checkPermission).toHaveBeenLastCalledWith(false);
+
+    view.rerender(onboarding({ permission: "granted" }));
+    expect(intervalSpy.mock.calls.length - clearIntervalSpy.mock.calls.length).toBe(0);
   });
 
-  it("polls passively every 750 ms only while visible and stops on grant", async () => {
+  it("keeps exactly one poll timer through StrictMode replay and clears it on unmount", () => {
     vi.useFakeTimers();
-    const onGranted = vi.fn();
-    getAccessibilityPermission
-      .mockResolvedValueOnce({ ok: true, value: "unknown" })
-      .mockResolvedValueOnce({ ok: true, value: "granted" });
-    render(
-      <AccessibilityOnboarding
-        onGranted={onGranted}
-        onContinueWithoutCapture={vi.fn()}
-      />,
+    const intervalSpy = vi.spyOn(window, "setInterval");
+    const clearIntervalSpy = vi.spyOn(window, "clearInterval");
+    const view = render(<StrictMode>{onboarding()}</StrictMode>);
+    expect(intervalSpy.mock.calls.length - clearIntervalSpy.mock.calls.length).toBe(1);
+    view.unmount();
+    expect(intervalSpy.mock.calls.length - clearIntervalSpy.mock.calls.length).toBe(0);
+  });
+
+  it("stops polling after continue is acknowledged", async () => {
+    vi.useFakeTimers();
+    const intervalSpy = vi.spyOn(window, "setInterval");
+    const clearIntervalSpy = vi.spyOn(window, "clearInterval");
+    render(onboarding());
+    expect(intervalSpy.mock.calls.length - clearIntervalSpy.mock.calls.length).toBe(1);
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Continue without capture" }),
     );
     await act(async () => Promise.resolve());
-    expect(getAccessibilityPermission).toHaveBeenCalledTimes(1);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(749);
-    });
-    expect(getAccessibilityPermission).toHaveBeenCalledTimes(1);
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(1);
-    });
-    expect(getAccessibilityPermission).toHaveBeenNthCalledWith(2, false);
-    expect(onGranted).toHaveBeenCalledOnce();
-    expect(vi.getTimerCount()).toBe(0);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2_250);
-    });
-    expect(getAccessibilityPermission).toHaveBeenCalledTimes(2);
+    expect(continueWithoutCapture).toHaveBeenCalledOnce();
+    expect(intervalSpy.mock.calls.length - clearIntervalSpy.mock.calls.length).toBe(0);
   });
 
-  it("dismisses only after main acknowledges the session intent", async () => {
-    const onContinue = vi.fn();
-    continueWithoutCapture
-      .mockResolvedValueOnce({
-        ok: false,
-        error: {
-          code: "write_failed",
-          message: "Kopper could not continue without capture.",
-          retryable: true,
-        },
-      })
-      .mockResolvedValueOnce({ ok: true, value: { acknowledged: true } });
+  it("renders fixed operation errors supplied by the gate", () => {
     render(
-      <AccessibilityOnboarding
-        onGranted={vi.fn()}
-        onContinueWithoutCapture={onContinue}
-      />,
-    );
-    await waitFor(() => expect(getAccessibilityPermission).toHaveBeenCalled());
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Continue without capture" }),
-    );
-    await waitFor(() => expect(screen.getByRole("alert")).toBeVisible());
-    expect(onContinue).not.toHaveBeenCalled();
-
-    fireEvent.click(
-      screen.getByRole("button", { name: "Continue without capture" }),
-    );
-    await waitFor(() => expect(onContinue).toHaveBeenCalledOnce());
-    expect(continueWithoutCapture).toHaveBeenCalledTimes(2);
-  });
-
-  it("responds to validated permission events and unsubscribes on unmount", async () => {
-    const onGranted = vi.fn();
-    const view = render(
-      <AccessibilityOnboarding
-        onGranted={onGranted}
-        onContinueWithoutCapture={vi.fn()}
-      />,
-    );
-    await waitFor(() => expect(permissionListener).toBeDefined());
-
-    act(() => permissionListener?.("granted"));
-    expect(onGranted).toHaveBeenCalledOnce();
-    view.unmount();
-    expect(unsubscribe).toHaveBeenCalledOnce();
-  });
-
-  it("remains responsive through StrictMode effect replay", async () => {
-    const onGranted = vi.fn();
-    render(
-      <StrictMode>
-        <AccessibilityOnboarding
-          onGranted={onGranted}
-          onContinueWithoutCapture={vi.fn()}
-        />
-      </StrictMode>,
-    );
-    await waitFor(() => expect(permissionListener).toBeDefined());
-
-    act(() => permissionListener?.("granted"));
-    expect(onGranted).toHaveBeenCalledOnce();
-  });
-
-  it("does not update or poll after unmount", async () => {
-    vi.useFakeTimers();
-    let resolveCheck:
-      | ((
-          value: Awaited<ReturnType<KopperApi["getAccessibilityPermission"]>>,
-        ) => void)
-      | undefined;
-    getAccessibilityPermission.mockReturnValueOnce(
-      new Promise((resolve) => {
-        resolveCheck = resolve;
+      onboarding({
+        operationError: "Kopper could not check Accessibility access.",
       }),
     );
-    const onGranted = vi.fn();
-    const view = render(
-      <AccessibilityOnboarding
-        onGranted={onGranted}
-        onContinueWithoutCapture={vi.fn()}
-      />,
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Kopper could not check Accessibility access.",
     );
-    view.unmount();
-
-    await act(async () => {
-      resolveCheck?.({ ok: true, value: "granted" });
-      await Promise.resolve();
-      await vi.advanceTimersByTimeAsync(1_500);
-    });
-    expect(onGranted).not.toHaveBeenCalled();
-    expect(getAccessibilityPermission).toHaveBeenCalledTimes(1);
-    expect(unsubscribe).toHaveBeenCalledOnce();
   });
 });

@@ -405,6 +405,9 @@ describe("registerIpcHandlers", () => {
     const openSettings = vi.fn(async () => undefined);
     const publishPermission = vi.fn();
     const continueWithoutCapture = vi.fn();
+    const getAccessibilitySession = vi.fn(() => ({
+      continuedWithoutCapture: true,
+    }));
     const ipcMain = new FakeIpcMain();
     registerIpcHandlers(
       repository,
@@ -414,6 +417,7 @@ describe("registerIpcHandlers", () => {
       {
         permissionManager: { check, openSettings },
         publishPermission,
+        getAccessibilitySession,
         continueWithoutCapture,
       },
     );
@@ -433,6 +437,13 @@ describe("registerIpcHandlers", () => {
     expect(check.mock.calls).toEqual([[false], [false], [true], [false]]);
 
     await expect(
+      ipcMain.invoke(IPC_CHANNELS.getAccessibilitySession),
+    ).resolves.toEqual({
+      ok: true,
+      value: { continuedWithoutCapture: true },
+    });
+    expect(getAccessibilitySession).toHaveBeenCalledOnce();
+    await expect(
       ipcMain.invoke(IPC_CHANNELS.openAccessibilitySettings),
     ).resolves.toEqual({ ok: true, value: { acknowledged: true } });
     expect(openSettings).toHaveBeenCalledOnce();
@@ -444,6 +455,7 @@ describe("registerIpcHandlers", () => {
     for (const [channel, args] of [
       [IPC_CHANNELS.getAccessibilityPermission, []],
       [IPC_CHANNELS.getAccessibilityPermission, ["false"]],
+      [IPC_CHANNELS.getAccessibilitySession, ["unexpected"]],
       [IPC_CHANNELS.openAccessibilitySettings, ["unexpected"]],
       [IPC_CHANNELS.continueWithoutCapture, ["unexpected"]],
     ] as const) {
@@ -472,6 +484,9 @@ describe("registerIpcHandlers", () => {
             throw new Error("x-apple.systempreferences:private-detail");
           }),
         },
+        getAccessibilitySession: vi.fn(() => {
+          throw new Error("secret session state");
+        }),
         continueWithoutCapture: vi.fn(() => {
           throw new Error("private session detail");
         }),
@@ -480,6 +495,7 @@ describe("registerIpcHandlers", () => {
 
     for (const [channel, args] of [
       [IPC_CHANNELS.getAccessibilityPermission, [false]],
+      [IPC_CHANNELS.getAccessibilitySession, []],
       [IPC_CHANNELS.openAccessibilitySettings, []],
       [IPC_CHANNELS.continueWithoutCapture, []],
     ] as const) {

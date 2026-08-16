@@ -11,6 +11,7 @@ import type {
 } from "../../shared/domain/document";
 import type { KopperError, Result } from "../../shared/domain/errors";
 import {
+  AccessibilitySessionResultSchema,
   CopyNotesArgumentsSchema,
   DataImportPreviewResultSchema,
   DataPathResultSchema,
@@ -78,6 +79,7 @@ export interface IpcServices {
   openEditorWindow?(noteId: string): void;
   publish?(document: KopperDocument): void;
   publishPermission?(state: PermissionState): void;
+  getAccessibilitySession?(): { continuedWithoutCapture: boolean };
   continueWithoutCapture?(): void | Promise<void>;
 }
 
@@ -369,6 +371,36 @@ export function registerIpcHandlers(
     }
   };
 
+  const getAccessibilitySession = (
+    _event: IpcMainInvokeEvent,
+    ...args: unknown[]
+  ) => {
+    if (
+      !NoArgumentsSchema.safeParse(args).success ||
+      services.getAccessibilitySession === undefined
+    ) {
+      return AccessibilitySessionResultSchema.parse(
+        unavailable("The capture setup state request was invalid."),
+      );
+    }
+
+    try {
+      return AccessibilitySessionResultSchema.parse({
+        ok: true,
+        value: services.getAccessibilitySession(),
+      });
+    } catch {
+      return AccessibilitySessionResultSchema.parse({
+        ok: false,
+        error: {
+          code: "read_failed",
+          message: "Kopper could not load the capture setup state.",
+          retryable: true,
+        },
+      });
+    }
+  };
+
   const openAccessibilitySettings = async (
     _event: IpcMainInvokeEvent,
     ...args: unknown[]
@@ -448,6 +480,7 @@ export function registerIpcHandlers(
     [IPC_CHANNELS.exportTheme, exportTheme],
     [IPC_CHANNELS.getNativeAppearance, getNativeAppearance],
     [IPC_CHANNELS.getAccessibilityPermission, getAccessibilityPermission],
+    [IPC_CHANNELS.getAccessibilitySession, getAccessibilitySession],
     [IPC_CHANNELS.openAccessibilitySettings, openAccessibilitySettings],
     [IPC_CHANNELS.continueWithoutCapture, continueWithoutCapture],
   ] as const;

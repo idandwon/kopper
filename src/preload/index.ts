@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import { DocumentCommandSchema } from "../shared/domain/commands";
 import { KopperDocumentSchema } from "../shared/domain/document";
 import {
+  AccessibilitySessionResultSchema,
   CopyNotesArgumentsSchema,
   DataImportPreviewResultSchema,
   DataPathResultSchema,
@@ -122,6 +123,12 @@ const api: KopperApi = {
         IPC_CHANNELS.getAccessibilityPermission,
         parsedPrompt,
       ),
+    );
+  },
+
+  async getAccessibilitySession() {
+    return AccessibilitySessionResultSchema.parse(
+      await ipcRenderer.invoke(IPC_CHANNELS.getAccessibilitySession),
     );
   },
 

@@ -4,25 +4,34 @@ import type { PermissionState } from "../../../../shared/permissions/permissionS
 import { Button } from "../../components/ui/button";
 
 export interface AccessibilityOnboardingProps {
-  onGranted(): void;
-  onContinueWithoutCapture(): void;
+  permission: PermissionState | null;
+  operationError: string | null;
+  initialCheckComplete: boolean;
+  permissionEventVersion: number;
+  checkPermission(prompt: boolean): Promise<void>;
+  openSettings(): Promise<void>;
+  continueWithoutCapture(): Promise<boolean>;
 }
 
 type PendingAction = "check" | "open-settings" | "continue" | null;
 
 export function AccessibilityOnboarding({
-  onGranted,
-  onContinueWithoutCapture,
+  permission,
+  operationError,
+  initialCheckComplete,
+  permissionEventVersion,
+  checkPermission,
+  openSettings,
+  continueWithoutCapture,
 }: AccessibilityOnboardingProps) {
-  const [permission, setPermission] = useState<PermissionState | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
-  const [operationError, setOperationError] = useState<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const mountedRef = useRef(false);
   const completedRef = useRef(false);
-  const checkPendingRef = useRef(false);
-  const requestIdRef = useRef(0);
+  const permissionRef = useRef(permission);
   const pollRef = useRef<number | null>(null);
+
+  permissionRef.current = permission;
 
   const stopPolling = useCallback(() => {
     if (pollRef.current === null) return;
@@ -30,105 +39,88 @@ export function AccessibilityOnboarding({
     pollRef.current = null;
   }, []);
 
-  const applyPermission = useCallback(
-    (state: PermissionState, requestId?: number) => {
-      if (
-        !mountedRef.current ||
-        completedRef.current ||
-        (requestId !== undefined && requestId !== requestIdRef.current)
-      ) {
-        return;
-      }
-      setPermission(state);
-      if (state === "granted") {
-        completedRef.current = true;
+  const startPolling = useCallback(() => {
+    stopPolling();
+    if (
+      !mountedRef.current ||
+      completedRef.current ||
+      document.visibilityState !== "visible" ||
+      permissionRef.current === "granted"
+    ) {
+      return;
+    }
+    pollRef.current = window.setInterval(() => {
+      if (document.visibilityState !== "visible") {
         stopPolling();
-        onGranted();
-      }
-    },
-    [onGranted, stopPolling],
-  );
-
-  const checkPermission = useCallback(
-    async (prompt: boolean, interactive: boolean) => {
-      if (completedRef.current || (!interactive && checkPendingRef.current)) {
         return;
       }
-      const requestId = ++requestIdRef.current;
-      checkPendingRef.current = true;
-      if (interactive && mountedRef.current) {
-        setPendingAction("check");
-        setOperationError(null);
-      }
+      void checkPermission(false);
+    }, 750);
+  }, [checkPermission, stopPolling]);
 
-      try {
-        const result = await window.kopper.getAccessibilityPermission(prompt);
-        if (!mountedRef.current || requestId !== requestIdRef.current) return;
-        if (result.ok) {
-          applyPermission(result.value, requestId);
-        } else {
-          setOperationError(result.error.message);
-        }
-      } finally {
-        if (requestId === requestIdRef.current) {
-          checkPendingRef.current = false;
-          if (mountedRef.current && interactive) setPendingAction(null);
-        }
-      }
-    },
-    [applyPermission],
-  );
+  useEffect(() => {
+    setPendingAction((current) => (current === "check" ? null : current));
+  }, [permissionEventVersion]);
 
   useEffect(() => {
     mountedRef.current = true;
-    completedRef.current = false;
-    checkPendingRef.current = false;
+    completedRef.current = permission === "granted";
     headingRef.current?.focus();
-    void checkPermission(false, false);
-    pollRef.current = window.setInterval(() => {
-      void checkPermission(false, false);
-    }, 750);
-    const unsubscribe = window.kopper.onAccessibilityPermissionChanged(
-      (state) => {
-        requestIdRef.current += 1;
-        checkPendingRef.current = false;
-        setPendingAction(null);
-        applyPermission(state);
-      },
-    );
+
+    const handleVisibilityChange = () => {
+      stopPolling();
+      if (
+        document.visibilityState !== "visible" ||
+        completedRef.current ||
+        permissionRef.current === "granted"
+      ) {
+        return;
+      }
+      void checkPermission(false).finally(() => {
+        if (
+          mountedRef.current &&
+          !completedRef.current &&
+          document.visibilityState === "visible" &&
+          permissionRef.current !== "granted"
+        ) {
+          startPolling();
+        }
+      });
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    if (initialCheckComplete) startPolling();
 
     return () => {
       mountedRef.current = false;
       completedRef.current = true;
-      requestIdRef.current += 1;
       stopPolling();
-      unsubscribe();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [applyPermission, checkPermission, stopPolling]);
+  }, [checkPermission, initialCheckComplete, permission, startPolling, stopPolling]);
 
-  const openSettings = async () => {
-    setPendingAction("open-settings");
-    setOperationError(null);
-    const result = await window.kopper.openAccessibilitySettings();
-    if (!mountedRef.current || completedRef.current) return;
-    if (!result.ok) setOperationError(result.error.message);
-    setPendingAction(null);
+  const runAction = async (
+    action: Exclude<PendingAction, null>,
+    operation: () => Promise<void>,
+  ) => {
+    setPendingAction(action);
+    try {
+      await operation();
+    } finally {
+      if (mountedRef.current && !completedRef.current) setPendingAction(null);
+    }
   };
 
-  const continueWithoutCapture = async () => {
+  const handleContinue = async () => {
     setPendingAction("continue");
-    setOperationError(null);
-    const result = await window.kopper.continueWithoutCapture();
-    if (!mountedRef.current || completedRef.current) return;
-    if (!result.ok) {
-      setOperationError(result.error.message);
-      setPendingAction(null);
-      return;
+    try {
+      if (await continueWithoutCapture()) {
+        completedRef.current = true;
+        stopPolling();
+      }
+    } finally {
+      if (mountedRef.current && !completedRef.current) setPendingAction(null);
     }
-    completedRef.current = true;
-    requestIdRef.current += 1;
-    stopPolling();
-    onContinueWithoutCapture();
   };
 
   const restricted = permission === "restricted";
@@ -202,7 +194,9 @@ export function AccessibilityOnboarding({
           <Button
             type="button"
             disabled={busy || restricted}
-            onClick={() => void checkPermission(true, true)}
+            onClick={() =>
+              void runAction("check", () => checkPermission(true))
+            }
           >
             Enable Capture
           </Button>
@@ -211,7 +205,9 @@ export function AccessibilityOnboarding({
               type="button"
               variant="outline"
               disabled={busy || restricted}
-              onClick={() => void openSettings()}
+              onClick={() =>
+                void runAction("open-settings", openSettings)
+              }
             >
               Open System Settings
             </Button>
@@ -219,7 +215,9 @@ export function AccessibilityOnboarding({
               type="button"
               variant="outline"
               disabled={busy}
-              onClick={() => void checkPermission(false, true)}
+              onClick={() =>
+                void runAction("check", () => checkPermission(false))
+              }
             >
               Check again
             </Button>
@@ -228,7 +226,7 @@ export function AccessibilityOnboarding({
             type="button"
             variant="ghost"
             disabled={busy}
-            onClick={() => void continueWithoutCapture()}
+            onClick={() => void handleContinue()}
           >
             Continue without capture
           </Button>

@@ -81,6 +81,9 @@ void app.whenReady().then(async () => {
       publishPermission: (state) => {
         publishPermissionState(BrowserWindow.getAllWindows(), state);
       },
+      getAccessibilitySession: () => ({
+        continuedWithoutCapture: onboardingSession.continuedWithoutCapture,
+      }),
       continueWithoutCapture: () => {
         onboardingSession.continuedWithoutCapture = true;
       },

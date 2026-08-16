@@ -51,6 +51,7 @@ describe("preload bridge", () => {
       "exportRecoveryBytes",
       "exportTheme",
       "getAccessibilityPermission",
+      "getAccessibilitySession",
       "getDataPath",
       "getDocument",
       "getNativeAppearance",
@@ -273,6 +274,10 @@ describe("preload bridge", () => {
     electron.invoke
       .mockResolvedValueOnce({ ok: true, value: "unknown" })
       .mockResolvedValueOnce({ ok: true, value: "denied" })
+      .mockResolvedValueOnce({
+        ok: true,
+        value: { continuedWithoutCapture: false },
+      })
       .mockResolvedValueOnce({ ok: true, value: { acknowledged: true } })
       .mockResolvedValueOnce({ ok: true, value: { acknowledged: true } });
 
@@ -282,6 +287,10 @@ describe("preload bridge", () => {
     await expect(
       exposedApi().getAccessibilityPermission(true),
     ).resolves.toEqual({ ok: true, value: "denied" });
+    await expect(exposedApi().getAccessibilitySession()).resolves.toEqual({
+      ok: true,
+      value: { continuedWithoutCapture: false },
+    });
     await expect(exposedApi().openAccessibilitySettings()).resolves.toEqual({
       ok: true,
       value: { acknowledged: true },
@@ -293,6 +302,7 @@ describe("preload bridge", () => {
     expect(electron.invoke.mock.calls).toEqual([
       [IPC_CHANNELS.getAccessibilityPermission, false],
       [IPC_CHANNELS.getAccessibilityPermission, true],
+      [IPC_CHANNELS.getAccessibilitySession],
       [IPC_CHANNELS.openAccessibilitySettings],
       [IPC_CHANNELS.continueWithoutCapture],
     ]);
@@ -304,6 +314,8 @@ describe("preload bridge", () => {
     await expect(
       exposedApi().getAccessibilityPermission(false),
     ).rejects.toThrow();
+    electron.invoke.mockResolvedValueOnce({ ok: true, value: {} });
+    await expect(exposedApi().getAccessibilitySession()).rejects.toThrow();
     electron.invoke.mockResolvedValueOnce({ ok: true, value: {} });
     await expect(exposedApi().openAccessibilitySettings()).rejects.toThrow();
   });
