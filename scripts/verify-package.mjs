@@ -101,9 +101,14 @@ function hasRequiredArchitectures(architectures) {
 
 function remoteScriptSource(content) {
   return (
-    /<script\b[^>]*\bsrc\s*=\s*["']https?:\/\//iu.test(content) ||
-    /\bimportScripts\s*\(\s*["']https?:\/\//u.test(content) ||
-    /\bimport\s*\(\s*["']https?:\/\//u.test(content)
+    /<script\b[^>]*\bsrc\s*=\s*["'`]?https?:\/\//iu.test(content) ||
+    /\bimportScripts\s*\(\s*["'`]https?:\/\//u.test(content) ||
+    /\bimport\s*\(\s*["'`]https?:\/\//u.test(content) ||
+    /\bimport\s*["'`]https?:\/\//u.test(content) ||
+    /\bimport\s+(?:[\w$*{},]+\s*)+\bfrom\s*["'`]https?:\/\//u.test(content) ||
+    /\bexport\s+(?:\*(?:\s+as\s+[\w$]+)?|\{[^}\r\n]*\})\s+from\s*["'`]https?:\/\//u.test(
+      content,
+    )
   );
 }
 

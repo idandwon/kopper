@@ -19,49 +19,68 @@ const credentialNames = [
   "APPLE_API_ISSUER",
 ];
 
-async function defaultRun(command, args) {
+class ReleaseError extends Error {}
+
+async function defaultRun(command, args, env) {
   const { stdout = "" } = await execFile(command, args, {
     cwd: process.cwd(),
     encoding: "utf8",
-    env: process.env,
+    env,
     maxBuffer: 20 * 1024 * 1024,
   });
   return { stdout };
 }
 
+async function runStep(run, command, args, failureMessage) {
+  try {
+    return await run(command, args);
+  } catch {
+    throw new ReleaseError(failureMessage);
+  }
+}
+
 export async function runRelease(options = {}) {
   const platform = options.platform ?? process.platform;
   const env = options.env ?? process.env;
-  const run = options.run ?? defaultRun;
+  const run = options.run ?? ((command, args) => defaultRun(command, args, env));
   const log = options.log ?? ((line) => console.log(line));
 
   if (platform !== "darwin") {
-    throw new Error("Credentialed releases must run on macOS.");
+    throw new ReleaseError("Credentialed releases must run on macOS.");
   }
 
-  const status = await run("git", ["status", "--porcelain"]);
+  const status = await runStep(
+    run,
+    "git",
+    ["status", "--porcelain"],
+    "Credentialed release failed while checking Git status.",
+  );
   if (status.stdout.trim().length > 0) {
-    throw new Error("Credentialed releases require a clean Git worktree.");
+    throw new ReleaseError(
+      "Credentialed releases require a clean Git worktree.",
+    );
   }
 
   const expectedTag = `v${version}`;
-  let tag = "";
-  try {
-    tag = (
-      await run("git", ["describe", "--tags", "--exact-match", "HEAD"])
-    ).stdout.trim();
-  } catch {
-    throw new Error(`Credentialed releases require exact tag ${expectedTag}.`);
-  }
+  const tag = (
+    await runStep(
+      run,
+      "git",
+      ["describe", "--tags", "--exact-match", "HEAD"],
+      `Credentialed releases require exact tag ${expectedTag}.`,
+    )
+  ).stdout.trim();
   if (tag !== expectedTag) {
-    throw new Error(`Credentialed releases require exact tag ${expectedTag}.`);
+    throw new ReleaseError(
+      `Credentialed releases require exact tag ${expectedTag}.`,
+    );
   }
 
   const missingCredentials = credentialNames.filter(
     (name) => typeof env[name] !== "string" || env[name].trim().length === 0,
   );
   if (missingCredentials.length > 0) {
-    throw new Error(
+    throw new ReleaseError(
       `Missing required release environment variables: ${missingCredentials.join(
         ", ",
       )}.`,
@@ -69,52 +88,117 @@ export async function runRelease(options = {}) {
   }
 
   const commands = [
-    ["pnpm", ["test"], "Running tests."],
-    ["pnpm", ["build"], "Building application assets."],
-    [
-      "pnpm",
-      ["exec", "electron-builder", "--mac", "dmg", "--universal"],
-      "Building the signed, notarized universal DMG.",
-    ],
-    [
-      "pnpm",
-      ["verify:package", appPath],
-      "Verifying package metadata, content, and architectures.",
-    ],
-    [
-      "/usr/bin/codesign",
-      ["--verify", "--deep", "--strict", appPath],
-      "Verifying the application signature.",
-    ],
-    [
-      "/usr/sbin/spctl",
-      ["--assess", "--type", "execute", appPath],
-      "Assessing the application with Gatekeeper.",
-    ],
-    [
-      "/usr/bin/xcrun",
-      ["stapler", "validate", dmgPath],
-      "Validating the stapled notarization ticket.",
-    ],
+    {
+      command: "pnpm",
+      args: ["test"],
+      message: "Running tests.",
+      failure: "Credentialed release failed during tests.",
+    },
+    {
+      command: "pnpm",
+      args: ["build"],
+      message: "Building application assets.",
+      failure: "Credentialed release failed during the application build.",
+    },
+    {
+      command: "pnpm",
+      args: ["exec", "electron-builder", "--mac", "dmg", "--universal"],
+      message: "Building the signed universal DMG with built-in app notarization.",
+      failure: "Credentialed release failed during universal DMG packaging.",
+    },
+    {
+      command: "pnpm",
+      args: ["verify:package", appPath],
+      message: "Verifying package metadata, content, and architectures.",
+      failure: "Credentialed release failed during package verification.",
+    },
+    {
+      command: "/usr/bin/xcrun",
+      args: ["stapler", "validate", appPath],
+      message: "Validating the stapled application ticket.",
+      failure: "Credentialed release failed during application ticket validation.",
+    },
+    {
+      command: "/usr/bin/codesign",
+      args: ["--verify", "--deep", "--strict", appPath],
+      message: "Verifying the application signature.",
+      failure: "Credentialed release failed during application signature verification.",
+    },
+    {
+      command: "/usr/sbin/spctl",
+      args: ["--assess", "--type", "execute", appPath],
+      message: "Assessing the application with Gatekeeper.",
+      failure: "Credentialed release failed during application Gatekeeper assessment.",
+    },
+    {
+      command: "/usr/bin/xcrun",
+      args: [
+        "notarytool",
+        "submit",
+        dmgPath,
+        "--key",
+        env.APPLE_API_KEY,
+        "--key-id",
+        env.APPLE_API_KEY_ID,
+        "--issuer",
+        env.APPLE_API_ISSUER,
+        "--wait",
+      ],
+      message: "Submitting the universal DMG for notarization.",
+      failure: "Credentialed release failed during DMG notarization.",
+    },
+    {
+      command: "/usr/bin/xcrun",
+      args: ["stapler", "staple", dmgPath],
+      message: "Stapling the notarized DMG.",
+      failure: "Credentialed release failed during DMG stapling.",
+    },
+    {
+      command: "/usr/bin/xcrun",
+      args: ["stapler", "validate", dmgPath],
+      message: "Validating the stapled DMG ticket.",
+      failure: "Credentialed release failed during DMG ticket validation.",
+    },
+    {
+      command: "/usr/sbin/spctl",
+      args: [
+        "--assess",
+        "--type",
+        "open",
+        "--context",
+        "context:primary-signature",
+        dmgPath,
+      ],
+      message: "Assessing the DMG with Gatekeeper.",
+      failure: "Credentialed release failed during DMG Gatekeeper assessment.",
+    },
   ];
 
-  for (const [command, args, message] of commands) {
+  for (const { command, args, message, failure } of commands) {
     log(message);
-    await run(command, args);
+    await runStep(run, command, args, failure);
   }
   log("Credentialed release verification completed.");
+}
+
+export async function runCli(options = {}) {
+  const stderr = options.stderr ?? ((line) => console.error(line));
+  try {
+    await runRelease(options);
+    return 0;
+  } catch (error) {
+    stderr(
+      error instanceof ReleaseError
+        ? error.message
+        : "Credentialed release failed.",
+    );
+    return 1;
+  }
 }
 
 if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
-  try {
-    await runRelease();
-  } catch (error) {
-    console.error(
-      error instanceof Error ? error.message : "Credentialed release failed.",
-    );
-    process.exitCode = 1;
-  }
+  process.exitCode = await runCli();
 }

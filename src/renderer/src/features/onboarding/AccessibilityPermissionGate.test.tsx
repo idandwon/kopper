@@ -159,6 +159,41 @@ describe("AccessibilityPermissionGate", () => {
     expect(screen.getByRole("heading", { name: "Enable explicit text capture" })).toBeVisible();
   });
 
+  it("invalidates a pre-hide passive result and checks fresh on visibility return", async () => {
+    vi.useFakeTimers();
+    let resolveDelayed:
+      | ((result: { ok: true; value: "granted" }) => void)
+      | undefined;
+    getAccessibilityPermission
+      .mockResolvedValueOnce({ ok: true, value: "unknown" })
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveDelayed = resolve;
+        }),
+      )
+      .mockResolvedValueOnce({ ok: true, value: "unknown" });
+    renderGate();
+    await act(async () => undefined);
+
+    await act(async () => vi.advanceTimersByTime(750));
+    expect(getAccessibilityPermission).toHaveBeenCalledTimes(2);
+
+    visibilityState = "hidden";
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    visibilityState = "visible";
+    await act(async () => document.dispatchEvent(new Event("visibilitychange")));
+    expect(getAccessibilityPermission).toHaveBeenCalledTimes(3);
+    expect(getAccessibilityPermission).toHaveBeenLastCalledWith(false);
+
+    await act(async () => resolveDelayed?.({ ok: true, value: "granted" }));
+    expect(
+      screen.getByRole("heading", { name: "Enable explicit text capture" }),
+    ).toBeVisible();
+
+    await act(async () => vi.advanceTimersByTime(750));
+    expect(getAccessibilityPermission).toHaveBeenCalledTimes(4);
+  });
+
   it("keeps exactly one passive interval in StrictMode and stops it on grant", async () => {
     vi.useFakeTimers();
     render(

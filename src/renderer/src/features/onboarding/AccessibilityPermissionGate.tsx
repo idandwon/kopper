@@ -47,9 +47,24 @@ export function AccessibilityPermissionGate({
     if (state === "granted") setPanelEntered(true);
   }, []);
 
+  const invalidatePassiveCheck = useCallback(() => {
+    if (!passiveCheckPendingRef.current) return;
+    requestIdRef.current += 1;
+    passiveCheckPendingRef.current = false;
+  }, []);
+
   const checkPermission = useCallback(
-    async (prompt: boolean): Promise<PermissionState | null> => {
-      if (!prompt && passiveCheckPendingRef.current) return null;
+    async (
+      prompt: boolean,
+      replacePendingPassive = false,
+    ): Promise<PermissionState | null> => {
+      if (
+        !prompt &&
+        passiveCheckPendingRef.current &&
+        !replacePendingPassive
+      ) {
+        return null;
+      }
       const requestId = ++requestIdRef.current;
       if (prompt) passiveCheckPendingRef.current = false;
       else passiveCheckPendingRef.current = true;
@@ -134,23 +149,37 @@ export function AccessibilityPermissionGate({
   useEffect(() => {
     mountedRef.current = true;
     let active = true;
-    let initialCheckStarted = false;
+    let initialCheckSettled = false;
+    let initialCheckPending = false;
+    let initialAttempt = 0;
 
-    const startInitialCheck = () => {
+    const startInitialCheck = (replacePending = false) => {
       if (
-        initialCheckStarted ||
-        document.visibilityState !== "visible"
+        initialCheckSettled ||
+        document.visibilityState !== "visible" ||
+        (initialCheckPending && !replacePending)
       ) {
         return;
       }
-      initialCheckStarted = true;
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      void checkPermission(false).finally(() => {
-        if (active) setInitialCheckComplete(true);
+      initialCheckPending = true;
+      const attempt = ++initialAttempt;
+      void checkPermission(false, replacePending).finally(() => {
+        if (!active || attempt !== initialAttempt) return;
+        initialCheckPending = false;
+        initialCheckSettled = true;
+        setInitialCheckComplete(true);
       });
     };
 
-    const handleVisibilityChange = () => startInitialCheck();
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        initialAttempt += 1;
+        initialCheckPending = false;
+        invalidatePassiveCheck();
+        return;
+      }
+      startInitialCheck(true);
+    };
     document.addEventListener("visibilitychange", handleVisibilityChange);
     const unsubscribe = window.kopper.onAccessibilityPermissionChanged(
       (state) => {
@@ -188,7 +217,7 @@ export function AccessibilityPermissionGate({
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       unsubscribe();
     };
-  }, [applyPermission, checkPermission]);
+  }, [applyPermission, checkPermission, invalidatePassiveCheck]);
 
   useEffect(() => {
     if (
@@ -215,8 +244,11 @@ export function AccessibilityPermissionGate({
     };
     const handleVisibilityChange = () => {
       stopPolling();
-      if (document.visibilityState !== "visible") return;
-      void checkPermission(false).then((state) => {
+      if (document.visibilityState !== "visible") {
+        invalidatePassiveCheck();
+        return;
+      }
+      void checkPermission(false, true).then((state) => {
         if (state !== "granted") startPolling();
       });
     };
@@ -234,6 +266,7 @@ export function AccessibilityPermissionGate({
     panelEntered,
     permission,
     sessionLoaded,
+    invalidatePassiveCheck,
   ]);
 
   if (!sessionLoaded || !initialCheckComplete) {

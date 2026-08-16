@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { runRelease } from "./release.mjs";
+import { runCli, runRelease } from "./release.mjs";
 
 const secrets = {
   APPLE_API_KEY: "/private/temporary/AuthKey.p8",
@@ -55,7 +55,7 @@ describe("credentialed release preflight", () => {
     ).rejects.toThrow("APPLE_API_KEY_ID");
   });
 
-  it("runs the complete credentialed release gate without logging credential values", async () => {
+  it("runs app and DMG notarization gates in exact safe order without logging credentials", async () => {
     const runner = createRunner();
     const logs: string[] = [];
 
@@ -83,6 +83,10 @@ describe("credentialed release preflight", () => {
         args: ["verify:package", "release/mac-universal/Kopper.app"],
       },
       {
+        command: "/usr/bin/xcrun",
+        args: ["stapler", "validate", "release/mac-universal/Kopper.app"],
+      },
+      {
         command: "/usr/bin/codesign",
         args: [
           "--verify",
@@ -103,13 +107,79 @@ describe("credentialed release preflight", () => {
       {
         command: "/usr/bin/xcrun",
         args: [
-          "stapler",
-          "validate",
+          "notarytool",
+          "submit",
+          "release/Kopper-0.1.0-universal.dmg",
+          "--key",
+          secrets.APPLE_API_KEY,
+          "--key-id",
+          secrets.APPLE_API_KEY_ID,
+          "--issuer",
+          secrets.APPLE_API_ISSUER,
+          "--wait",
+        ],
+      },
+      {
+        command: "/usr/bin/xcrun",
+        args: ["stapler", "staple", "release/Kopper-0.1.0-universal.dmg"],
+      },
+      {
+        command: "/usr/bin/xcrun",
+        args: ["stapler", "validate", "release/Kopper-0.1.0-universal.dmg"],
+      },
+      {
+        command: "/usr/sbin/spctl",
+        args: [
+          "--assess",
+          "--type",
+          "open",
+          "--context",
+          "context:primary-signature",
           "release/Kopper-0.1.0-universal.dmg",
         ],
       },
     ]);
     const output = logs.join("\n");
-    for (const secret of Object.values(secrets)) expect(output).not.toContain(secret);
+    for (const secret of Object.values(secrets)) {
+      expect(output).not.toContain(secret);
+    }
+  });
+
+  it("replaces credential-bearing child failures before logs or stderr", async () => {
+    const runner = createRunner();
+    const childFailure = Object.assign(
+      new Error(`failed ${Object.values(secrets).join(" ")}`),
+      { stderr: `stderr ${Object.values(secrets).join(" ")}` },
+    );
+    runner.run.mockImplementation(async (command: string, args: string[]) => {
+      if (command === "/usr/bin/xcrun" && args[0] === "notarytool") {
+        throw childFailure;
+      }
+      if ([command, ...args].join(" ") === "git describe --tags --exact-match HEAD") {
+        return { stdout: "v0.1.0\n" };
+      }
+      return { stdout: "" };
+    });
+    const logs: string[] = [];
+    const errors: string[] = [];
+
+    const exitCode = await runCli({
+      platform: "darwin",
+      env: secrets,
+      run: runner.run,
+      log: (line: string) => logs.push(line),
+      stderr: (line: string) => errors.push(line),
+    });
+
+    expect(exitCode).toBe(1);
+    expect(errors).toEqual([
+      "Credentialed release failed during DMG notarization.",
+    ]);
+    const capturedOutput = [...logs, ...errors].join("\n");
+    for (const secret of Object.values(secrets)) {
+      expect(capturedOutput).not.toContain(secret);
+    }
+    expect(capturedOutput).not.toContain(childFailure.message);
+    expect(capturedOutput).not.toContain(childFailure.stderr);
   });
 });

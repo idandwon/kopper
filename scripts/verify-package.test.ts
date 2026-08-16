@@ -121,21 +121,48 @@ describe("package verifier", () => {
     expect(failureCodes(result)).toContain(code);
   });
 
-  it.each(["http", "https"])(
-    "rejects %s remote renderer script sources",
-    async (protocol) => {
-      const fixture = await createFixture({
-        asarFiles: {
-          "/out/renderer/index.html":
-            `<script src="${protocol}://cdn.example.invalid/remote.js"></script>`,
-        },
-      });
+  it.each([
+    ["double-quoted HTML script", '<script src="https://cdn.example.invalid/remote.js"></script>'],
+    ["single-quoted HTML script", "<script src='http://cdn.example.invalid/remote.js'></script>"],
+    ["unquoted HTML script", "<script defer src=https://cdn.example.invalid/remote.js></script>"],
+    ["single-quoted dynamic import", "void import('https://cdn.example.invalid/module.js')"],
+    ["double-quoted dynamic import", 'void import("http://cdn.example.invalid/module.js")'],
+    ["template dynamic import", "void import(`https://cdn.example.invalid/module.js`)"],
+    ["single-quoted importScripts", "importScripts('https://cdn.example.invalid/worker.js')"],
+    ["double-quoted importScripts", 'importScripts("http://cdn.example.invalid/worker.js")'],
+    ["template importScripts", "importScripts(`https://cdn.example.invalid/worker.js`)"],
+    ["static side-effect import", "import 'https://cdn.example.invalid/module.js'"],
+    ["static import-from", "import remote from 'https://cdn.example.invalid/module.js'"],
+    ["static export-from", "export { remote } from `https://cdn.example.invalid/module.js`"],
+  ])("rejects a %s remote renderer source", async (_name, content) => {
+    const fixture = await createFixture({
+      asarFiles: { "/out/renderer/assets/index.js": content },
+    });
 
-      const result = await verifyPackage(fixture.appPath, fixture.ports);
+    const result = await verifyPackage(fixture.appPath, fixture.ports);
 
-      expect(failureCodes(result)).toContain("remote_renderer_script_source");
-    },
-  );
+    expect(failureCodes(result)).toContain("remote_renderer_script_source");
+  });
+
+  it("allows benign non-script HTTP and HTTPS document URLs", async () => {
+    const fixture = await createFixture({
+      asarFiles: {
+        "/out/renderer/index.html": [
+          '<script type="application/ld+json">',
+          '{"@context":"https://schema.org","url":"https://kopper.example.invalid"}',
+          "</script>",
+          '<a href="http://docs.example.invalid/help">Help</a>',
+        ].join(""),
+        "/out/renderer/assets/index.js":
+          'const schemas = ["https://schema.org", "http://json-schema.org/draft-07/schema"]',
+      },
+    });
+
+    const result = await verifyPackage(fixture.appPath, fixture.ports);
+
+    expect(result.ok).toBe(true);
+    expect(failureCodes(result)).not.toContain("remote_renderer_script_source");
+  });
 
   it("rejects a missing unpacked uiohook native module", async () => {
     const fixture = await createFixture({ nativeFiles: [] });
