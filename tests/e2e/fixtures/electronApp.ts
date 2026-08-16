@@ -1,7 +1,15 @@
 import { constants } from "node:fs";
-import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  access,
+  lstat,
+  mkdtemp,
+  readFile,
+  realpath,
+  rm,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 
 import {
   _electron as electron,
@@ -20,6 +28,14 @@ import {
 const TEMP_PREFIX = "kopper-e2e-";
 const STORE_FILE_NAME = "kopper.json";
 const MAIN_PATH = join(process.cwd(), "out/main/index.js");
+
+function isMissingPathError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error as NodeJS.ErrnoException).code === "ENOENT"
+  );
+}
 
 type InitialStore = KopperDocument | string | Uint8Array;
 
@@ -47,11 +63,16 @@ class IsolatedKopper implements KopperE2E {
   private constructor(
     readonly userDataDirectory: string,
     readonly storePath: string,
+    private readonly canonicalUserDataDirectory: string,
   ) {}
 
   static async create(): Promise<IsolatedKopper> {
     const directory = await mkdtemp(join(tmpdir(), TEMP_PREFIX));
-    return new IsolatedKopper(directory, join(directory, STORE_FILE_NAME));
+    return new IsolatedKopper(
+      directory,
+      join(directory, STORE_FILE_NAME),
+      await realpath(directory),
+    );
   }
 
   get page(): Page {
@@ -121,23 +142,25 @@ class IsolatedKopper implements KopperE2E {
   }
 
   async stubNextOpenDialog(path: string | null): Promise<void> {
-    if (path !== null) this.assertFixturePath(path);
-    await this.electronApp.evaluate(async ({ dialog }, selectedPath) => {
+    const selectedPath =
+      path === null ? null : await this.canonicalFixtureOpenPath(path);
+    await this.electronApp.evaluate(async ({ dialog }, canonicalPath) => {
       dialog.showOpenDialog = async () =>
-        selectedPath === null
+        canonicalPath === null
           ? { canceled: true, filePaths: [] }
-          : { canceled: false, filePaths: [selectedPath] };
-    }, path);
+          : { canceled: false, filePaths: [canonicalPath] };
+    }, selectedPath);
   }
 
   async stubNextSaveDialog(path: string | null): Promise<void> {
-    if (path !== null) this.assertFixturePath(path);
-    await this.electronApp.evaluate(async ({ dialog }, selectedPath) => {
+    const selectedPath =
+      path === null ? null : await this.canonicalFixtureSavePath(path);
+    await this.electronApp.evaluate(async ({ dialog }, canonicalPath) => {
       dialog.showSaveDialog = async () =>
-        selectedPath === null
+        canonicalPath === null
           ? { canceled: true, filePath: "" }
-          : { canceled: false, filePath: selectedPath };
-    }, path);
+          : { canceled: false, filePath: canonicalPath };
+    }, selectedPath);
   }
 
   async destroy(): Promise<void> {
@@ -171,12 +194,42 @@ class IsolatedKopper implements KopperE2E {
     }
   }
 
-  private assertFixturePath(path: string): void {
-    if (!isAbsolute(path)) throw new Error("Dialog paths must be absolute.");
-    const child = relative(resolve(this.userDataDirectory), resolve(path));
-    if (child === "" || child.startsWith("..") || isAbsolute(child)) {
-      throw new Error("Dialog paths must stay inside the isolated user-data directory.");
+  private async canonicalFixtureOpenPath(path: string): Promise<string> {
+    this.assertAbsoluteDialogPath(path);
+    return this.requireCanonicalFixturePath(await realpath(path));
+  }
+
+  private async canonicalFixtureSavePath(path: string): Promise<string> {
+    this.assertAbsoluteDialogPath(path);
+    let targetExists = true;
+    try {
+      await lstat(path);
+    } catch (error) {
+      if (!isMissingPathError(error)) throw error;
+      targetExists = false;
     }
+
+    if (targetExists) {
+      return this.requireCanonicalFixturePath(await realpath(path));
+    }
+    const canonicalParent = await realpath(dirname(path));
+    return this.requireCanonicalFixturePath(
+      join(canonicalParent, basename(path)),
+    );
+  }
+
+  private assertAbsoluteDialogPath(path: string): void {
+    if (!isAbsolute(path)) throw new Error("Dialog paths must be absolute.");
+  }
+
+  private requireCanonicalFixturePath(path: string): string {
+    const child = relative(this.canonicalUserDataDirectory, path);
+    if (child === "" || child.startsWith("..") || isAbsolute(child)) {
+      throw new Error(
+        "Dialog paths must stay inside the isolated user-data directory.",
+      );
+    }
+    return path;
   }
 }
 

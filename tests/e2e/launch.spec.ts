@@ -1,10 +1,19 @@
-import { access, readFile } from "node:fs/promises";
+import {
+  access,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { createEmptyDocument } from "../../src/shared/domain/document";
 import {
   continueWithoutCaptureIfNeeded,
   expect,
+  fixturePath,
   test,
 } from "./fixtures/electronApp";
 
@@ -53,6 +62,44 @@ test.describe.serial("isolated Electron fixture", () => {
 
 test.afterAll(async () => {
   if (secondDirectory !== "") await expect(access(secondDirectory)).rejects.toThrow();
+});
+
+test("rejects dialog symlink escapes while allowing canonical fixture paths", async ({
+  kopper,
+}) => {
+  const outsideDirectory = await mkdtemp(join(tmpdir(), "kopper-dialog-outside-"));
+  const outsideOpenPath = join(outsideDirectory, "outside.json");
+  const outsideSavePath = join(outsideDirectory, "must-not-be-written.json");
+  const escapeLink = fixturePath(kopper, "escape");
+
+  try {
+    await writeFile(outsideOpenPath, "outside sentinel", "utf8");
+    await symlink(outsideDirectory, escapeLink, "dir");
+    const page = await kopper.launchKopper();
+    await continueWithoutCaptureIfNeeded(page);
+
+    await expect(
+      kopper.stubNextOpenDialog(join(escapeLink, "outside.json")),
+    ).rejects.toThrow(
+      "Dialog paths must stay inside the isolated user-data directory.",
+    );
+    await expect(
+      kopper.stubNextSaveDialog(join(escapeLink, "must-not-be-written.json")),
+    ).rejects.toThrow(
+      "Dialog paths must stay inside the isolated user-data directory.",
+    );
+    expect(await readFile(outsideOpenPath, "utf8")).toBe("outside sentinel");
+    await expect(access(outsideSavePath)).rejects.toThrow();
+
+    const normalOpenPath = fixturePath(kopper, "inside.json");
+    const normalSavePath = fixturePath(kopper, "inside-export.json");
+    await writeFile(normalOpenPath, "inside sentinel", "utf8");
+    await expect(kopper.stubNextOpenDialog(normalOpenPath)).resolves.toBeUndefined();
+    await expect(kopper.stubNextSaveDialog(normalSavePath)).resolves.toBeUndefined();
+    await kopper.closeKopper();
+  } finally {
+    await rm(outsideDirectory, { recursive: true });
+  }
 });
 
 test("bundles a sandbox-compatible preload", async () => {

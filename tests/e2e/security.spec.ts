@@ -59,10 +59,66 @@ test("keeps renderer isolation, navigation, bridge validation, and CSP intact", 
   });
 
   const originalUrl = page.url();
+  const attemptedExternalUrl =
+    "https://example.com/navigation-must-be-blocked";
+  await kopper.electronApp.evaluate(
+    async ({ BrowserWindow }, probe) => {
+      const targetWindow = BrowserWindow.getAllWindows().find(
+        ({ webContents }) => webContents.getURL() === probe.currentUrl,
+      );
+      if (targetWindow === undefined) {
+        throw new Error("Could not find the target renderer webContents.");
+      }
+
+      const scope = globalThis as typeof globalThis & {
+        __kopperNavigationAttempt?: Promise<{
+          attemptedUrl: string;
+          defaultPrevented: boolean;
+        }>;
+      };
+      scope.__kopperNavigationAttempt = new Promise((resolve) => {
+        const listener = (
+          event: { defaultPrevented: boolean },
+          navigationUrl: string,
+        ) => {
+          if (navigationUrl !== probe.expectedUrl) return;
+          targetWindow.webContents.removeListener("will-navigate", listener);
+          resolve({
+            attemptedUrl: navigationUrl,
+            defaultPrevented: event.defaultPrevented,
+          });
+        };
+        targetWindow.webContents.on("will-navigate", listener);
+      });
+    },
+    { currentUrl: originalUrl, expectedUrl: attemptedExternalUrl },
+  );
   await page.evaluate(() => {
-    window.location.href = "https://example.com/navigation-must-be-blocked";
+    window.setTimeout(() => {
+      window.location.href =
+        "https://example.com/navigation-must-be-blocked";
+    }, 0);
   });
-  await expect.poll(() => page.url()).toBe(originalUrl);
+  const navigationAttempt = await kopper.electronApp.evaluate(async () => {
+    const scope = globalThis as typeof globalThis & {
+      __kopperNavigationAttempt?: Promise<{
+        attemptedUrl: string;
+        defaultPrevented: boolean;
+      }>;
+    };
+    const attempt = scope.__kopperNavigationAttempt;
+    if (attempt === undefined) throw new Error("Navigation probe was not armed.");
+    try {
+      return await attempt;
+    } finally {
+      delete scope.__kopperNavigationAttempt;
+    }
+  });
+  expect(navigationAttempt).toEqual({
+    attemptedUrl: attemptedExternalUrl,
+    defaultPrevented: true,
+  });
+  expect(page.url()).toBe(originalUrl);
 
   const windowCount = kopper.electronApp.windows().length;
   const remotePage = kopper.electronApp.waitForEvent("window", { timeout: 750 }).then(
