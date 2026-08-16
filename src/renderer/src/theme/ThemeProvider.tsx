@@ -28,9 +28,17 @@ export type ThemeSaveResult =
 export interface ThemeContextValue {
   resolvedMode: "light" | "dark";
   activeTheme: ThemeDefinition;
-  previewTheme(theme: ThemeDefinition): void;
+  previewTheme(theme: ThemeDefinition, modeOverride?: "light" | "dark"): void;
   cancelPreview(): void;
-  savePreview(theme: ThemeDefinition): Promise<ThemeSaveResult>;
+  savePreview(
+    theme: ThemeDefinition,
+    modeOverride?: "light" | "dark",
+  ): Promise<ThemeSaveResult>;
+}
+
+interface ThemePreview {
+  readonly theme: ThemeDefinition;
+  readonly modeOverride?: "light" | "dark";
 }
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
@@ -46,7 +54,7 @@ function resolveMode(
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const { document: kopperDocument, ready, execute } = useKopperDocument();
   const [nativeDark, setNativeDark] = useState(false);
-  const [preview, setPreview] = useState<ThemeDefinition | null>(null);
+  const [preview, setPreview] = useState<ThemePreview | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -74,7 +82,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const appearanceMode = ready ? kopperDocument.appearance.mode : "system";
-  const resolvedMode = resolveMode(appearanceMode, nativeDark);
+  const persistedResolvedMode = resolveMode(appearanceMode, nativeDark);
+  const resolvedMode = preview?.modeOverride ?? persistedResolvedMode;
   const persistedTheme = useMemo(
     () =>
       ready
@@ -85,7 +94,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         : OXIDE_LEDGER_THEME,
     [kopperDocument, ready],
   );
-  const activeTheme = ready ? (preview ?? persistedTheme) : OXIDE_LEDGER_THEME;
+  const activeTheme = ready
+    ? (preview?.theme ?? persistedTheme)
+    : OXIDE_LEDGER_THEME;
 
   useLayoutEffect(() => {
     const root = globalThis.document.documentElement;
@@ -113,19 +124,26 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     };
   }, [activeTheme, resolvedMode]);
 
-  const previewTheme = useCallback((theme: ThemeDefinition) => {
-    setPreview(theme);
-  }, []);
+  const previewTheme = useCallback(
+    (theme: ThemeDefinition, modeOverride?: "light" | "dark") => {
+      setPreview({ theme, modeOverride });
+    },
+    [],
+  );
 
   const cancelPreview = useCallback(() => {
     setPreview(null);
   }, []);
 
   const savePreview = useCallback(
-    async (theme: ThemeDefinition): Promise<ThemeSaveResult> => {
-      // The persisted object must also be the authoritative preview identity so
-      // a successful save can clear it without clearing a newer draft.
-      setPreview(theme);
+    async (
+      theme: ThemeDefinition,
+      modeOverride?: "light" | "dark",
+    ): Promise<ThemeSaveResult> => {
+      // The exact immutable wrapper is the authoritative save state, allowing
+      // a newer same-ID theme or mode preview to survive this acknowledgment.
+      const savingPreview: ThemePreview = { theme, modeOverride };
+      setPreview(savingPreview);
       const upserted = await execute({
         type: "appearance.upsertCustomTheme",
         theme,
@@ -138,7 +156,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       });
       if (!activated) return { status: "activation_failed" };
 
-      setPreview((current) => (current === theme ? null : current));
+      setPreview((current) => (current === savingPreview ? null : current));
       return { status: "saved" };
     },
     [execute],

@@ -141,7 +141,7 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
     if (modeParsed.success) {
       const next = { ...draft, [mode]: modeParsed.data };
       setDraft(next);
-      previewTheme(next);
+      previewTheme(next, mode);
     }
   };
 
@@ -159,7 +159,7 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
     setName(next.name);
     setRaw(rawModes(next));
     setDraft(next);
-    previewTheme(next);
+    previewTheme(next, mode);
     setMessage(null);
   };
 
@@ -183,7 +183,7 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
     if (!parsed.success || !currentValidation.valid || !validation.valid || validating) return;
     setConfirmClose(false);
     setSaving(true);
-    const result = await savePreview(parsed.data);
+    const result = await savePreview(parsed.data, mode);
     setSaving(false);
     switch (result.status) {
       case "saved":
@@ -237,7 +237,12 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
             <DialogDescription>Changes preview immediately after each value becomes valid.</DialogDescription>
           </DialogHeader>
           <label className="grid gap-1 text-xs">Theme name<Input disabled={saving} value={name} onChange={(event) => { if (!saving) { setName(event.target.value); setMessage(null); } }} /></label>
-          <Tabs value={mode} onValueChange={(value) => { if (!saving) setMode(value as EditorMode); }} className="min-h-0">
+          <Tabs value={mode} onValueChange={(value) => {
+            if (saving) return;
+            const nextMode = value as EditorMode;
+            setMode(nextMode);
+            previewTheme(draft, nextMode);
+          }} className="min-h-0">
             <TabsList aria-label="Theme mode"><TabsTrigger disabled={saving} value="light">Light</TabsTrigger><TabsTrigger disabled={saving} value="dark">Dark</TabsTrigger></TabsList>
             <TabsContent value="light" className="max-h-[55vh] overflow-y-auto pr-1">{rows}</TabsContent>
             <TabsContent value="dark" className="max-h-[55vh] overflow-y-auto pr-1">{rows}</TabsContent>

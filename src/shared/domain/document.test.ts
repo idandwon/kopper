@@ -137,7 +137,7 @@ describe("parseDocument", () => {
   it("requires complete, strict persisted theme definitions without external metadata", () => {
     const base = withKnownSection(createEmptyDocument(new Date(timestamp)));
     const theme = {
-      ...OXIDE_LEDGER_THEME,
+      ...structuredClone(OXIDE_LEDGER_THEME),
       id: "theme-1",
       name: "Custom theme",
     };
@@ -164,6 +164,54 @@ describe("parseDocument", () => {
         ],
       }).ok,
     ).toBe(false);
+  });
+
+  it.each([
+    { name: "an unreadable inactive custom theme", active: false, reserved: false },
+    { name: "an unreadable active custom theme", active: true, reserved: false },
+    { name: "a reserved-ID custom theme", active: true, reserved: true },
+  ])("rejects $name as invalid_document", ({ active, reserved }) => {
+    const base = withKnownSection(createEmptyDocument(new Date(timestamp)));
+    const theme = {
+      ...structuredClone(OXIDE_LEDGER_THEME),
+      id: reserved ? "builtin:custom-collision" : "custom:unreadable",
+      name: "Invalid persisted theme",
+    };
+    if (!reserved) theme.light.foreground = theme.light.background;
+
+    const result = parseDocument({
+      ...base,
+      appearance: {
+        ...base.appearance,
+        activeThemeId: active ? theme.id : base.appearance.activeThemeId,
+      },
+      customThemes: [theme],
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: "invalid_document",
+        ...(reserved ? {} : { failures: expect.any(Array) }),
+      }),
+    });
+  });
+
+  it("rejects translucent roots with structured invalid_document details", () => {
+    const base = withKnownSection(createEmptyDocument(new Date(timestamp)));
+    const theme = {
+      ...structuredClone(OXIDE_LEDGER_THEME),
+      id: "custom:translucent",
+    };
+    theme.dark.background = "rgb(0 0 0 / 0.5)";
+
+    expect(parseDocument({ ...base, customThemes: [theme] })).toEqual({
+      ok: false,
+      error: expect.objectContaining({
+        code: "invalid_document",
+        opaqueBackgroundModes: ["dark"],
+      }),
+    });
   });
 
   it("requires contiguous section and active-note ordering", () => {

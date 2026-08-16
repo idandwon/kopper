@@ -79,6 +79,7 @@ describe("ThemeEditor", () => {
           primary: "#123456",
         }),
       }),
+      "light",
     );
     expect(screen.getByText("Validating…")).toBeInTheDocument();
     await act(async () => {
@@ -96,6 +97,53 @@ describe("ThemeEditor", () => {
         id: customTheme.id,
         light: expect.objectContaining({ background: "#ffffff" }),
       }),
+      "light",
+    );
+  });
+
+  it("previews the last-valid draft in the selected mode and carries it through edits and save", async () => {
+    renderEditor();
+
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Dark" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    expect(previewTheme).toHaveBeenLastCalledWith(
+      expect.objectContaining({ id: customTheme.id }),
+      "dark",
+    );
+    fireEvent.change(screen.getByLabelText("background"), {
+      target: { value: "#101112" },
+    });
+    expect(previewTheme).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        light: customTheme.light,
+        dark: expect.objectContaining({ background: "#101112" }),
+      }),
+      "dark",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset background" }));
+    expect(previewTheme).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        dark: expect.objectContaining({ background: customTheme.dark.background }),
+      }),
+      "dark",
+    );
+    fireEvent.change(screen.getByLabelText("radius"), {
+      target: { value: "1.5rem" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Reset all" }));
+    expect(previewTheme).toHaveBeenLastCalledWith(
+      expect.objectContaining({ dark: customTheme.dark }),
+      "dark",
+    );
+    await validate();
+    fireEvent.click(screen.getByRole("button", { name: "Save theme" }));
+    await act(async () => {});
+    expect(savePreview).toHaveBeenCalledWith(
+      expect.objectContaining({ id: customTheme.id }),
+      "dark",
     );
   });
 
@@ -110,6 +158,7 @@ describe("ThemeEditor", () => {
           background: customTheme.light.foreground,
         }),
       }),
+      "light",
     );
     await validate();
     expect(screen.getAllByText(/4.5:1 required/).length).toBeGreaterThanOrEqual(
@@ -126,12 +175,14 @@ describe("ThemeEditor", () => {
       expect.objectContaining({
         light: expect.objectContaining({ radius: "0rem" }),
       }),
+      "light",
     );
     fireEvent.change(radius, { target: { value: "2rem" } });
     expect(previewTheme).toHaveBeenLastCalledWith(
       expect.objectContaining({
         light: expect.objectContaining({ radius: "2rem" }),
       }),
+      "light",
     );
   });
 
@@ -196,6 +247,7 @@ describe("ThemeEditor", () => {
     await act(async () => {});
     expect(savePreview).toHaveBeenCalledWith(
       expect.objectContaining({ id: customTheme.id, name: "Saved Editor" }),
+      "light",
     );
 
     cleanup();
@@ -230,6 +282,7 @@ describe("ThemeEditor", () => {
     await act(async () => {});
     expect(savePreview).toHaveBeenCalledWith(
       expect.objectContaining({ id: generatedId }),
+      "light",
     );
   });
 });

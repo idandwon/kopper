@@ -9,12 +9,11 @@ import {
   type ThemeDefinition,
 } from "./document";
 import type { KopperError, Result } from "./errors";
-import { validateReadableTheme } from "../theme/deriveTheme";
 import {
   BUNDLED_THEMES,
   OXIDE_LEDGER_THEME,
 } from "../theme/presets";
-import { THEME_FILE_SCHEMA_URL } from "../theme/themeSchema";
+import { validatePersistedCustomTheme } from "../theme/validatePersistedTheme";
 
 export type DocumentCommand =
   | { type: "note.add"; id?: string; sectionId: string; body: string }
@@ -595,20 +594,8 @@ function applyAppearanceCommand(
     }
 
     case "appearance.upsertCustomTheme": {
-      if (
-        command.theme.id.startsWith("builtin:") ||
-        BUNDLED_THEMES.some(({ id }) => id === command.theme.id)
-      ) {
-        return validationError("Bundled themes cannot be overwritten.");
-      }
-      const readable = validateReadableTheme({
-        $schema: THEME_FILE_SCHEMA_URL,
-        version: command.theme.version,
-        name: command.theme.name,
-        light: command.theme.light,
-        dark: command.theme.dark,
-      });
-      if (!readable.ok) return readable;
+      const validTheme = validatePersistedCustomTheme(command.theme);
+      if (!validTheme.ok) return validTheme;
 
       const index = document.customThemes.findIndex(
         ({ id }) => id === command.theme.id,

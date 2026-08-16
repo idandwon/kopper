@@ -38,9 +38,35 @@ describe("ThemeImportDialog", () => {
     expect(previewTheme).not.toHaveBeenCalled();
     expect(cancelPreview).not.toHaveBeenCalled();
 
-    rendered.rerender(<ThemeImportDialog api={api({ ok: false, error: { code: "validation_failed", message: "Invalid theme structure.", retryable: false } })} />);
+    rendered.rerender(<ThemeImportDialog api={api({
+      ok: false,
+      error: {
+        code: "validation_failed",
+        message: "Theme readability validation found 2 problems.",
+        retryable: false,
+        failures: [{
+          mode: "dark",
+          backgroundToken: "primary",
+          foregroundToken: "primary-foreground",
+          ratio: 2.31,
+        }],
+        opaqueBackgroundModes: ["light"],
+      },
+    })} />);
     await user.click(screen.getByRole("button", { name: "Import theme" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Invalid theme structure.");
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("Theme readability validation found 2 problems.");
+    expect(alert).toHaveTextContent("dark: primary / primary-foreground — 2.31:1; minimum 4.5:1");
+    expect(alert).toHaveTextContent("light: background must be opaque.");
+
+    rendered.rerender(<ThemeImportDialog api={api({
+      ok: false,
+      error: { code: "read_failed", message: "Could not read that file.", retryable: false },
+    })} />);
+    await user.click(screen.getByRole("button", { name: "Import theme" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not read that file.");
+    expect(screen.queryByText(/primary-foreground/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/background must be opaque/)).not.toBeInTheDocument();
   });
 
   it("opens without applying, previews renderer-only, restores on cancel, and saves by generated ID", async () => {

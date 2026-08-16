@@ -150,6 +150,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  flushFrames();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   document.documentElement.className = "";
@@ -362,6 +363,32 @@ describe("ThemeProvider previews", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  it("uses a preview-only mode override, ignores native changes, and cancel restores persisted mode and tokens", () => {
+    setDocumentContext(makeDocument({ mode: "light" }));
+    const theme = customTheme();
+    const { result } = renderHook(() => useTheme(), { wrapper });
+
+    act(() => result.current.previewTheme(theme, "dark"));
+    expect(result.current.resolvedMode).toBe("dark");
+    expect(document.documentElement).toHaveClass("dark");
+    flushFrames();
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe(
+      theme.dark.background,
+    );
+
+    act(() => nativeListener?.(true));
+    act(() => nativeListener?.(false));
+    expect(result.current.resolvedMode).toBe("dark");
+
+    act(() => result.current.cancelPreview());
+    expect(result.current.resolvedMode).toBe("light");
+    expect(document.documentElement).not.toHaveClass("dark");
+    flushFrames();
+    expect(document.documentElement.style.getPropertyValue("--background")).toBe(
+      OXIDE_LEDGER_THEME.light.background,
+    );
+  });
+
   it("retains preview when upsert fails and does not attempt activation", async () => {
     const theme = customTheme();
     execute.mockResolvedValueOnce(false);
@@ -463,7 +490,29 @@ describe("ThemeProvider previews", () => {
     ).toBe(laterTheme.light.background);
   });
 
-  it("does not clear a newer same-ID preview when an earlier save completes", async () => {
+  it("restores persisted mode after a successful mode-overridden save", async () => {
+    const theme = customTheme();
+    const upsert = deferred<boolean>();
+    const activate = deferred<boolean>();
+    execute
+      .mockImplementationOnce(() => upsert.promise)
+      .mockImplementationOnce(() => activate.promise);
+    const { result } = renderHook(() => useTheme(), { wrapper });
+
+    let saving: ReturnType<typeof result.current.savePreview> | undefined;
+    act(() => {
+      saving = result.current.savePreview(theme, "dark");
+    });
+    expect(result.current.resolvedMode).toBe("dark");
+    await act(async () => upsert.resolve(true));
+    expect(result.current.resolvedMode).toBe("dark");
+    await act(async () => activate.resolve(true));
+    await expect(saving).resolves.toEqual({ status: "saved" });
+    expect(result.current.resolvedMode).toBe("light");
+    expect(result.current.activeTheme).toBe(OXIDE_LEDGER_THEME);
+  });
+
+  it("does not clear a newer same-ID preview object or its mode when an earlier save completes", async () => {
     const savedTheme = customTheme();
     const newerPreview = {
       ...customTheme(savedTheme.id),
@@ -475,16 +524,17 @@ describe("ThemeProvider previews", () => {
       .mockImplementationOnce(() => upsert.promise)
       .mockImplementationOnce(() => activate.promise);
     const { result } = renderHook(() => useTheme(), { wrapper });
-    act(() => result.current.previewTheme(savedTheme));
+    act(() => result.current.previewTheme(savedTheme, "dark"));
 
     let saving: ReturnType<typeof result.current.savePreview> | undefined;
     act(() => {
-      saving = result.current.savePreview(savedTheme);
+      saving = result.current.savePreview(savedTheme, "dark");
     });
     expect(execute).toHaveBeenCalledOnce();
 
-    act(() => result.current.previewTheme(newerPreview));
+    act(() => result.current.previewTheme(newerPreview, "light"));
     expect(result.current.activeTheme).toBe(newerPreview);
+    expect(result.current.resolvedMode).toBe("light");
 
     await act(async () => upsert.resolve(true));
     expect(execute).toHaveBeenCalledTimes(2);
@@ -497,5 +547,6 @@ describe("ThemeProvider previews", () => {
       [{ type: "appearance.setActiveTheme", themeId: savedTheme.id }],
     ]);
     expect(result.current.activeTheme).toBe(newerPreview);
+    expect(result.current.resolvedMode).toBe("light");
   });
 });

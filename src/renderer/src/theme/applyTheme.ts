@@ -33,26 +33,60 @@ interface InlineValue {
   priority: string;
 }
 
-const currentApplication = new WeakMap<HTMLElement, object>();
+interface Application {
+  frame: number;
+}
+
+interface RootThemeState {
+  baseline: Map<string, InlineValue>;
+  current?: Application;
+  restorationFrame?: number;
+}
+
+const rootStates = new WeakMap<HTMLElement, RootThemeState>();
+
+function captureBaseline(root: HTMLElement): Map<string, InlineValue> {
+  const values = new Map<string, InlineValue>();
+  for (const [, property] of CANONICAL_THEME_PROPERTIES) {
+    values.set(property, {
+      value: root.style.getPropertyValue(property),
+      priority: root.style.getPropertyPriority(property),
+    });
+  }
+  return values;
+}
+
+function restoreBaseline(root: HTMLElement, baseline: Map<string, InlineValue>) {
+  for (const [, property] of CANONICAL_THEME_PROPERTIES) {
+    const previous = baseline.get(property);
+    if (previous === undefined || previous.value === "") {
+      root.style.removeProperty(property);
+    } else {
+      root.style.setProperty(property, previous.value, previous.priority);
+    }
+  }
+}
 
 export function applyTheme(
   root: HTMLElement,
   tokens: CompleteThemeMode,
 ): () => void {
-  const application = {};
-  currentApplication.set(root, application);
-  const previousValues = new Map<string, InlineValue>();
-
-  for (const [, property] of CANONICAL_THEME_PROPERTIES) {
-    previousValues.set(property, {
-      value: root.style.getPropertyValue(property),
-      priority: root.style.getPropertyPriority(property),
-    });
+  let state = rootStates.get(root);
+  if (state === undefined) {
+    state = { baseline: captureBaseline(root) };
+    rootStates.set(root, state);
   }
 
-  const frame = requestAnimationFrame(() => {
-    if (currentApplication.get(root) !== application) return;
+  if (state.restorationFrame !== undefined) {
+    cancelAnimationFrame(state.restorationFrame);
+    state.restorationFrame = undefined;
+  }
+  if (state.current !== undefined) cancelAnimationFrame(state.current.frame);
 
+  const application: Application = { frame: 0 };
+  state.current = application;
+  application.frame = requestAnimationFrame(() => {
+    if (rootStates.get(root)?.current !== application) return;
     for (const [, property] of CANONICAL_THEME_PROPERTIES) {
       root.style.removeProperty(property);
     }
@@ -65,17 +99,23 @@ export function applyTheme(
   return () => {
     if (cleaned) return;
     cleaned = true;
-    cancelAnimationFrame(frame);
-    if (currentApplication.get(root) !== application) return;
+    cancelAnimationFrame(application.frame);
+    const currentState = rootStates.get(root);
+    if (currentState?.current !== application) return;
 
-    currentApplication.delete(root);
-    for (const [, property] of CANONICAL_THEME_PROPERTIES) {
-      const previous = previousValues.get(property);
-      if (previous === undefined || previous.value === "") {
-        root.style.removeProperty(property);
-      } else {
-        root.style.setProperty(property, previous.value, previous.priority);
+    currentState.current = undefined;
+    const restorationFrame = requestAnimationFrame(() => {
+      const latestState = rootStates.get(root);
+      if (
+        latestState !== currentState ||
+        latestState.current !== undefined ||
+        latestState.restorationFrame !== restorationFrame
+      ) {
+        return;
       }
-    }
+      restoreBaseline(root, latestState.baseline);
+      rootStates.delete(root);
+    });
+    currentState.restorationFrame = restorationFrame;
   };
 }

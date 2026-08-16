@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import type { KopperError } from "../../../../shared/domain/errors";
 import type { KopperApi, ThemeImportPreview } from "../../../../shared/ipc/contract";
 import { measureThemeContrast } from "../../../../shared/theme/deriveTheme";
 import { THEME_FILE_SCHEMA_URL } from "../../../../shared/theme/themeSchema";
@@ -47,19 +48,23 @@ export function ThemeImportDialog({ api = window.kopper }: { api?: Pick<KopperAp
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState(false);
+  const [importError, setImportError] = useState<KopperError | null>(null);
 
   const chooseImport = async () => {
     setBusy(true);
     setMessage(null);
     setError(false);
+    setImportError(null);
     try {
       const result = await api.importTheme();
       if (!result.ok) {
         setError(true);
+        setImportError(result.error);
         setMessage(result.error.message);
       } else if (result.value !== null) setPreview(result.value);
     } catch {
       setError(true);
+      setImportError(null);
       setMessage("The theme import response was invalid.");
     } finally {
       setBusy(false);
@@ -105,7 +110,23 @@ export function ThemeImportDialog({ api = window.kopper }: { api?: Pick<KopperAp
   return (
     <>
       <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void chooseImport()}>Import theme</Button>
-      {message !== null && preview === null && <p role={error ? "alert" : "status"} className="m-0 text-[11px] text-muted-foreground">{message}</p>}
+      {message !== null && preview === null && (
+        <div role={error ? "alert" : "status"} className="m-0 text-[11px] text-muted-foreground">
+          <p className="m-0">{message}</p>
+          {importError?.failures !== undefined && importError.failures.length > 0 && (
+            <ul className="m-0 list-disc pl-5">
+              {importError.failures.map((failure) => (
+                <li key={`${failure.mode}:${failure.backgroundToken}:${failure.foregroundToken}`}>
+                  {failure.mode}: {failure.backgroundToken} / {failure.foregroundToken} — {failure.ratio}:1; minimum 4.5:1
+                </li>
+              ))}
+            </ul>
+          )}
+          {importError?.opaqueBackgroundModes?.map((mode) => (
+            <p className="m-0" key={mode}>{mode}: background must be opaque.</p>
+          ))}
+        </div>
+      )}
       <Dialog open={preview !== null} onOpenChange={(open) => !open && !busy && close()}>
         <DialogContent
           closeDisabled={busy}

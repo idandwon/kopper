@@ -8,6 +8,7 @@ import {
   createEmptyDocument,
   type KopperDocument,
 } from "../../shared/domain/document";
+import { OXIDE_LEDGER_THEME } from "../../shared/theme/presets";
 import { CommandService } from "../domain/commandService";
 import { MainOperationCoordinator } from "../domain/mainOperationCoordinator";
 import { NoteRepository } from "../persistence/noteRepository";
@@ -133,6 +134,36 @@ describe("DocumentFiles", () => {
     vi.advanceTimersByTime(5 * 60_000 + 1);
     await expect(expiringFiles.confirmImport(preview.value.token)).resolves.toMatchObject({ ok: false, error: { code: "validation_failed" } });
     expect(replace).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { name: "an unreadable inactive theme", active: false, reserved: false },
+    { name: "an unreadable active theme", active: true, reserved: false },
+    { name: "a reserved-ID custom theme", active: true, reserved: true },
+  ])("rejects imports containing $name without previewing or replacing", async ({ active, reserved }) => {
+    const { directory, repository } = await fixture();
+    const before = repository.snapshot();
+    const imported = createEmptyDocument(new Date(timestamp));
+    const theme = {
+      ...structuredClone(OXIDE_LEDGER_THEME),
+      id: reserved ? "builtin:collision" : "custom:unreadable",
+    };
+    if (!reserved) theme.light.foreground = theme.light.background;
+    imported.customThemes = [theme];
+    if (active) imported.appearance.activeThemeId = theme.id;
+    const importPath = join(directory, "invalid-theme-document.json");
+    await writeFile(importPath, JSON.stringify(imported), "utf8");
+    const replace = vi.spyOn(repository, "replace");
+    const files = new DocumentFiles(repository, dialog({
+      showOpenDialog: vi.fn().mockResolvedValue({ canceled: false, filePaths: [importPath] }),
+    }));
+
+    await expect(files.chooseImport()).resolves.toEqual({
+      ok: false,
+      error: expect.objectContaining({ code: "invalid_document" }),
+    });
+    expect(replace).not.toHaveBeenCalled();
+    expect(repository.snapshot()).toEqual(before);
   });
 
   it("coordinates import before a later edit so the edit snapshots and preserves imported state", async () => {

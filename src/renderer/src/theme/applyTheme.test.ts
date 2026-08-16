@@ -74,6 +74,10 @@ describe("applyTheme", () => {
     );
 
     cleanup();
+    expect(root.style.getPropertyValue("--background")).toBe(
+      OXIDE_LEDGER_THEME.dark.background,
+    );
+    flushFrames();
     expect(root.style.getPropertyValue("--background")).toBe("previous");
     expect(root.style.getPropertyPriority("--background")).toBe("important");
     expect(root.style.getPropertyValue("--capture")).toBe("prior-capture");
@@ -99,7 +103,39 @@ describe("applyTheme", () => {
     );
 
     secondCleanup();
+    expect(root.style.getPropertyValue("--background")).toBe(
+      OXIDE_LEDGER_THEME.dark.background,
+    );
+    flushFrames();
     expect(root.style.getPropertyValue("--background")).toBe("original");
+  });
+
+  it("keeps the old canonical set through a cleanup/replacement transition", () => {
+    const root = document.createElement("html");
+    root.style.setProperty("--background", "baseline", "important");
+    const firstCleanup = applyTheme(root, OXIDE_LEDGER_THEME.light);
+    flushFrames();
+    expect(root.style.getPropertyValue("--background")).toBe(
+      OXIDE_LEDGER_THEME.light.background,
+    );
+
+    firstCleanup();
+    expect(root.style.getPropertyValue("--background")).toBe(
+      OXIDE_LEDGER_THEME.light.background,
+    );
+    const secondCleanup = applyTheme(root, OXIDE_LEDGER_THEME.dark);
+    expect(root.style.getPropertyValue("--background")).toBe(
+      OXIDE_LEDGER_THEME.light.background,
+    );
+    flushFrames({ includeCancelled: true });
+    expect(root.style.getPropertyValue("--background")).toBe(
+      OXIDE_LEDGER_THEME.dark.background,
+    );
+
+    secondCleanup();
+    flushFrames();
+    expect(root.style.getPropertyValue("--background")).toBe("baseline");
+    expect(root.style.getPropertyPriority("--background")).toBe("important");
   });
 });
 

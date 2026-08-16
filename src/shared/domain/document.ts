@@ -4,6 +4,7 @@ import {
   CompleteThemeModeSchema,
   type CompleteThemeMode,
 } from "../theme/themeSchema";
+import { validatePersistedCustomTheme } from "../theme/validatePersistedTheme";
 import type { KopperError, Result } from "./errors";
 
 export type AppearanceMode = "system" | "light" | "dark";
@@ -228,6 +229,18 @@ export function parseDocument(input: unknown): ParseDocumentResult {
   }
   if (!hasUniqueIds(document.customThemes)) {
     return invalidDocument("Custom theme identifiers must be unique.");
+  }
+  for (const theme of document.customThemes) {
+    const validTheme = validatePersistedCustomTheme(theme);
+    if (!validTheme.ok) {
+      return {
+        ok: false,
+        error: {
+          ...validTheme.error,
+          code: "invalid_document",
+        },
+      };
+    }
   }
   if (!hasContiguousOrder(document.sections)) {
     return invalidDocument("Section ordering must be contiguous.");

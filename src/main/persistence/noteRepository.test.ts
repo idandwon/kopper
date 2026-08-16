@@ -8,6 +8,7 @@ import {
   createEmptyDocument,
   type KopperDocument,
 } from "../../shared/domain/document";
+import { OXIDE_LEDGER_THEME } from "../../shared/theme/presets";
 import { AtomicReplaceError } from "./atomicFile";
 import { NoteRepository } from "./noteRepository";
 
@@ -95,6 +96,40 @@ describe("NoteRepository", () => {
     expect(current).toEqual(result);
     expect(await readFile(storePath, "utf8")).toBe(malformed);
   });
+
+  it.each([
+    { name: "an unreadable inactive theme", active: false, reserved: false },
+    { name: "an unreadable active theme", active: true, reserved: false },
+    { name: "a reserved-ID custom theme", active: true, reserved: true },
+  ])(
+    "enters recovery without overwriting $name",
+    async ({ active, reserved }) => {
+      const document = createEmptyDocument(new Date(timestamp));
+      const theme = {
+        ...structuredClone(OXIDE_LEDGER_THEME),
+        id: reserved ? "builtin:collision" : "custom:unreadable",
+      };
+      if (!reserved) theme.dark.foreground = theme.dark.background;
+      document.customThemes = [theme];
+      if (active) document.appearance.activeThemeId = theme.id;
+      const serialized = `${JSON.stringify(document, null, 2)}\n`;
+      await writeFile(storePath, serialized, "utf8");
+      const repository = new NoteRepository(storePath);
+
+      const result = await repository.load();
+
+      expect(result).toEqual({
+        ok: false,
+        error: expect.objectContaining({
+          code: "invalid_document",
+          recoveryAction: "choose_file",
+        }),
+      });
+      expect(repository.currentResult()).toEqual(result);
+      expect(repository.recoveryBytes()).toEqual(Buffer.from(serialized));
+      expect(await readFile(storePath, "utf8")).toBe(serialized);
+    },
+  );
 
   it("persists valid replacements with stable formatting", async () => {
     const repository = new NoteRepository(storePath);
