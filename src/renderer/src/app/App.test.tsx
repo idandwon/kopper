@@ -174,6 +174,48 @@ describe("Oxide Ledger App", () => {
     ).toHaveFocus();
   });
 
+  it("prefers the removed nested-control owner's nearest survivor over stale logical focus", () => {
+    const activeNotes = [
+      document.notes[0],
+      {
+        ...document.notes[0],
+        id: "note-2",
+        body: "Middle note",
+        order: 1,
+      },
+      {
+        ...document.notes[0],
+        id: "note-3",
+        body: "Last note",
+        order: 2,
+      },
+    ];
+    const activeDocument = { ...document, notes: activeNotes };
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({ document: activeDocument }),
+    );
+    const view = render(<App />);
+
+    fireEvent.click(
+      screen.getByRole("option", { name: "Note: Captured note" }),
+    );
+    screen.getByRole("button", { name: "Mark Middle note as done" }).focus();
+
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({
+        document: {
+          ...activeDocument,
+          notes: activeNotes.filter(({ id }) => id !== "note-2"),
+        },
+      }),
+    );
+    view.rerender(<App />);
+
+    expect(
+      screen.getByRole("option", { name: "Note: Last note" }),
+    ).toHaveFocus();
+  });
+
   it("does not steal external focus when a logically focused card disappears", () => {
     const activeDocument: KopperDocument = {
       ...document,

@@ -142,11 +142,11 @@ export function selectionReducer(
       const visible = new Set(action.displayedIds);
       return {
         focusedId:
-          state.focusedId !== null && visible.has(state.focusedId)
-            ? state.focusedId
-            : action.fallbackFocusedId !== undefined &&
-                visible.has(action.fallbackFocusedId)
-              ? action.fallbackFocusedId
+          action.fallbackFocusedId !== undefined &&
+          visible.has(action.fallbackFocusedId)
+            ? action.fallbackFocusedId
+            : state.focusedId !== null && visible.has(state.focusedId)
+              ? state.focusedId
               : null,
         anchorId:
           state.anchorId !== null && visible.has(state.anchorId)
