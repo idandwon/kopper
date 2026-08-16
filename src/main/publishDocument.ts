@@ -1,5 +1,9 @@
 import type { KopperDocument } from "../shared/domain/document";
 import {
+  PermissionStateSchema,
+  type PermissionState,
+} from "../shared/permissions/permissionState";
+import {
   IPC_CHANNELS,
   NativeAppearanceSchema,
 } from "../shared/ipc/contract";
@@ -14,6 +18,7 @@ interface PublicationWindow<Payload> {
 
 export type DocumentPublicationWindow = PublicationWindow<KopperDocument>;
 export type NativeAppearancePublicationWindow = PublicationWindow<boolean>;
+export type PermissionPublicationWindow = PublicationWindow<PermissionState>;
 
 export function publishDocument(
   windows: DocumentPublicationWindow[],
@@ -22,6 +27,17 @@ export function publishDocument(
   for (const window of windows) {
     if (window.isDestroyed() || window.webContents.isDestroyed()) continue;
     window.webContents.send(IPC_CHANNELS.documentChanged, document);
+  }
+}
+
+export function publishPermissionState(
+  windows: PermissionPublicationWindow[],
+  input: unknown,
+): void {
+  const state = PermissionStateSchema.parse(input);
+  for (const window of windows) {
+    if (window.isDestroyed() || window.webContents.isDestroyed()) continue;
+    window.webContents.send(IPC_CHANNELS.accessibilityPermissionChanged, state);
   }
 }
 

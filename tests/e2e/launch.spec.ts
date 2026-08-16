@@ -110,6 +110,15 @@ test("renders a valid seeded store through the secure bridge", async ({
   const { page } = await launchKopper(`${JSON.stringify(document, null, 2)}\n`);
 
   await expect(page).toHaveTitle("Kopper");
+  if (
+    !(await page
+      .getByRole("searchbox", { name: "Search notes" })
+      .isVisible())
+  ) {
+    await page
+      .getByRole("button", { name: "Continue without capture" })
+      .click();
+  }
   await expect(page.getByText("Seeded startup note")).toBeVisible();
   await expect(
     page.getByRole("searchbox", { name: "Search notes" }),

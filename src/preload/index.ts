@@ -12,6 +12,9 @@ import {
   NativeAppearanceResultSchema,
   NativeAppearanceSchema,
   OpenEditorResultSchema,
+  PermissionActionResultSchema,
+  PermissionPromptArgumentsSchema,
+  PermissionResultSchema,
   SingleIdentifierArgumentsSchema,
   ThemeExportResultSchema,
   ThemeImportResultSchema,
@@ -19,6 +22,7 @@ import {
   parseDocumentResult,
   type KopperApi,
 } from "../shared/ipc/contract";
+import { PermissionStateSchema } from "../shared/permissions/permissionState";
 
 const api: KopperApi = {
   async getDocument() {
@@ -109,6 +113,51 @@ const api: KopperApi = {
     return NativeAppearanceResultSchema.parse(
       await ipcRenderer.invoke(IPC_CHANNELS.getNativeAppearance),
     );
+  },
+
+  async getAccessibilityPermission(prompt) {
+    const [parsedPrompt] = PermissionPromptArgumentsSchema.parse([prompt]);
+    return PermissionResultSchema.parse(
+      await ipcRenderer.invoke(
+        IPC_CHANNELS.getAccessibilityPermission,
+        parsedPrompt,
+      ),
+    );
+  },
+
+  async openAccessibilitySettings() {
+    return PermissionActionResultSchema.parse(
+      await ipcRenderer.invoke(IPC_CHANNELS.openAccessibilitySettings),
+    );
+  },
+
+  async continueWithoutCapture() {
+    return PermissionActionResultSchema.parse(
+      await ipcRenderer.invoke(IPC_CHANNELS.continueWithoutCapture),
+    );
+  },
+
+  onAccessibilityPermissionChanged(listener) {
+    const wrappedListener = (
+      _event: Electron.IpcRendererEvent,
+      input: unknown,
+    ) => {
+      listener(PermissionStateSchema.parse(input));
+    };
+    ipcRenderer.on(
+      IPC_CHANNELS.accessibilityPermissionChanged,
+      wrappedListener,
+    );
+
+    let subscribed = true;
+    return () => {
+      if (!subscribed) return;
+      subscribed = false;
+      ipcRenderer.removeListener(
+        IPC_CHANNELS.accessibilityPermissionChanged,
+        wrappedListener,
+      );
+    };
   },
 
   onNativeAppearanceChanged(listener) {

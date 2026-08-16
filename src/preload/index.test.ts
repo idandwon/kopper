@@ -43,17 +43,21 @@ describe("preload bridge", () => {
     expect(Object.keys(exposedApi()).sort()).toEqual([
       "chooseDataImport",
       "confirmDataImport",
+      "continueWithoutCapture",
       "copyNotes",
       "createNewStore",
       "execute",
       "exportData",
       "exportRecoveryBytes",
       "exportTheme",
+      "getAccessibilityPermission",
       "getDataPath",
       "getDocument",
       "getNativeAppearance",
       "importTheme",
+      "onAccessibilityPermissionChanged",
       "onNativeAppearanceChanged",
+      "openAccessibilitySettings",
       "openEditorWindow",
       "subscribeDocument",
       "undo",
@@ -149,17 +153,36 @@ describe("preload bridge", () => {
       .mockResolvedValueOnce({ ok: true, value: document })
       .mockResolvedValueOnce({ ok: true, value: "/tmp/kopper.json" });
 
-    await expect(exposedApi().openEditorWindow("note-1")).resolves.toMatchObject({ ok: true });
-    await expect(exposedApi().exportData()).resolves.toMatchObject({ ok: true });
+    await expect(
+      exposedApi().openEditorWindow("note-1"),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(exposedApi().exportData()).resolves.toMatchObject({
+      ok: true,
+    });
     const preview = await exposedApi().chooseDataImport();
-    expect(preview).toMatchObject({ ok: true, value: { fileName: "notes.json" } });
-    await expect(exposedApi().confirmDataImport("0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5")).resolves.toMatchObject({ ok: true });
-    await expect(exposedApi().exportRecoveryBytes()).resolves.toMatchObject({ ok: true });
-    await expect(exposedApi().createNewStore()).resolves.toMatchObject({ ok: true });
-    await expect(exposedApi().getDataPath()).resolves.toEqual({ ok: true, value: "/tmp/kopper.json" });
+    expect(preview).toMatchObject({
+      ok: true,
+      value: { fileName: "notes.json" },
+    });
+    await expect(
+      exposedApi().confirmDataImport("0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5"),
+    ).resolves.toMatchObject({ ok: true });
+    await expect(exposedApi().exportRecoveryBytes()).resolves.toMatchObject({
+      ok: true,
+    });
+    await expect(exposedApi().createNewStore()).resolves.toMatchObject({
+      ok: true,
+    });
+    await expect(exposedApi().getDataPath()).resolves.toEqual({
+      ok: true,
+      value: "/tmp/kopper.json",
+    });
 
     await expect(exposedApi().openEditorWindow("")).rejects.toThrow();
-    electron.invoke.mockResolvedValueOnce({ ok: true, value: { cancelled: "yes" } });
+    electron.invoke.mockResolvedValueOnce({
+      ok: true,
+      value: { cancelled: "yes" },
+    });
     await expect(exposedApi().exportData()).rejects.toThrow();
   });
 
@@ -244,6 +267,70 @@ describe("preload bridge", () => {
       },
     });
     await expect(exposedApi().importTheme()).rejects.toThrow();
+  });
+
+  it("validates permission IPC in both directions", async () => {
+    electron.invoke
+      .mockResolvedValueOnce({ ok: true, value: "unknown" })
+      .mockResolvedValueOnce({ ok: true, value: "denied" })
+      .mockResolvedValueOnce({ ok: true, value: { acknowledged: true } })
+      .mockResolvedValueOnce({ ok: true, value: { acknowledged: true } });
+
+    await expect(
+      exposedApi().getAccessibilityPermission(false),
+    ).resolves.toEqual({ ok: true, value: "unknown" });
+    await expect(
+      exposedApi().getAccessibilityPermission(true),
+    ).resolves.toEqual({ ok: true, value: "denied" });
+    await expect(exposedApi().openAccessibilitySettings()).resolves.toEqual({
+      ok: true,
+      value: { acknowledged: true },
+    });
+    await expect(exposedApi().continueWithoutCapture()).resolves.toEqual({
+      ok: true,
+      value: { acknowledged: true },
+    });
+    expect(electron.invoke.mock.calls).toEqual([
+      [IPC_CHANNELS.getAccessibilityPermission, false],
+      [IPC_CHANNELS.getAccessibilityPermission, true],
+      [IPC_CHANNELS.openAccessibilitySettings],
+      [IPC_CHANNELS.continueWithoutCapture],
+    ]);
+
+    await expect(
+      exposedApi().getAccessibilityPermission("yes" as unknown as boolean),
+    ).rejects.toThrow();
+    electron.invoke.mockResolvedValueOnce({ ok: true, value: "authorized" });
+    await expect(
+      exposedApi().getAccessibilityPermission(false),
+    ).rejects.toThrow();
+    electron.invoke.mockResolvedValueOnce({ ok: true, value: {} });
+    await expect(exposedApi().openAccessibilitySettings()).rejects.toThrow();
+  });
+
+  it("validates permission events and unsubscribes exactly its listener", () => {
+    const listener = vi.fn();
+    const unsubscribe = exposedApi().onAccessibilityPermissionChanged(listener);
+    const subscription = electron.on.mock.calls[0];
+    expect(subscription?.[0]).toBe(IPC_CHANNELS.accessibilityPermissionChanged);
+    const wrappedListener = subscription?.[1] as (
+      event: IpcRendererEvent,
+      input: unknown,
+    ) => void;
+
+    wrappedListener({} as IpcRendererEvent, "granted");
+    expect(listener).toHaveBeenCalledWith("granted");
+    expect(() =>
+      wrappedListener({} as IpcRendererEvent, "authorized"),
+    ).toThrow();
+    expect(listener).toHaveBeenCalledTimes(1);
+
+    unsubscribe();
+    unsubscribe();
+    expect(electron.removeListener).toHaveBeenCalledExactlyOnceWith(
+      IPC_CHANNELS.accessibilityPermissionChanged,
+      wrappedListener,
+    );
   });
 
   it("validates native appearance events and unsubscribes exactly its listener", () => {

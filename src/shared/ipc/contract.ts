@@ -8,6 +8,10 @@ import {
   type ThemeDefinition,
 } from "../domain/document";
 import type { KopperError, Result } from "../domain/errors";
+import {
+  PermissionStateSchema,
+  type PermissionState,
+} from "../permissions/permissionState";
 
 export const IPC_CHANNELS = {
   getDocument: "kopper:document:get",
@@ -26,6 +30,10 @@ export const IPC_CHANNELS = {
   exportTheme: "kopper:theme:export",
   getNativeAppearance: "kopper:appearance:native:get",
   nativeAppearanceChanged: "kopper:appearance:native:changed",
+  getAccessibilityPermission: "kopper:permission:get",
+  openAccessibilitySettings: "kopper:permission:settings:open",
+  continueWithoutCapture: "kopper:onboarding:continue-without-capture",
+  accessibilityPermissionChanged: "kopper:permission:changed",
 } as const;
 
 export const NoteClipboardModeSchema = z.enum(["plain", "markdown-list"]);
@@ -149,18 +157,20 @@ export const FileOperationResultSchema: z.ZodType<FileOperationResult> =
     z.strictObject({ ok: z.literal(false), error: KopperErrorSchema }),
   ]);
 
-const DataImportPreviewSchema: z.ZodType<DataImportPreview> =
-  z.strictObject({
-    token: z.uuid(),
-    fileName: z.string().min(1),
-    noteCount: z.int().nonnegative(),
-    sectionCount: z.int().positive(),
-  });
+const DataImportPreviewSchema: z.ZodType<DataImportPreview> = z.strictObject({
+  token: z.uuid(),
+  fileName: z.string().min(1),
+  noteCount: z.int().nonnegative(),
+  sectionCount: z.int().positive(),
+});
 
 export const DataImportPreviewResultSchema: z.ZodType<
   Result<DataImportPreview | null, KopperError>
 > = z.discriminatedUnion("ok", [
-  z.strictObject({ ok: z.literal(true), value: DataImportPreviewSchema.nullable() }),
+  z.strictObject({
+    ok: z.literal(true),
+    value: DataImportPreviewSchema.nullable(),
+  }),
   z.strictObject({ ok: z.literal(false), error: KopperErrorSchema }),
 ]);
 
@@ -230,6 +240,28 @@ export const NativeAppearanceResultSchema: z.ZodType<
   z.strictObject({ ok: z.literal(false), error: KopperErrorSchema }),
 ]);
 
+export const PermissionPromptArgumentsSchema = z.tuple([z.boolean()]);
+export const PermissionResultSchema: z.ZodType<
+  Result<PermissionState, KopperError>
+> = z.discriminatedUnion("ok", [
+  z.strictObject({ ok: z.literal(true), value: PermissionStateSchema }),
+  z.strictObject({ ok: z.literal(false), error: KopperErrorSchema }),
+]);
+
+export interface PermissionActionSuccess {
+  acknowledged: true;
+}
+
+export const PermissionActionResultSchema: z.ZodType<
+  Result<PermissionActionSuccess, KopperError>
+> = z.discriminatedUnion("ok", [
+  z.strictObject({
+    ok: z.literal(true),
+    value: z.strictObject({ acknowledged: z.literal(true) }),
+  }),
+  z.strictObject({ ok: z.literal(false), error: KopperErrorSchema }),
+]);
+
 export const SingleIdentifierArgumentsSchema = z.tuple([z.string().min(1)]);
 export const ImportTokenArgumentsSchema = z.tuple([z.uuid()]);
 
@@ -243,16 +275,36 @@ export interface KopperApi {
     noteIds: string[],
     mode: NoteClipboardMode,
   ): Promise<ClipboardCopyResult>;
-  openEditorWindow(noteId: string): Promise<Result<{ noteId: string }, KopperError>>;
+  openEditorWindow(
+    noteId: string,
+  ): Promise<Result<{ noteId: string }, KopperError>>;
   exportData(): Promise<FileOperationResult>;
   chooseDataImport(): Promise<Result<DataImportPreview | null, KopperError>>;
-  confirmDataImport(token: string): Promise<Result<KopperDocument, KopperError>>;
+  confirmDataImport(
+    token: string,
+  ): Promise<Result<KopperDocument, KopperError>>;
   exportRecoveryBytes(): Promise<FileOperationResult>;
   createNewStore(): Promise<Result<KopperDocument, KopperError>>;
   getDataPath(): Promise<Result<string, KopperError>>;
   importTheme(): Promise<Result<ThemeImportPreview | null, KopperError>>;
-  exportTheme(themeId: string): Promise<Result<{ path: string } | null, KopperError>>;
+  exportTheme(
+    themeId: string,
+  ): Promise<Result<{ path: string } | null, KopperError>>;
   getNativeAppearance(): Promise<Result<boolean, KopperError>>;
-  onNativeAppearanceChanged(listener: (useDarkColors: boolean) => void): () => void;
+  onNativeAppearanceChanged(
+    listener: (useDarkColors: boolean) => void,
+  ): () => void;
+  getAccessibilityPermission(
+    prompt: boolean,
+  ): Promise<Result<PermissionState, KopperError>>;
+  openAccessibilitySettings(): Promise<
+    Result<PermissionActionSuccess, KopperError>
+  >;
+  continueWithoutCapture(): Promise<
+    Result<PermissionActionSuccess, KopperError>
+  >;
+  onAccessibilityPermissionChanged(
+    listener: (state: PermissionState) => void,
+  ): () => void;
   subscribeDocument(listener: (document: KopperDocument) => void): () => void;
 }

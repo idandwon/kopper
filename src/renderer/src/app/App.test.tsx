@@ -1,27 +1,104 @@
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KopperDocument } from "../../../shared/domain/document";
 import { App } from "./App";
-import { useKopperDocument, type KopperDocumentContextValue } from "./DocumentProvider";
+import {
+  useKopperDocument,
+  type KopperDocumentContextValue,
+} from "./DocumentProvider";
+
+const onboardingMock = vi.hoisted(() => ({
+  mode: "grant" as "grant" | "hold",
+}));
 
 vi.mock("./DocumentProvider", () => ({ useKopperDocument: vi.fn() }));
-vi.mock("../features/settings/AppearanceSettings", () => ({ AppearanceSettings: () => <div>Appearance controls</div> }));
-vi.mock("../features/settings/DataSettings", () => ({ DataSettings: () => <div>Data controls</div> }));
+vi.mock("../features/onboarding/AccessibilityOnboarding", async () => {
+  const { useEffect } = await import("react");
+  return {
+    AccessibilityOnboarding: ({
+      onGranted,
+      onContinueWithoutCapture,
+    }: {
+      onGranted(): void;
+      onContinueWithoutCapture(): void;
+    }) => {
+      useEffect(() => {
+        if (onboardingMock.mode === "grant") onGranted();
+      }, [onGranted]);
+      if (onboardingMock.mode === "grant") return null;
+      return (
+        <div>
+          <h1>Accessibility onboarding</h1>
+          <button type="button" onClick={onGranted}>
+            Grant mock access
+          </button>
+          <button type="button" onClick={onContinueWithoutCapture}>
+            Continue mock without capture
+          </button>
+        </div>
+      );
+    },
+  };
+});
+vi.mock("../features/recovery/RecoveryScreen", () => ({
+  RecoveryScreen: () => <h1>Kopper needs recovery</h1>,
+}));
+vi.mock("../features/settings/AppearanceSettings", () => ({
+  AppearanceSettings: () => <div>Appearance controls</div>,
+}));
+vi.mock("../features/settings/DataSettings", () => ({
+  DataSettings: () => <div>Data controls</div>,
+}));
 
 const timestamp = "2026-08-16T12:00:00.000Z";
 const document: KopperDocument = {
   schemaVersion: 1,
-  sections: [{ id: "inbox", title: "Inbox", order: 0, createdAt: timestamp, updatedAt: timestamp }],
+  sections: [
+    {
+      id: "inbox",
+      title: "Inbox",
+      order: 0,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    },
+  ],
   notes: [
-    { id: "note-1", sectionId: "inbox", body: "Captured note", order: 0, createdAt: timestamp, updatedAt: timestamp, completedAt: null, previousPlacement: null },
-    { id: "note-2", sectionId: "inbox", body: "Completed note", order: 1, createdAt: timestamp, updatedAt: timestamp, completedAt: timestamp, previousPlacement: { sectionId: "inbox", order: 1 } },
+    {
+      id: "note-1",
+      sectionId: "inbox",
+      body: "Captured note",
+      order: 0,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      completedAt: null,
+      previousPlacement: null,
+    },
+    {
+      id: "note-2",
+      sectionId: "inbox",
+      body: "Completed note",
+      order: 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      completedAt: timestamp,
+      previousPlacement: { sectionId: "inbox", order: 1 },
+    },
   ],
   activeSectionId: "inbox",
-  shortcuts: { capture: { kind: "double-modifier", modifier: "shift" }, togglePanel: "CommandOrControl+Shift+Space" },
+  shortcuts: {
+    capture: { kind: "double-modifier", modifier: "shift" },
+    togglePanel: "CommandOrControl+Shift+Space",
+  },
   window: { pinned: false, bounds: null },
   appearance: { mode: "system", activeThemeId: "oxide-ledger" },
   customThemes: [],
@@ -33,11 +110,25 @@ const execute = vi.fn<KopperDocumentContextValue["execute"]>();
 const undo = vi.fn<KopperDocumentContextValue["undo"]>();
 const retryLastAction = vi.fn<KopperDocumentContextValue["retryLastAction"]>();
 
-function contextValue(overrides: Partial<KopperDocumentContextValue> = {}): KopperDocumentContextValue {
-  return { document, ready: true, pendingAction: null, error: null, execute, undo, retryLastAction, clearError: vi.fn(), ...overrides };
+function contextValue(
+  overrides: Partial<KopperDocumentContextValue> = {},
+): KopperDocumentContextValue {
+  return {
+    document,
+    ready: true,
+    pendingAction: null,
+    error: null,
+    execute,
+    undo,
+    retryLastAction,
+    clearError: vi.fn(),
+    ...overrides,
+  };
 }
 
 beforeEach(() => {
+  globalThis.location.hash = "";
+  onboardingMock.mode = "grant";
   HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
   HTMLElement.prototype.releasePointerCapture = vi.fn();
   execute.mockReset().mockResolvedValue(true);
@@ -48,18 +139,77 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Oxide Ledger App", () => {
+  it("gates only the loaded normal panel and continues without a false grant", async () => {
+    onboardingMock.mode = "hold";
+    const user = userEvent.setup();
+    const view = render(<App />);
+
+    expect(
+      screen.getByRole("heading", { name: "Accessibility onboarding" }),
+    ).toBeVisible();
+    expect(screen.queryByText("Captured note")).not.toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole("button", { name: "Continue mock without capture" }),
+    );
+    expect(screen.getByText("Captured note")).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Capture unavailable — Accessibility access has not been granted.",
+    );
+
+    view.unmount();
+    onboardingMock.mode = "hold";
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({
+        ready: false,
+        error: {
+          code: "read_failed",
+          message: "Could not read the store.",
+          retryable: true,
+          recoveryAction: "retry",
+        },
+      }),
+    );
+    render(<App />);
+    expect(
+      screen.queryByRole("heading", { name: "Accessibility onboarding" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Kopper needs recovery" }),
+    ).toBeVisible();
+  });
+
+  it("lets expanded editor windows bypass capture onboarding", () => {
+    onboardingMock.mode = "hold";
+    globalThis.location.hash = "#editor=note-1";
+    render(<App />);
+
+    expect(
+      screen.queryByRole("heading", { name: "Accessibility onboarding" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Edit note" })).toBeVisible();
+  });
+
   it("renders the interactive active panel and lifecycle rail", () => {
     render(<App />);
 
-    expect(screen.getByRole("searchbox", { name: "Search notes" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Active notes" })).toHaveAttribute("aria-pressed", "true");
+    expect(
+      screen.getByRole("searchbox", { name: "Search notes" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Active notes" }),
+    ).toHaveAttribute("aria-pressed", "true");
     expect(screen.getByRole("heading", { name: "Inbox" })).toBeVisible();
     expect(screen.getByText("Captured note")).toBeVisible();
     expect(screen.queryByText("Completed note")).not.toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Add a note or prompt" })).toBeEnabled();
+    expect(
+      screen.getByRole("textbox", { name: "Add a note or prompt" }),
+    ).toBeEnabled();
     expect(screen.getByRole("button", { name: "Undo" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Add section" })).toBeVisible();
-    expect(screen.getByText("Lifecycle: captured to completed")).toBeInTheDocument();
+    expect(
+      screen.getByText("Lifecycle: captured to completed"),
+    ).toBeInTheDocument();
   });
 
   it("restores focus to the panel menu trigger when the controlled settings sheet closes", async () => {
@@ -68,7 +218,9 @@ describe("Oxide Ledger App", () => {
     const trigger = screen.getByRole("button", { name: "Panel menu" });
     await user.click(trigger);
     await user.click(screen.getByRole("menuitem", { name: "Settings…" }));
-    expect(await screen.findByRole("dialog")).toHaveTextContent("Appearance controls");
+    expect(await screen.findByRole("dialog")).toHaveTextContent(
+      "Appearance controls",
+    );
     await user.click(screen.getByRole("button", { name: "Close settings" }));
     expect(trigger).toHaveFocus();
   });
@@ -91,7 +243,9 @@ describe("Oxide Ledger App", () => {
     );
 
     const firstRender = render(<App />);
-    const firstCard = screen.getByRole("option", { name: "Note: Captured note" });
+    const firstCard = screen.getByRole("option", {
+      name: "Note: Captured note",
+    });
     const secondCard = screen.getByRole("option", {
       name: "Note: Second active note",
     });
@@ -138,7 +292,9 @@ describe("Oxide Ledger App", () => {
       contextValue({ document: activeDocument }),
     );
     const firstRender = render(<App />);
-    const middleCard = screen.getByRole("option", { name: "Note: Middle note" });
+    const middleCard = screen.getByRole("option", {
+      name: "Note: Middle note",
+    });
     middleCard.focus();
     fireEvent.click(middleCard);
     fireEvent.keyDown(middleCard, { key: " " });
@@ -248,7 +404,9 @@ describe("Oxide Ledger App", () => {
       contextValue({ document: activeDocument }),
     );
     const view = render(<App />);
-    const firstCard = screen.getByRole("option", { name: "Note: Captured note" });
+    const firstCard = screen.getByRole("option", {
+      name: "Note: Captured note",
+    });
     fireEvent.click(firstCard);
     const search = screen.getByRole("searchbox", { name: "Search notes" });
     search.focus();
@@ -273,10 +431,14 @@ describe("Oxide Ledger App", () => {
     await user.click(screen.getByRole("button", { name: "Completed notes" }));
     expect(screen.getByText("Completed note")).toBeVisible();
     expect(screen.queryByText("Captured note")).not.toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "Add a note or prompt" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("textbox", { name: "Add a note or prompt" }),
+    ).not.toBeInTheDocument();
 
     await user.type(screen.getByRole("searchbox"), "missing");
-    expect(screen.queryByRole("heading", { name: "Inbox" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Inbox" }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("No matching notes")).toBeVisible();
   });
 
@@ -311,7 +473,16 @@ describe("Oxide Ledger App", () => {
 
   it("renders a persistent structured error with Retry only when retryable", async () => {
     const user = userEvent.setup();
-    mockedUseKopperDocument.mockReturnValue(contextValue({ error: { code: "write_failed", message: "The ledger could not be written.", retryable: true, recoveryAction: "retry" } }));
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({
+        error: {
+          code: "write_failed",
+          message: "The ledger could not be written.",
+          retryable: true,
+          recoveryAction: "retry",
+        },
+      }),
+    );
     const { rerender } = render(<App />);
 
     const alert = screen.getByRole("alert");
@@ -320,15 +491,29 @@ describe("Oxide Ledger App", () => {
     expect(retryLastAction).toHaveBeenCalledOnce();
     expect(screen.getByText("Captured note")).toBeVisible();
 
-    mockedUseKopperDocument.mockReturnValue(contextValue({ error: { code: "validation_failed", message: "Invalid action.", retryable: false } }));
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({
+        error: {
+          code: "validation_failed",
+          message: "Invalid action.",
+          retryable: false,
+        },
+      }),
+    );
     rerender(<App />);
     expect(screen.getByRole("alert")).toHaveTextContent("Invalid action.");
-    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Retry" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders a labeled loading progress region", () => {
-    mockedUseKopperDocument.mockReturnValue(contextValue({ pendingAction: "load" }));
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({ pendingAction: "load" }),
+    );
     render(<App />);
-    expect(screen.getByRole("progressbar", { name: "Loading notes" })).toBeVisible();
+    expect(
+      screen.getByRole("progressbar", { name: "Loading notes" }),
+    ).toBeVisible();
   });
 });

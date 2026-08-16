@@ -20,6 +20,9 @@ import {
   IPC_CHANNELS,
   NativeAppearanceResultSchema,
   OpenEditorResultSchema,
+  PermissionActionResultSchema,
+  PermissionPromptArgumentsSchema,
+  PermissionResultSchema,
   SingleIdentifierArgumentsSchema,
   ThemeExportResultSchema,
   ThemeImportResultSchema,
@@ -29,6 +32,7 @@ import {
   type FileOperationResult,
   type ThemeImportPreview,
 } from "../../shared/ipc/contract";
+import type { PermissionState } from "../../shared/permissions/permissionState";
 import { getThemeById } from "../../shared/theme/presets";
 import {
   copyNotesToClipboard,
@@ -61,12 +65,20 @@ export interface IpcThemeFiles {
   ): Promise<Result<{ path: string } | null, KopperError>>;
 }
 
+export interface IpcPermissionManager {
+  check(prompt: boolean): PermissionState;
+  openSettings(): Promise<void>;
+}
+
 export interface IpcServices {
   files?: IpcFileOperations;
   themeFiles?: IpcThemeFiles;
+  permissionManager?: IpcPermissionManager;
   getNativeAppearance?(): boolean;
   openEditorWindow?(noteId: string): void;
   publish?(document: KopperDocument): void;
+  publishPermission?(state: PermissionState): void;
+  continueWithoutCapture?(): void | Promise<void>;
 }
 
 const NoArgumentsSchema = z.tuple([]);
@@ -163,13 +175,9 @@ export function registerIpcHandlers(
     );
   };
 
-  const unavailable = (message: string) =>
-    invalidRequest(message);
+  const unavailable = (message: string) => invalidRequest(message);
 
-  const openEditorWindow = (
-    _event: IpcMainInvokeEvent,
-    ...args: unknown[]
-  ) => {
+  const openEditorWindow = (_event: IpcMainInvokeEvent, ...args: unknown[]) => {
     const parsed = SingleIdentifierArgumentsSchema.safeParse(args);
     if (!parsed.success || services.openEditorWindow === undefined) {
       return OpenEditorResultSchema.parse(
@@ -177,7 +185,10 @@ export function registerIpcHandlers(
       );
     }
     const current = repository.currentResult();
-    if (!current.ok || !current.value.notes.some(({ id }) => id === parsed.data[0])) {
+    if (
+      !current.ok ||
+      !current.value.notes.some(({ id }) => id === parsed.data[0])
+    ) {
       return OpenEditorResultSchema.parse(
         unavailable("The requested note does not exist."),
       );
@@ -195,17 +206,34 @@ export function registerIpcHandlers(
     schema: { parse(input: unknown): T },
   ): Promise<T> => {
     if (!NoArgumentsSchema.safeParse(args).success || operation === undefined) {
-      return schema.parse(unavailable("The file operation request was invalid."));
+      return schema.parse(
+        unavailable("The file operation request was invalid."),
+      );
     }
     return schema.parse(await operation());
   };
 
   const exportData = (_event: IpcMainInvokeEvent, ...args: unknown[]) =>
-    noArgumentFileOperation(args, services.files?.exportData.bind(services.files), FileOperationResultSchema);
+    noArgumentFileOperation(
+      args,
+      services.files?.exportData.bind(services.files),
+      FileOperationResultSchema,
+    );
   const chooseDataImport = (_event: IpcMainInvokeEvent, ...args: unknown[]) =>
-    noArgumentFileOperation(args, services.files?.chooseImport.bind(services.files), DataImportPreviewResultSchema);
-  const exportRecoveryBytes = (_event: IpcMainInvokeEvent, ...args: unknown[]) =>
-    noArgumentFileOperation(args, services.files?.exportRecoveryBytes.bind(services.files), FileOperationResultSchema);
+    noArgumentFileOperation(
+      args,
+      services.files?.chooseImport.bind(services.files),
+      DataImportPreviewResultSchema,
+    );
+  const exportRecoveryBytes = (
+    _event: IpcMainInvokeEvent,
+    ...args: unknown[]
+  ) =>
+    noArgumentFileOperation(
+      args,
+      services.files?.exportRecoveryBytes.bind(services.files),
+      FileOperationResultSchema,
+    );
 
   const confirmDataImport = async (
     _event: IpcMainInvokeEvent,
@@ -213,7 +241,9 @@ export function registerIpcHandlers(
   ) => {
     const parsed = ImportTokenArgumentsSchema.safeParse(args);
     if (!parsed.success || services.files === undefined) {
-      return DocumentResultSchema.parse(unavailable("The import confirmation was invalid."));
+      return DocumentResultSchema.parse(
+        unavailable("The import confirmation was invalid."),
+      );
     }
     const result = DocumentResultSchema.parse(
       await services.files.confirmImport(parsed.data[0]),
@@ -226,25 +256,37 @@ export function registerIpcHandlers(
     _event: IpcMainInvokeEvent,
     ...args: unknown[]
   ) => {
-    if (!NoArgumentsSchema.safeParse(args).success || services.files === undefined) {
-      return DocumentResultSchema.parse(unavailable("The create-store request was invalid."));
+    if (
+      !NoArgumentsSchema.safeParse(args).success ||
+      services.files === undefined
+    ) {
+      return DocumentResultSchema.parse(
+        unavailable("The create-store request was invalid."),
+      );
     }
-    const result = DocumentResultSchema.parse(await services.files.createNewStore());
+    const result = DocumentResultSchema.parse(
+      await services.files.createNewStore(),
+    );
     if (result.ok) services.publish?.(result.value);
     return result;
   };
 
   const getDataPath = (_event: IpcMainInvokeEvent, ...args: unknown[]) => {
-    if (!NoArgumentsSchema.safeParse(args).success || services.files === undefined) {
-      return DataPathResultSchema.parse(unavailable("The data-path request was invalid."));
+    if (
+      !NoArgumentsSchema.safeParse(args).success ||
+      services.files === undefined
+    ) {
+      return DataPathResultSchema.parse(
+        unavailable("The data-path request was invalid."),
+      );
     }
-    return DataPathResultSchema.parse({ ok: true, value: services.files.activePath() });
+    return DataPathResultSchema.parse({
+      ok: true,
+      value: services.files.activePath(),
+    });
   };
 
-  const importTheme = (
-    _event: IpcMainInvokeEvent,
-    ...args: unknown[]
-  ) =>
+  const importTheme = (_event: IpcMainInvokeEvent, ...args: unknown[]) =>
     noArgumentFileOperation(
       args,
       services.themeFiles?.importForPreview.bind(services.themeFiles),
@@ -292,6 +334,104 @@ export function registerIpcHandlers(
     });
   };
 
+  let lastObservedPermissionState: PermissionState | undefined;
+  const getAccessibilityPermission = (
+    _event: IpcMainInvokeEvent,
+    ...args: unknown[]
+  ) => {
+    const parsed = PermissionPromptArgumentsSchema.safeParse(args);
+    if (!parsed.success || services.permissionManager === undefined) {
+      return PermissionResultSchema.parse(
+        unavailable("The Accessibility permission request was invalid."),
+      );
+    }
+
+    try {
+      const state = services.permissionManager.check(parsed.data[0]);
+      if (
+        lastObservedPermissionState !== undefined &&
+        state !== lastObservedPermissionState
+      ) {
+        services.publishPermission?.(state);
+      }
+      lastObservedPermissionState = state;
+      return PermissionResultSchema.parse({ ok: true, value: state });
+    } catch {
+      return PermissionResultSchema.parse({
+        ok: false,
+        error: {
+          code: "permission_denied",
+          message: "Kopper could not check Accessibility access.",
+          retryable: true,
+          recoveryAction: "open_settings",
+        },
+      });
+    }
+  };
+
+  const openAccessibilitySettings = async (
+    _event: IpcMainInvokeEvent,
+    ...args: unknown[]
+  ) => {
+    if (
+      !NoArgumentsSchema.safeParse(args).success ||
+      services.permissionManager === undefined
+    ) {
+      return PermissionActionResultSchema.parse(
+        unavailable("The Accessibility settings request was invalid."),
+      );
+    }
+
+    try {
+      await services.permissionManager.openSettings();
+      return PermissionActionResultSchema.parse({
+        ok: true,
+        value: { acknowledged: true },
+      });
+    } catch {
+      return PermissionActionResultSchema.parse({
+        ok: false,
+        error: {
+          code: "permission_denied",
+          message: "Kopper could not open Accessibility settings.",
+          retryable: true,
+          recoveryAction: "open_settings",
+        },
+      });
+    }
+  };
+
+  const continueWithoutCapture = async (
+    _event: IpcMainInvokeEvent,
+    ...args: unknown[]
+  ) => {
+    if (
+      !NoArgumentsSchema.safeParse(args).success ||
+      services.continueWithoutCapture === undefined
+    ) {
+      return PermissionActionResultSchema.parse(
+        unavailable("The onboarding dismissal request was invalid."),
+      );
+    }
+
+    try {
+      await services.continueWithoutCapture();
+      return PermissionActionResultSchema.parse({
+        ok: true,
+        value: { acknowledged: true },
+      });
+    } catch {
+      return PermissionActionResultSchema.parse({
+        ok: false,
+        error: {
+          code: "write_failed",
+          message: "Kopper could not continue without capture.",
+          retryable: true,
+        },
+      });
+    }
+  };
+
   const channels = [
     [IPC_CHANNELS.getDocument, getDocument],
     [IPC_CHANNELS.executeCommand, executeCommand],
@@ -307,6 +447,9 @@ export function registerIpcHandlers(
     [IPC_CHANNELS.importTheme, importTheme],
     [IPC_CHANNELS.exportTheme, exportTheme],
     [IPC_CHANNELS.getNativeAppearance, getNativeAppearance],
+    [IPC_CHANNELS.getAccessibilityPermission, getAccessibilityPermission],
+    [IPC_CHANNELS.openAccessibilitySettings, openAccessibilitySettings],
+    [IPC_CHANNELS.continueWithoutCapture, continueWithoutCapture],
   ] as const;
   for (const [channel, handler] of channels) {
     ipcMain.handle(channel, handler);

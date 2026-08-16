@@ -7,6 +7,8 @@ import {
   dialog,
   ipcMain,
   nativeTheme,
+  shell,
+  systemPreferences,
 } from "electron";
 
 import { APP_NAME, STORE_FILE_NAME } from "../shared/appIdentity";
@@ -18,11 +20,13 @@ import { DocumentFiles } from "./files/documentFiles";
 import { CommandService } from "./domain/commandService";
 import { MainOperationCoordinator } from "./domain/mainOperationCoordinator";
 import { registerIpcHandlers } from "./ipc/registerIpcHandlers";
+import { PermissionManager } from "./permissions/permissionManager";
 import { registerNativeAppearance } from "./nativeAppearance";
 import { NoteRepository } from "./persistence/noteRepository";
 import {
   publishDocument,
   publishNativeAppearance,
+  publishPermissionState,
 } from "./publishDocument";
 import { ThemeFiles } from "./theme/themeFiles";
 
@@ -55,6 +59,13 @@ void app.whenReady().then(async () => {
     externalReplacementSucceeded: () => commandService.clearUndoHistory(),
   });
   const themeFiles = new ThemeFiles(dialog);
+  const permissionManager = new PermissionManager({
+    platform: process.platform,
+    isTrustedAccessibilityClient: (prompt) =>
+      systemPreferences.isTrustedAccessibilityClient(prompt),
+    openExternal: (url) => shell.openExternal(url),
+  });
+  const onboardingSession = { continuedWithoutCapture: false };
   cleanupIpcHandlers = registerIpcHandlers(
     repository,
     commandService,
@@ -63,9 +74,16 @@ void app.whenReady().then(async () => {
     {
       files: documentFiles,
       themeFiles,
+      permissionManager,
       getNativeAppearance: () => nativeTheme.shouldUseDarkColors,
       openEditorWindow: openExpandedEditorWindow,
       publish,
+      publishPermission: (state) => {
+        publishPermissionState(BrowserWindow.getAllWindows(), state);
+      },
+      continueWithoutCapture: () => {
+        onboardingSession.continuedWithoutCapture = true;
+      },
     },
   );
   cleanupNativeAppearance = registerNativeAppearance(

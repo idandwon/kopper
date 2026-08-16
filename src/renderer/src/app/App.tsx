@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useReducer,
@@ -33,6 +34,7 @@ import {
   expandedEditorNoteId,
 } from "../features/editor/ExpandedEditorWindow";
 import { NoteComposer } from "../features/notes/NoteComposer";
+import { AccessibilityOnboarding } from "../features/onboarding/AccessibilityOnboarding";
 import { RecoveryScreen } from "../features/recovery/RecoveryScreen";
 import { AppearanceSettings } from "../features/settings/AppearanceSettings";
 import { DataSettings } from "../features/settings/DataSettings";
@@ -139,7 +141,13 @@ function ViewButton({
   );
 }
 
-function DocumentPanel({ document }: { document: KopperDocument }) {
+function DocumentPanel({
+  document,
+  captureUnavailable = false,
+}: {
+  document: KopperDocument;
+  captureUnavailable?: boolean;
+}) {
   const { error, pendingAction, retryLastAction, undo } = useKopperDocument();
   const [query, setQuery] = useState("");
   const [view, setView] = useState<NoteProjectionView>("active");
@@ -268,6 +276,15 @@ function DocumentPanel({ document }: { document: KopperDocument }) {
           </div>
         </header>
 
+        {captureUnavailable && (
+          <div
+            role="status"
+            className="mx-4 mb-2 ml-5 rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground"
+          >
+            Capture unavailable — Accessibility access has not been granted.
+          </div>
+        )}
+
         {error !== null && (
           <GlobalError error={error} retry={retryLastAction} disabled={busy} />
         )}
@@ -318,12 +335,33 @@ function DocumentPanel({ document }: { document: KopperDocument }) {
 
 export function App() {
   const { document, ready, error, pendingAction } = useKopperDocument();
+  const [captureDisposition, setCaptureDisposition] = useState<
+    "onboarding" | "granted" | "continued"
+  >("onboarding");
   const editorNoteId = expandedEditorNoteId(globalThis.location.hash);
+  const grantCapture = useCallback(() => setCaptureDisposition("granted"), []);
+  const continueWithoutCapture = useCallback(
+    () => setCaptureDisposition("continued"),
+    [],
+  );
 
   if (pendingAction === "load") return <LoadingState />;
   if (!ready && error !== null) return <RecoveryScreen error={error} />;
   if (editorNoteId !== null) {
     return <ExpandedEditorWindow noteId={editorNoteId} />;
   }
-  return <DocumentPanel document={document} />;
+  if (captureDisposition === "onboarding") {
+    return (
+      <AccessibilityOnboarding
+        onGranted={grantCapture}
+        onContinueWithoutCapture={continueWithoutCapture}
+      />
+    );
+  }
+  return (
+    <DocumentPanel
+      document={document}
+      captureUnavailable={captureDisposition === "continued"}
+    />
+  );
 }

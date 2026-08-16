@@ -12,6 +12,9 @@ import {
   IPC_CHANNELS,
   KopperErrorSchema,
   NativeAppearanceResultSchema,
+  PermissionActionResultSchema,
+  PermissionPromptArgumentsSchema,
+  PermissionResultSchema,
   ThemeExportResultSchema,
   ThemeImportResultSchema,
   parseClipboardCopyResult,
@@ -48,10 +51,9 @@ describe("IPC contract", () => {
   });
 
   it("runtime-validates clipboard arguments and result envelopes", () => {
-    expect(CopyNotesArgumentsSchema.parse([["second", "first"], "plain"])).toEqual([
-      ["second", "first"],
-      "plain",
-    ]);
+    expect(
+      CopyNotesArgumentsSchema.parse([["second", "first"], "plain"]),
+    ).toEqual([["second", "first"], "plain"]);
     for (const input of [
       [[], "plain"],
       [["one", "one"], "plain"],
@@ -95,6 +97,40 @@ describe("IPC contract", () => {
     ).toThrow();
   });
 
+  it("runtime-validates permission requests, results, and acknowledgements", () => {
+    expect(PermissionPromptArgumentsSchema.parse([false])).toEqual([false]);
+    expect(PermissionPromptArgumentsSchema.parse([true])).toEqual([true]);
+    for (const malformed of [[], ["true"], [false, true]]) {
+      expect(PermissionPromptArgumentsSchema.safeParse(malformed).success).toBe(
+        false,
+      );
+    }
+
+    expect(PermissionResultSchema.parse({ ok: true, value: "denied" })).toEqual(
+      { ok: true, value: "denied" },
+    );
+    expect(() =>
+      PermissionResultSchema.parse({ ok: true, value: "authorized" }),
+    ).toThrow();
+    expect(
+      PermissionActionResultSchema.parse({
+        ok: true,
+        value: { acknowledged: true },
+      }),
+    ).toEqual({ ok: true, value: { acknowledged: true } });
+    expect(() =>
+      PermissionActionResultSchema.parse({
+        ok: true,
+        value: { acknowledged: true, permission: "granted" },
+      }),
+    ).toThrow();
+
+    expectTypeOf<KopperApi["getAccessibilityPermission"]>().toBeCallableWith(
+      false,
+    );
+    expectTypeOf<KopperApi["continueWithoutCapture"]>().toBeCallableWith();
+  });
+
   it("runtime-validates theme and native-appearance envelopes", () => {
     const customTheme = {
       ...structuredClone(OXIDE_LEDGER_THEME),
@@ -107,14 +143,23 @@ describe("IPC contract", () => {
         dark: ["completed"] as const,
       },
     };
-    expect(
-      ThemeImportResultSchema.parse({ ok: true, value: preview }),
-    ).toEqual({ ok: true, value: preview });
+    expect(ThemeImportResultSchema.parse({ ok: true, value: preview })).toEqual(
+      { ok: true, value: preview },
+    );
     for (const malformed of [
       { ...preview, unexpected: true },
       { ...preview, theme: { ...customTheme, unexpected: true } },
-      { ...preview, derivedTokens: { ...preview.derivedTokens, light: ["primary"] } },
-      { ...preview, derivedTokens: { ...preview.derivedTokens, dark: ["completed", "completed"] } },
+      {
+        ...preview,
+        derivedTokens: { ...preview.derivedTokens, light: ["primary"] },
+      },
+      {
+        ...preview,
+        derivedTokens: {
+          ...preview.derivedTokens,
+          dark: ["completed", "completed"],
+        },
+      },
     ]) {
       expect(() =>
         ThemeImportResultSchema.parse({ ok: true, value: malformed }),
@@ -185,7 +230,9 @@ describe("IPC contract", () => {
         value: { path: "/private/theme", contents: "secret" },
       }),
     ).toThrow();
-    expect(NativeAppearanceResultSchema.parse({ ok: true, value: false })).toEqual({
+    expect(
+      NativeAppearanceResultSchema.parse({ ok: true, value: false }),
+    ).toEqual({
       ok: true,
       value: false,
     });

@@ -73,6 +73,10 @@ function fileApiMocks(): Pick<
   | "exportTheme"
   | "getNativeAppearance"
   | "onNativeAppearanceChanged"
+  | "getAccessibilityPermission"
+  | "openAccessibilitySettings"
+  | "continueWithoutCapture"
+  | "onAccessibilityPermissionChanged"
 > {
   return {
     openEditorWindow: vi.fn(),
@@ -86,6 +90,10 @@ function fileApiMocks(): Pick<
     exportTheme: vi.fn(),
     getNativeAppearance: vi.fn(),
     onNativeAppearanceChanged: vi.fn(() => vi.fn()),
+    getAccessibilityPermission: vi.fn(),
+    openAccessibilitySettings: vi.fn(),
+    continueWithoutCapture: vi.fn(),
+    onAccessibilityPermissionChanged: vi.fn(() => vi.fn()),
   };
 }
 

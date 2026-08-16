@@ -52,7 +52,8 @@ const temporaryDirectories: string[] = [];
 const registeredChannels = Object.values(IPC_CHANNELS).filter(
   (channel) =>
     channel !== IPC_CHANNELS.documentChanged &&
-    channel !== IPC_CHANNELS.nativeAppearanceChanged,
+    channel !== IPC_CHANNELS.nativeAppearanceChanged &&
+    channel !== IPC_CHANNELS.accessibilityPermissionChanged,
 );
 
 function makeClipboardWriter(): ClipboardWriter & {
@@ -244,31 +245,52 @@ describe("registerIpcHandlers", () => {
     const document = repository.snapshot();
     const files: IpcFileOperations = {
       activePath: () => "/tmp/kopper.json",
-      exportData: vi.fn().mockResolvedValue({ ok: true, value: { cancelled: true } }),
+      exportData: vi
+        .fn()
+        .mockResolvedValue({ ok: true, value: { cancelled: true } }),
       chooseImport: vi.fn().mockResolvedValue({ ok: true, value: null }),
       confirmImport: vi.fn().mockResolvedValue({ ok: true, value: document }),
-      exportRecoveryBytes: vi.fn().mockResolvedValue({ ok: true, value: { cancelled: true } }),
+      exportRecoveryBytes: vi
+        .fn()
+        .mockResolvedValue({ ok: true, value: { cancelled: true } }),
       createNewStore: vi.fn().mockResolvedValue({ ok: true, value: document }),
     };
     const publish = vi.fn();
     const openEditorWindow = vi.fn();
     const ipcMain = new FakeIpcMain();
-    registerIpcHandlers(repository, makeCommandExecutor(), ipcMain, makeClipboardWriter(), {
-      files,
-      publish,
-      openEditorWindow,
-    });
+    registerIpcHandlers(
+      repository,
+      makeCommandExecutor(),
+      ipcMain,
+      makeClipboardWriter(),
+      {
+        files,
+        publish,
+        openEditorWindow,
+      },
+    );
 
-    await expect(ipcMain.invoke(IPC_CHANNELS.getDataPath)).resolves.toEqual({ ok: true, value: "/tmp/kopper.json" });
-    await expect(ipcMain.invoke(IPC_CHANNELS.exportData)).resolves.toEqual({ ok: true, value: { cancelled: true } });
-    await expect(ipcMain.invoke(IPC_CHANNELS.chooseDataImport)).resolves.toEqual({ ok: true, value: null });
+    await expect(ipcMain.invoke(IPC_CHANNELS.getDataPath)).resolves.toEqual({
+      ok: true,
+      value: "/tmp/kopper.json",
+    });
+    await expect(ipcMain.invoke(IPC_CHANNELS.exportData)).resolves.toEqual({
+      ok: true,
+      value: { cancelled: true },
+    });
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.chooseDataImport),
+    ).resolves.toEqual({ ok: true, value: null });
     await expect(
       ipcMain.invoke(
         IPC_CHANNELS.confirmDataImport,
         "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
       ),
     ).resolves.toEqual({ ok: true, value: document });
-    await expect(ipcMain.invoke(IPC_CHANNELS.createNewStore)).resolves.toEqual({ ok: true, value: document });
+    await expect(ipcMain.invoke(IPC_CHANNELS.createNewStore)).resolves.toEqual({
+      ok: true,
+      value: document,
+    });
     expect(publish).toHaveBeenCalledTimes(2);
 
     document.notes.push({
@@ -282,7 +304,9 @@ describe("registerIpcHandlers", () => {
       previousPlacement: null,
     });
     await repository.replace(document);
-    await expect(ipcMain.invoke(IPC_CHANNELS.openEditorWindow, "note-1")).resolves.toEqual({ ok: true, value: { noteId: "note-1" } });
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.openEditorWindow, "note-1"),
+    ).resolves.toEqual({ ok: true, value: { noteId: "note-1" } });
     expect(openEditorWindow).toHaveBeenCalledWith("note-1");
 
     for (const [channel, args] of [
@@ -291,7 +315,10 @@ describe("registerIpcHandlers", () => {
       [IPC_CHANNELS.openEditorWindow, [""]],
       [IPC_CHANNELS.getDataPath, ["extra"]],
     ] as const) {
-      await expect(ipcMain.invoke(channel, ...args)).resolves.toMatchObject({ ok: false, error: { code: "validation_failed" } });
+      await expect(ipcMain.invoke(channel, ...args)).resolves.toMatchObject({
+        ok: false,
+        error: { code: "validation_failed" },
+      });
     }
   });
 
@@ -367,6 +394,103 @@ describe("registerIpcHandlers", () => {
     }
   });
 
+  it("validates permission IPC and publishes only later observed transitions", async () => {
+    const repository = new NoteRepository("unused.json");
+    const check = vi
+      .fn<(prompt: boolean) => "unknown" | "denied" | "granted">()
+      .mockReturnValueOnce("unknown")
+      .mockReturnValueOnce("unknown")
+      .mockReturnValueOnce("denied")
+      .mockReturnValueOnce("granted");
+    const openSettings = vi.fn(async () => undefined);
+    const publishPermission = vi.fn();
+    const continueWithoutCapture = vi.fn();
+    const ipcMain = new FakeIpcMain();
+    registerIpcHandlers(
+      repository,
+      makeCommandExecutor(),
+      ipcMain,
+      makeClipboardWriter(),
+      {
+        permissionManager: { check, openSettings },
+        publishPermission,
+        continueWithoutCapture,
+      },
+    );
+
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.getAccessibilityPermission, false),
+    ).resolves.toEqual({ ok: true, value: "unknown" });
+    expect(publishPermission).not.toHaveBeenCalled();
+
+    await ipcMain.invoke(IPC_CHANNELS.getAccessibilityPermission, false);
+    expect(publishPermission).not.toHaveBeenCalled();
+
+    await ipcMain.invoke(IPC_CHANNELS.getAccessibilityPermission, true);
+    expect(publishPermission).toHaveBeenCalledExactlyOnceWith("denied");
+    await ipcMain.invoke(IPC_CHANNELS.getAccessibilityPermission, false);
+    expect(publishPermission).toHaveBeenNthCalledWith(2, "granted");
+    expect(check.mock.calls).toEqual([[false], [false], [true], [false]]);
+
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.openAccessibilitySettings),
+    ).resolves.toEqual({ ok: true, value: { acknowledged: true } });
+    expect(openSettings).toHaveBeenCalledOnce();
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.continueWithoutCapture),
+    ).resolves.toEqual({ ok: true, value: { acknowledged: true } });
+    expect(continueWithoutCapture).toHaveBeenCalledOnce();
+
+    for (const [channel, args] of [
+      [IPC_CHANNELS.getAccessibilityPermission, []],
+      [IPC_CHANNELS.getAccessibilityPermission, ["false"]],
+      [IPC_CHANNELS.openAccessibilitySettings, ["unexpected"]],
+      [IPC_CHANNELS.continueWithoutCapture, ["unexpected"]],
+    ] as const) {
+      await expect(ipcMain.invoke(channel, ...args)).resolves.toMatchObject({
+        ok: false,
+        error: { code: "validation_failed" },
+      });
+    }
+    expect(check).toHaveBeenCalledTimes(4);
+  });
+
+  it("sanitizes permission adapter failures", async () => {
+    const repository = new NoteRepository("unused.json");
+    const ipcMain = new FakeIpcMain();
+    registerIpcHandlers(
+      repository,
+      makeCommandExecutor(),
+      ipcMain,
+      makeClipboardWriter(),
+      {
+        permissionManager: {
+          check: vi.fn(() => {
+            throw new Error("secret trust implementation detail");
+          }),
+          openSettings: vi.fn(async () => {
+            throw new Error("x-apple.systempreferences:private-detail");
+          }),
+        },
+        continueWithoutCapture: vi.fn(() => {
+          throw new Error("private session detail");
+        }),
+      },
+    );
+
+    for (const [channel, args] of [
+      [IPC_CHANNELS.getAccessibilityPermission, [false]],
+      [IPC_CHANNELS.openAccessibilitySettings, []],
+      [IPC_CHANNELS.continueWithoutCapture, []],
+    ] as const) {
+      const result = await ipcMain.invoke(channel, ...args);
+      expect(result).toMatchObject({ ok: false, error: { retryable: true } });
+      expect(JSON.stringify(result)).not.toMatch(
+        /secret|private-detail|session detail/,
+      );
+    }
+  });
+
   it("returns unreadable import and appearance-upsert diagnostics as normal error envelopes", async () => {
     const repository = new NoteRepository("unused.json");
     const unreadableTheme = structuredClone(OXIDE_LEDGER_THEME);
@@ -387,7 +511,10 @@ describe("registerIpcHandlers", () => {
       opaqueBackgroundModes: [],
     };
     const commandExecutor = makeCommandExecutor();
-    commandExecutor.execute.mockResolvedValue({ ok: false, error: readabilityError });
+    commandExecutor.execute.mockResolvedValue({
+      ok: false,
+      error: readabilityError,
+    });
     const ipcMain = new FakeIpcMain();
     registerIpcHandlers(
       repository,
