@@ -22,6 +22,7 @@ import {
 import type { CaptureOutcome } from "../shared/ipc/contract";
 import { IPC_CHANNELS } from "../shared/ipc/contract";
 import { CaptureCoordinator } from "./capture/captureCoordinator";
+import { CaptureRequestService } from "./capture/captureRequestService";
 import { CaptureRuntime } from "./capture/captureRuntime";
 import { SelectionCapture } from "./capture/selectionCapture";
 import { CommandService } from "./domain/commandService";
@@ -31,6 +32,7 @@ import { registerIpcHandlers } from "./ipc/registerIpcHandlers";
 import { ControlledQuit } from "./lifecycle/controlledQuit";
 import { registerNativeAppearance } from "./nativeAppearance";
 import { PermissionManager } from "./permissions/permissionManager";
+import { PermissionObserver } from "./permissions/permissionObserver";
 import { NoteRepository } from "./persistence/noteRepository";
 import { PreferenceService } from "./preferences/preferenceService";
 import {
@@ -65,16 +67,6 @@ const controlledQuit = new ControlledQuit({
   finishQuit: () => {
     windowManager?.beginQuit();
     app.quit();
-  },
-});
-
-const unavailableCapture = (): CaptureOutcome => ({
-  status: "failed",
-  error: {
-    code: "permission_denied",
-    message: "Capture is unavailable until Accessibility access is granted.",
-    retryable: true,
-    recoveryAction: "open_settings",
   },
 });
 
@@ -129,14 +121,9 @@ void app.whenReady().then(async () => {
       },
     },
   );
-  const requestCapture = async (): Promise<CaptureOutcome> => {
-    if (!captureRuntime?.isCaptureAvailable()) {
-      const outcome = unavailableCapture();
-      publishCapture(outcome);
-      return outcome;
-    }
-    return captureCoordinator.requestCapture();
-  };
+  let captureRequestService!: CaptureRequestService;
+  const requestCapture = (): Promise<CaptureOutcome> =>
+    captureRequestService.requestCapture();
 
   windowManager = new WindowManager({
     initialBounds:
@@ -204,6 +191,20 @@ void app.whenReady().then(async () => {
   );
   const onboardingSession = { continuedWithoutCapture: false };
   const completeOnboarding = () => windowManager?.completeOnboarding();
+  const permissionObserver = new PermissionObserver(
+    permissionManager,
+    (state) => captureRuntime?.onPermissionObserved(state) ?? Promise.resolve(),
+    (state) => publishPermissionState(BrowserWindow.getAllWindows(), state),
+    (state) => {
+      if (state === "granted") completeOnboarding();
+    },
+  );
+  captureRequestService = new CaptureRequestService(
+    permissionObserver,
+    captureRuntime,
+    captureCoordinator,
+    publishCapture,
+  );
 
   cleanupIpcHandlers = registerIpcHandlers(
     repository,
@@ -214,19 +215,13 @@ void app.whenReady().then(async () => {
       files: documentFiles,
       themeFiles,
       permissionManager,
+      permissionObserver,
       preferenceService,
       requestCapture,
       getNativeAppearance: () => nativeTheme.shouldUseDarkColors,
       openEditorWindow: (noteId) =>
         windowManager?.openExpandedEditorWindow(noteId),
       publish,
-      publishPermission: (state) => {
-        publishPermissionState(BrowserWindow.getAllWindows(), state);
-      },
-      onPermissionObserved: (state) => {
-        void captureRuntime?.onPermissionObserved(state);
-        if (state === "granted") completeOnboarding();
-      },
       getAccessibilitySession: () => ({
         continuedWithoutCapture: onboardingSession.continuedWithoutCapture,
       }),
@@ -254,7 +249,12 @@ void app.whenReady().then(async () => {
   await captureRuntime.start(loadResult.ok);
   if (captureRuntime.isCaptureAvailable()) completeOnboarding();
 
-  app.on("activate", () => windowManager?.show());
+  app.on("activate", () => {
+    void permissionObserver
+      .observe(false)
+      .catch(() => undefined)
+      .finally(() => windowManager?.show());
+  });
 });
 
 app.on("before-quit", (event) => {

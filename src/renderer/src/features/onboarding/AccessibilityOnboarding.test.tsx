@@ -1,7 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { StrictMode } from "react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -14,14 +13,6 @@ const openSettings = vi.fn<AccessibilityOnboardingProps["openSettings"]>();
 const continueWithoutCapture =
   vi.fn<AccessibilityOnboardingProps["continueWithoutCapture"]>();
 
-function setVisibility(state: DocumentVisibilityState) {
-  Object.defineProperty(document, "visibilityState", {
-    configurable: true,
-    value: state,
-  });
-  fireEvent(document, new Event("visibilitychange"));
-}
-
 function onboarding(
   overrides: Partial<AccessibilityOnboardingProps> = {},
 ) {
@@ -29,7 +20,6 @@ function onboarding(
     <AccessibilityOnboarding
       permission="unknown"
       operationError={null}
-      initialCheckComplete
       permissionEventVersion={0}
       checkPermission={checkPermission}
       openSettings={openSettings}
@@ -96,57 +86,16 @@ describe("AccessibilityOnboarding", () => {
     expect(screen.getByRole("button", { name: "Enable Capture" })).toBeDisabled();
   });
 
-  it("does not check while hidden and resumes with one immediate passive check before polling", async () => {
+  it("performs no background polling or visibility-triggered checks", async () => {
     vi.useFakeTimers();
     const intervalSpy = vi.spyOn(window, "setInterval");
-    const clearIntervalSpy = vi.spyOn(window, "clearInterval");
-    const view = render(onboarding());
-    expect(intervalSpy).toHaveBeenCalledOnce();
-    expect(intervalSpy.mock.calls.length - clearIntervalSpy.mock.calls.length).toBe(1);
-
-    act(() => setVisibility("hidden"));
-    expect(intervalSpy.mock.calls.length - clearIntervalSpy.mock.calls.length).toBe(0);
-    await act(async () => vi.advanceTimersByTimeAsync(2_250));
-    expect(checkPermission).not.toHaveBeenCalled();
-
-    await act(async () => {
-      setVisibility("visible");
-      await Promise.resolve();
-    });
-    expect(checkPermission).toHaveBeenCalledExactlyOnceWith(false);
-    expect(intervalSpy.mock.calls.length - clearIntervalSpy.mock.calls.length).toBe(1);
-
-    await act(async () => vi.advanceTimersByTimeAsync(750));
-    expect(checkPermission).toHaveBeenCalledTimes(2);
-    expect(checkPermission).toHaveBeenLastCalledWith(false);
-
-    view.rerender(onboarding({ permission: "granted" }));
-    expect(intervalSpy.mock.calls.length - clearIntervalSpy.mock.calls.length).toBe(0);
-  });
-
-  it("keeps exactly one poll timer through StrictMode replay and clears it on unmount", () => {
-    vi.useFakeTimers();
-    const intervalSpy = vi.spyOn(window, "setInterval");
-    const clearIntervalSpy = vi.spyOn(window, "clearInterval");
-    const view = render(<StrictMode>{onboarding()}</StrictMode>);
-    expect(intervalSpy.mock.calls.length - clearIntervalSpy.mock.calls.length).toBe(1);
-    view.unmount();
-    expect(intervalSpy.mock.calls.length - clearIntervalSpy.mock.calls.length).toBe(0);
-  });
-
-  it("stops polling after continue is acknowledged", async () => {
-    vi.useFakeTimers();
-    const intervalSpy = vi.spyOn(window, "setInterval");
-    const clearIntervalSpy = vi.spyOn(window, "clearInterval");
     render(onboarding());
-    expect(intervalSpy.mock.calls.length - clearIntervalSpy.mock.calls.length).toBe(1);
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "Continue without capture" }),
-    );
-    await act(async () => Promise.resolve());
-    expect(continueWithoutCapture).toHaveBeenCalledOnce();
-    expect(intervalSpy.mock.calls.length - clearIntervalSpy.mock.calls.length).toBe(0);
+    fireEvent(document, new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(intervalSpy).not.toHaveBeenCalled();
+    expect(checkPermission).not.toHaveBeenCalled();
   });
 
   it("renders fixed operation errors supplied by the gate", () => {

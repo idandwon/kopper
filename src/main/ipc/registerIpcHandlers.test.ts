@@ -11,6 +11,7 @@ import { OXIDE_LEDGER_THEME } from "../../shared/theme/presets";
 import { IPC_CHANNELS, parseDocumentResult } from "../../shared/ipc/contract";
 import type { ClipboardWriter } from "../clipboard/noteClipboard";
 import { NoteRepository } from "../persistence/noteRepository";
+import { PermissionObserver } from "../permissions/permissionObserver";
 import {
   registerIpcHandlers,
   type CommandExecutor,
@@ -407,8 +408,15 @@ describe("registerIpcHandlers", () => {
       .mockReturnValueOnce("denied")
       .mockReturnValueOnce("granted");
     const openSettings = vi.fn(async () => undefined);
-    const publishPermission = vi.fn();
-    const onPermissionObserved = vi.fn();
+    const publishPermission = vi.fn().mockImplementationOnce(() => {
+      throw new Error("renderer disappeared during publication");
+    });
+    const onPermissionObserved = vi.fn(async () => undefined);
+    const permissionObserver = new PermissionObserver(
+      { check },
+      onPermissionObserved,
+      publishPermission,
+    );
     const continueWithoutCapture = vi.fn();
     const getAccessibilitySession = vi.fn(() => ({
       continuedWithoutCapture: true,
@@ -420,9 +428,8 @@ describe("registerIpcHandlers", () => {
       ipcMain,
       makeClipboardWriter(),
       {
-        permissionManager: { check, openSettings },
-        publishPermission,
-        onPermissionObserved,
+        permissionManager: { openSettings },
+        permissionObserver,
         getAccessibilitySession,
         continueWithoutCapture,
       },
@@ -436,9 +443,13 @@ describe("registerIpcHandlers", () => {
     await ipcMain.invoke(IPC_CHANNELS.getAccessibilityPermission, false);
     expect(publishPermission).not.toHaveBeenCalled();
 
-    await ipcMain.invoke(IPC_CHANNELS.getAccessibilityPermission, true);
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.getAccessibilityPermission, true),
+    ).resolves.toEqual({ ok: true, value: "denied" });
     expect(publishPermission).toHaveBeenCalledExactlyOnceWith("denied");
-    await ipcMain.invoke(IPC_CHANNELS.getAccessibilityPermission, false);
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.getAccessibilityPermission, false),
+    ).resolves.toEqual({ ok: true, value: "granted" });
     expect(publishPermission).toHaveBeenNthCalledWith(2, "granted");
     expect(check.mock.calls).toEqual([[false], [false], [true], [false]]);
     expect(onPermissionObserved.mock.calls).toEqual([
@@ -489,11 +500,13 @@ describe("registerIpcHandlers", () => {
       makeClipboardWriter(),
       {
         permissionManager: {
-          check: vi.fn(() => {
-            throw new Error("secret trust implementation detail");
-          }),
           openSettings: vi.fn(async () => {
             throw new Error("x-apple.systempreferences:private-detail");
+          }),
+        },
+        permissionObserver: {
+          observe: vi.fn(async () => {
+            throw new Error("secret trust implementation detail");
           }),
         },
         getAccessibilitySession: vi.fn(() => {

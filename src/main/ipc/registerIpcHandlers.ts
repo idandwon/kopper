@@ -72,8 +72,11 @@ export interface IpcThemeFiles {
 }
 
 export interface IpcPermissionManager {
-  check(prompt: boolean): PermissionState;
   openSettings(): Promise<void>;
+}
+
+export interface IpcPermissionObserver {
+  observe(prompt: boolean): Promise<PermissionState>;
 }
 
 export interface IpcPreferenceService {
@@ -88,11 +91,10 @@ export interface IpcServices {
   files?: IpcFileOperations;
   themeFiles?: IpcThemeFiles;
   permissionManager?: IpcPermissionManager;
+  permissionObserver?: IpcPermissionObserver;
   getNativeAppearance?(): boolean;
   openEditorWindow?(noteId: string): void;
   publish?(document: KopperDocument): void;
-  publishPermission?(state: PermissionState): void;
-  onPermissionObserved?(state: PermissionState): void;
   getAccessibilitySession?(): { continuedWithoutCapture: boolean };
   continueWithoutCapture?(): void | Promise<void>;
   preferenceService?: IpcPreferenceService;
@@ -356,28 +358,19 @@ export function registerIpcHandlers(
     });
   };
 
-  let lastObservedPermissionState: PermissionState | undefined;
-  const getAccessibilityPermission = (
+  const getAccessibilityPermission = async (
     _event: IpcMainInvokeEvent,
     ...args: unknown[]
   ) => {
     const parsed = PermissionPromptArgumentsSchema.safeParse(args);
-    if (!parsed.success || services.permissionManager === undefined) {
+    if (!parsed.success || services.permissionObserver === undefined) {
       return PermissionResultSchema.parse(
         unavailable("The Accessibility permission request was invalid."),
       );
     }
 
     try {
-      const state = services.permissionManager.check(parsed.data[0]);
-      services.onPermissionObserved?.(state);
-      if (
-        lastObservedPermissionState !== undefined &&
-        state !== lastObservedPermissionState
-      ) {
-        services.publishPermission?.(state);
-      }
-      lastObservedPermissionState = state;
+      const state = await services.permissionObserver.observe(parsed.data[0]);
       return PermissionResultSchema.parse({ ok: true, value: state });
     } catch {
       return PermissionResultSchema.parse({

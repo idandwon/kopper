@@ -90,6 +90,60 @@ describe("ShortcutManager", () => {
     expect(global.callbacks.has(doubleShift.togglePanel)).toBe(true);
   });
 
+  it("probes an allowed accelerator while capture is disabled without retaining it", async () => {
+    const { manager, global, factory, onCapture } = setup();
+
+    await expect(manager.apply(accelerator)).resolves.toEqual({
+      ok: true,
+      value: undefined,
+    });
+
+    expect(global.register).toHaveBeenCalledWith(
+      "CommandOrControl+Shift+C",
+      expect.any(Function),
+    );
+    expect(global.unregister).toHaveBeenCalledWith("CommandOrControl+Shift+C");
+    expect([...global.callbacks.keys()]).toEqual([accelerator.togglePanel]);
+    expect(factory).not.toHaveBeenCalled();
+    expect(onCapture).not.toHaveBeenCalled();
+
+    await manager.setCaptureEnabled(true);
+    expect(global.callbacks.has("CommandOrControl+Shift+C")).toBe(true);
+  });
+
+  it("rejects and rolls back a blocked accelerator while capture is disabled", async () => {
+    const { manager, global, factory } = setup();
+    await manager.apply(doubleShift);
+    const previous = [...global.callbacks.keys()];
+    global.blocked.add("CommandOrControl+Shift+C");
+
+    await expect(manager.apply(accelerator)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "shortcut_conflict" },
+    });
+
+    expect(manager.currentPreferences()).toEqual(doubleShift);
+    expect([...global.callbacks.keys()]).toEqual(previous);
+    expect(factory).not.toHaveBeenCalled();
+  });
+
+  it("cleans up a successful disabled probe and rejects same-toggle candidates before registration", async () => {
+    const { manager, global } = setup();
+    await manager.apply(accelerator);
+    const registrationsBefore = global.register.mock.calls.length;
+
+    await expect(
+      manager.apply({
+        capture: { kind: "accelerator", accelerator: "CommandOrControl+Alt+P" },
+        togglePanel: "CommandOrControl+Alt+P",
+      }),
+    ).resolves.toMatchObject({ ok: false });
+
+    expect(global.register).toHaveBeenCalledTimes(registrationsBefore);
+    expect(global.callbacks.has("CommandOrControl+Shift+C")).toBe(false);
+    expect(global.callbacks.has(accelerator.togglePanel)).toBe(true);
+  });
+
   it("uses exactly one conventional capture accelerator and stops Double Shift", async () => {
     const { manager, global, createdMonitor, onCapture } = setup();
     await manager.apply(doubleShift);

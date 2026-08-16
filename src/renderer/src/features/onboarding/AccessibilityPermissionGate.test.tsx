@@ -5,7 +5,10 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KopperApi } from "../../../../shared/ipc/contract";
-import { AccessibilityPermissionGate } from "./AccessibilityPermissionGate";
+import {
+  AccessibilityPermissionGate,
+  type AccessibilityPermissionPanelControls,
+} from "./AccessibilityPermissionGate";
 
 const getAccessibilityPermission =
   vi.fn<KopperApi["getAccessibilityPermission"]>();
@@ -61,10 +64,31 @@ afterEach(() => {
 function renderGate() {
   return render(
     <AccessibilityPermissionGate
-      renderPanel={(captureUnavailable: boolean) => (
+      renderPanel={(
+        captureUnavailable: boolean,
+        controls: AccessibilityPermissionPanelControls,
+      ) => (
         <div>
           <h1>Normal panel</h1>
-          {captureUnavailable && <p role="status">Capture unavailable</p>}
+          {captureUnavailable && (
+            <div>
+              <p role="status">Capture unavailable: {controls.permission}</p>
+              <button
+                type="button"
+                disabled={controls.pendingAction !== null}
+                onClick={() => void controls.openSettings()}
+              >
+                Open continued settings
+              </button>
+              <button
+                type="button"
+                disabled={controls.pendingAction !== null}
+                onClick={() => void controls.checkAccess()}
+              >
+                Check continued access
+              </button>
+            </div>
+          )}
         </div>
       )}
     />,
@@ -111,6 +135,60 @@ describe("AccessibilityPermissionGate", () => {
     first.unmount();
     renderGate();
     expect(await screen.findByRole("heading", { name: "Normal panel" })).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent("Capture unavailable");
+  });
+
+  it("checks access from the continued panel and clears unavailable after a later grant", async () => {
+    getAccessibilitySession.mockResolvedValue({
+      ok: true,
+      value: { continuedWithoutCapture: true },
+    });
+    getAccessibilityPermission
+      .mockResolvedValueOnce({ ok: true, value: "unknown" })
+      .mockResolvedValueOnce({ ok: true, value: "denied" });
+    const user = userEvent.setup();
+    renderGate();
+
+    expect(await screen.findByRole("heading", { name: "Normal panel" })).toBeVisible();
+    await user.click(screen.getByRole("button", { name: "Check continued access" }));
+    expect(screen.getByRole("status")).toHaveTextContent("denied");
+    expect(getAccessibilityPermission).toHaveBeenLastCalledWith(false);
+
+    act(() => permissionListener?.("granted"));
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("settles a continued-panel check when a permission event arrives first", async () => {
+    getAccessibilitySession.mockResolvedValue({
+      ok: true,
+      value: { continuedWithoutCapture: true },
+    });
+    getAccessibilityPermission
+      .mockResolvedValueOnce({ ok: true, value: "unknown" })
+      .mockReturnValueOnce(new Promise(() => undefined));
+    const user = userEvent.setup();
+    renderGate();
+    expect(await screen.findByRole("heading", { name: "Normal panel" })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Check continued access" }));
+    expect(screen.getByRole("button", { name: "Check continued access" })).toBeDisabled();
+    act(() => permissionListener?.("denied"));
+    expect(screen.getByRole("button", { name: "Check continued access" })).toBeEnabled();
+  });
+
+  it("settles continued-panel settings failures and restores its controls", async () => {
+    getAccessibilitySession.mockResolvedValue({
+      ok: true,
+      value: { continuedWithoutCapture: true },
+    });
+    openAccessibilitySettings.mockRejectedValueOnce(new Error("private detail"));
+    const user = userEvent.setup();
+    renderGate();
+    expect(await screen.findByRole("heading", { name: "Normal panel" })).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Open continued settings" }));
+
+    expect(screen.getByRole("button", { name: "Open continued settings" })).toBeEnabled();
     expect(screen.getByRole("status")).toHaveTextContent("Capture unavailable");
   });
 

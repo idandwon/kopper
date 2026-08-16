@@ -34,12 +34,22 @@ vi.mock("../features/onboarding/AccessibilityPermissionGate", async () => {
     AccessibilityPermissionGate: ({
       renderPanel,
     }: {
-      renderPanel(captureUnavailable: boolean): React.ReactNode;
+      renderPanel(
+        captureUnavailable: boolean,
+        controls: import("../features/onboarding/AccessibilityPermissionGate").AccessibilityPermissionPanelControls,
+      ): React.ReactNode;
     }) => {
       onboardingMock.mounts += 1;
       const [continued, setContinued] = useState(false);
-      if (onboardingMock.mode === "grant") return renderPanel(false);
-      if (continued) return renderPanel(true);
+      const controls = {
+        permission: continued ? ("denied" as const) : ("granted" as const),
+        operationError: null,
+        pendingAction: null,
+        checkAccess: async () => undefined,
+        openSettings: async () => undefined,
+      };
+      if (onboardingMock.mode === "grant") return renderPanel(false, controls);
+      if (continued) return renderPanel(true, controls);
       return (
         <div>
           <h1>Accessibility onboarding</h1>
@@ -177,6 +187,10 @@ describe("Oxide Ledger App", () => {
     expect(screen.getByRole("status")).toHaveTextContent(
       "Capture unavailable — Accessibility access has not been granted.",
     );
+    expect(
+      screen.getByRole("button", { name: "Open System Settings" }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Check access" })).toBeVisible();
 
     view.unmount();
     onboardingMock.mode = "hold";

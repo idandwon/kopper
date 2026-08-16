@@ -8,8 +8,21 @@ const SESSION_ERROR = "Kopper could not load the capture setup state.";
 const SETTINGS_ERROR = "Kopper could not open Accessibility settings.";
 const CONTINUE_ERROR = "Kopper could not continue without capture.";
 
+export type PermissionPanelPendingAction = "check" | "open-settings" | null;
+
+export interface AccessibilityPermissionPanelControls {
+  permission: PermissionState | null;
+  operationError: string | null;
+  pendingAction: PermissionPanelPendingAction;
+  checkAccess(): Promise<void>;
+  openSettings(): Promise<void>;
+}
+
 export interface AccessibilityPermissionGateProps {
-  renderPanel(captureUnavailable: boolean): ReactNode;
+  renderPanel(
+    captureUnavailable: boolean,
+    controls: AccessibilityPermissionPanelControls,
+  ): ReactNode;
 }
 
 export function AccessibilityPermissionGate({
@@ -21,6 +34,8 @@ export function AccessibilityPermissionGate({
   const [permissionEventVersion, setPermissionEventVersion] = useState(0);
   const [panelEntered, setPanelEntered] = useState(false);
   const [operationError, setOperationError] = useState<string | null>(null);
+  const [panelPendingAction, setPanelPendingAction] =
+    useState<PermissionPanelPendingAction>(null);
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
   const passiveCheckPendingRef = useRef(false);
@@ -55,6 +70,12 @@ export function AccessibilityPermissionGate({
     [applyPermission],
   );
 
+  useEffect(() => {
+    setPanelPendingAction((current) =>
+      current === "check" ? null : current,
+    );
+  }, [permissionEventVersion]);
+
   const openSettings = useCallback(async () => {
     setOperationError(null);
     try {
@@ -66,6 +87,26 @@ export function AccessibilityPermissionGate({
       if (mountedRef.current) setOperationError(SETTINGS_ERROR);
     }
   }, []);
+
+  const checkAccess = useCallback(async () => {
+    if (panelPendingAction !== null) return;
+    setPanelPendingAction("check");
+    try {
+      await checkPermission(false);
+    } finally {
+      if (mountedRef.current) setPanelPendingAction(null);
+    }
+  }, [checkPermission, panelPendingAction]);
+
+  const openPanelSettings = useCallback(async () => {
+    if (panelPendingAction !== null) return;
+    setPanelPendingAction("open-settings");
+    try {
+      await openSettings();
+    } finally {
+      if (mountedRef.current) setPanelPendingAction(null);
+    }
+  }, [openSettings, panelPendingAction]);
 
   const continueWithoutCapture = useCallback(async () => {
     setOperationError(null);
@@ -153,14 +194,19 @@ export function AccessibilityPermissionGate({
   }
 
   if (panelEntered) {
-    return renderPanel(permission !== "granted");
+    return renderPanel(permission !== "granted", {
+      permission,
+      operationError,
+      pendingAction: panelPendingAction,
+      checkAccess,
+      openSettings: openPanelSettings,
+    });
   }
 
   return (
     <AccessibilityOnboarding
       permission={permission}
       operationError={operationError}
-      initialCheckComplete={initialCheckComplete}
       permissionEventVersion={permissionEventVersion}
       checkPermission={checkPermission}
       openSettings={openSettings}

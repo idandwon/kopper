@@ -34,7 +34,10 @@ import {
   expandedEditorNoteId,
 } from "../features/editor/ExpandedEditorWindow";
 import { NoteComposer } from "../features/notes/NoteComposer";
-import { AccessibilityPermissionGate } from "../features/onboarding/AccessibilityPermissionGate";
+import {
+  AccessibilityPermissionGate,
+  type AccessibilityPermissionPanelControls,
+} from "../features/onboarding/AccessibilityPermissionGate";
 import { RecoveryScreen } from "../features/recovery/RecoveryScreen";
 import { AppearanceSettings } from "../features/settings/AppearanceSettings";
 import { DataSettings } from "../features/settings/DataSettings";
@@ -145,9 +148,11 @@ function ViewButton({
 function DocumentPanel({
   document,
   captureUnavailable = false,
+  permissionControls,
 }: {
   document: KopperDocument;
   captureUnavailable?: boolean;
+  permissionControls?: AccessibilityPermissionPanelControls;
 }) {
   const { error, pendingAction, retryLastAction, undo } = useKopperDocument();
   const [query, setQuery] = useState("");
@@ -293,12 +298,45 @@ function DocumentPanel({
         </header>
 
         {captureUnavailable && (
-          <div
-            role="status"
-            className="mx-4 mb-2 ml-5 rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground"
+          <section
+            aria-label="Capture access"
+            aria-busy={permissionControls?.pendingAction != null}
+            className="mx-4 mb-2 ml-5 grid gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground"
           >
-            Capture unavailable — Accessibility access has not been granted.
-          </div>
+            <p role="status" aria-live="polite">
+              {permissionControls?.pendingAction === "check"
+                ? "Checking Accessibility access…"
+                : permissionControls?.pendingAction === "open-settings"
+                  ? "Opening System Settings…"
+                  : "Capture unavailable — Accessibility access has not been granted."}
+            </p>
+            {permissionControls?.operationError !== null &&
+              permissionControls?.operationError !== undefined && (
+                <p role="alert">{permissionControls.operationError}</p>
+              )}
+            {permissionControls !== undefined && (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  disabled={permissionControls.pendingAction !== null}
+                  onClick={() => void permissionControls.openSettings()}
+                >
+                  Open System Settings
+                </Button>
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="outline"
+                  disabled={permissionControls.pendingAction !== null}
+                  onClick={() => void permissionControls.checkAccess()}
+                >
+                  Check access
+                </Button>
+              </div>
+            )}
+          </section>
         )}
 
         {error !== null && (
@@ -362,10 +400,11 @@ export function App() {
   }
   return (
     <AccessibilityPermissionGate
-      renderPanel={(captureUnavailable) => (
+      renderPanel={(captureUnavailable, permissionControls) => (
         <DocumentPanel
           document={document}
           captureUnavailable={captureUnavailable}
+          permissionControls={permissionControls}
         />
       )}
     />

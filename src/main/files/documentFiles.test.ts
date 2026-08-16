@@ -111,6 +111,52 @@ describe("DocumentFiles", () => {
     });
   });
 
+  it("keeps the source store unchanged when imported native shortcut validation fails", async () => {
+    const { directory, storePath, repository } = await fixture();
+    const before = repository.snapshot();
+    const imported = createEmptyDocument(new Date(timestamp));
+    imported.shortcuts = {
+      capture: {
+        kind: "accelerator",
+        accelerator: "CommandOrControl+Alt+Blocked",
+      },
+      togglePanel: "CommandOrControl+Alt+K",
+    };
+    const importPath = join(directory, "blocked-shortcut.json");
+    await writeFile(importPath, JSON.stringify(imported), "utf8");
+    const replaceDocument = vi.fn(async () => ({
+      ok: false as const,
+      error: {
+        code: "shortcut_conflict" as const,
+        message: "The imported capture shortcut is already in use.",
+        retryable: false,
+      },
+    }));
+    const externalReplacementSucceeded = vi.fn();
+    const files = new DocumentFiles(
+      repository,
+      dialog({
+        showOpenDialog: vi.fn().mockResolvedValue({
+          canceled: false,
+          filePaths: [importPath],
+        }),
+      }),
+      { replaceDocument, externalReplacementSucceeded },
+    );
+
+    const preview = await files.chooseImport();
+    if (!preview.ok || preview.value === null) throw new Error("Expected import preview");
+    await expect(files.confirmImport(preview.value.token)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "shortcut_conflict" },
+    });
+
+    expect(replaceDocument).toHaveBeenCalledOnce();
+    expect(externalReplacementSucceeded).not.toHaveBeenCalled();
+    expect(repository.snapshot()).toEqual(before);
+    expect(JSON.parse(await readFile(storePath, "utf8"))).toEqual(before);
+  });
+
   it("rejects invalid, unknown, and expired imports without replacing", async () => {
     const { directory, repository } = await fixture();
     const invalidPath = join(directory, "invalid.json");

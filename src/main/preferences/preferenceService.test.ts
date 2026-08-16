@@ -5,7 +5,9 @@ import {
   type ShortcutPreferences,
 } from "../../shared/domain/document";
 import type { KopperError, Result } from "../../shared/domain/errors";
+import type { CaptureMonitor } from "../capture/captureRuntime";
 import { MainOperationCoordinator } from "../domain/mainOperationCoordinator";
+import { ShortcutManager } from "../shortcuts/shortcutManager";
 import {
   PreferenceService,
   type PreferenceRepository,
@@ -92,6 +94,55 @@ const customShortcuts: ShortcutPreferences = {
   togglePanel: "CommandOrControl+Alt+K",
 };
 
+function nativeShortcutFixture() {
+  let document = createEmptyDocument(new Date("2026-08-16T12:00:00.000Z"));
+  const callbacks = new Map<string, () => void>();
+  const blocked = new Set<string>();
+  const globalShortcut = {
+    register: vi.fn((accelerator: string, callback: () => void) => {
+      if (blocked.has(accelerator) || callbacks.has(accelerator)) return false;
+      callbacks.set(accelerator, callback);
+      return true;
+    }),
+    unregister: vi.fn((accelerator: string) => callbacks.delete(accelerator)),
+  };
+  const monitor: CaptureMonitor = {
+    start: vi.fn(() => ({ ok: true as const, value: undefined })),
+    stop: vi.fn(),
+  };
+  const manager = new ShortcutManager(globalShortcut, vi.fn(async () => monitor), {
+    onCapture: vi.fn(),
+    onTogglePanel: vi.fn(),
+  });
+  const repository: PreferenceRepository = {
+    snapshot: () => structuredClone(document),
+    replace: vi.fn(async (next) => {
+      document = structuredClone(next);
+      return { ok: true as const, value: structuredClone(document) };
+    }),
+  };
+  const service = new PreferenceService(
+    repository,
+    manager,
+    {
+      getPinned: () => false,
+      getBounds: () => ({ x: 100, y: 100, width: 380, height: 640 }),
+      setPinned: vi.fn(),
+      setBounds: vi.fn(),
+    },
+    new MainOperationCoordinator(),
+    { publish: vi.fn() },
+  );
+  return {
+    service,
+    manager,
+    callbacks,
+    blocked,
+    repository,
+    current: () => structuredClone(document),
+  };
+}
+
 describe("PreferenceService", () => {
   it("acknowledges a shortcut save only after native apply and persistence", async () => {
     const { service, repository, shortcuts, publish, current } = setup();
@@ -102,6 +153,44 @@ describe("PreferenceService", () => {
     expect(repository.replace).toHaveBeenCalledOnce();
     expect(current().shortcuts).toEqual(customShortcuts);
     expect(publish).toHaveBeenCalledWith(current());
+  });
+
+  it("rejects a blocked disabled capture accelerator without changing native or persisted preferences", async () => {
+    const fixture = nativeShortcutFixture();
+    await fixture.manager.apply(fixture.current().shortcuts);
+    const previous = fixture.current();
+    fixture.blocked.add(customShortcuts.capture.kind === "accelerator" ? customShortcuts.capture.accelerator : "");
+
+    await expect(fixture.service.setShortcuts(customShortcuts)).resolves.toMatchObject({
+      ok: false,
+      error: { code: "shortcut_conflict" },
+    });
+
+    expect(fixture.current()).toEqual(previous);
+    expect(fixture.manager.currentPreferences()).toEqual(previous.shortcuts);
+    expect(fixture.callbacks.has(previous.shortcuts.togglePanel)).toBe(true);
+    expect(fixture.repository.replace).not.toHaveBeenCalled();
+  });
+
+  it("persists an allowed disabled accelerator but leaves it inactive until capture is enabled", async () => {
+    const fixture = nativeShortcutFixture();
+    await fixture.manager.apply(fixture.current().shortcuts);
+
+    await expect(fixture.service.setShortcuts(customShortcuts)).resolves.toMatchObject({
+      ok: true,
+    });
+
+    expect(fixture.current().shortcuts).toEqual(customShortcuts);
+    expect(fixture.callbacks.has(customShortcuts.togglePanel)).toBe(true);
+    expect(
+      fixture.callbacks.has(
+        customShortcuts.capture.kind === "accelerator"
+          ? customShortcuts.capture.accelerator
+          : "",
+      ),
+    ).toBe(false);
+    await fixture.manager.setCaptureEnabled(true);
+    expect(fixture.callbacks.has("CommandOrControl+Alt+C")).toBe(true);
   });
 
   it("rolls native shortcuts back when persistence fails", async () => {
@@ -128,8 +217,10 @@ describe("PreferenceService", () => {
     expect(repository.replace).not.toHaveBeenCalled();
   });
 
-  it("rejects an imported shortcut conflict before replacing the source document", async () => {
-    const { service, repository, shortcuts } = setup();
+  it("rejects an imported blocked accelerator before replacing source or native preferences", async () => {
+    const { service, repository, shortcuts, native, current } = setup();
+    const previousDocument = current();
+    const previousNative = native();
     vi.mocked(shortcuts.apply).mockResolvedValueOnce(conflict);
     const imported = createEmptyDocument(new Date("2026-08-17T12:00:00.000Z"));
     imported.shortcuts = customShortcuts;
@@ -139,7 +230,8 @@ describe("PreferenceService", () => {
 
     expect(result).toEqual(conflict);
     expect(persist).not.toHaveBeenCalled();
-    expect(repository.snapshot().shortcuts).not.toEqual(customShortcuts);
+    expect(repository.snapshot()).toEqual(previousDocument);
+    expect(native()).toEqual(previousNative);
   });
 
   it("rolls all native preferences back when external persistence fails", async () => {

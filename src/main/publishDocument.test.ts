@@ -83,15 +83,40 @@ describe("publishDocument", () => {
 
   it("publishes only validated permission states to live windows", () => {
     const live = permissionWindow();
-    const destroyed = permissionWindow(false, true);
-    publishPermissionState([live, destroyed], "denied");
+    const destroyedWindow = permissionWindow(true);
+    const destroyedWebContents = permissionWindow(false, true);
+    publishPermissionState(
+      [live, destroyedWindow, destroyedWebContents],
+      "denied",
+    );
     expect(live.webContents.send).toHaveBeenCalledWith(
       IPC_CHANNELS.accessibilityPermissionChanged,
       "denied",
     );
-    expect(destroyed.webContents.send).not.toHaveBeenCalled();
+    expect(destroyedWindow.webContents.send).not.toHaveBeenCalled();
+    expect(destroyedWebContents.webContents.send).not.toHaveBeenCalled();
     expect(() => publishPermissionState([live], "authorized")).toThrow();
     expect(live.webContents.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("continues permission publication after lifecycle and send failures", () => {
+    const lifecycleThrow = permissionWindow();
+    lifecycleThrow.isDestroyed.mockImplementation(() => {
+      throw new Error("destroyed during check");
+    });
+    const sendThrow = permissionWindow();
+    sendThrow.webContents.send.mockImplementation(() => {
+      throw new Error("destroyed during send");
+    });
+    const later = permissionWindow();
+
+    expect(() =>
+      publishPermissionState([lifecycleThrow, sendThrow, later], "granted"),
+    ).not.toThrow();
+    expect(later.webContents.send).toHaveBeenCalledWith(
+      IPC_CHANNELS.accessibilityPermissionChanged,
+      "granted",
+    );
   });
 
   it("continues document publication after a target throws or is destroyed during send", () => {

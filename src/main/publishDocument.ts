@@ -43,8 +43,12 @@ export function publishPermissionState(
 ): void {
   const state = PermissionStateSchema.parse(input);
   for (const window of windows) {
-    if (window.isDestroyed() || window.webContents.isDestroyed()) continue;
-    window.webContents.send(IPC_CHANNELS.accessibilityPermissionChanged, state);
+    try {
+      if (window.isDestroyed() || window.webContents.isDestroyed()) continue;
+      window.webContents.send(IPC_CHANNELS.accessibilityPermissionChanged, state);
+    } catch {
+      // Continue after a lifecycle race or renderer send failure.
+    }
   }
 }
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { PermissionState } from "../../../../shared/permissions/permissionState";
 import { Button } from "../../components/ui/button";
@@ -6,7 +6,6 @@ import { Button } from "../../components/ui/button";
 export interface AccessibilityOnboardingProps {
   permission: PermissionState | null;
   operationError: string | null;
-  initialCheckComplete: boolean;
   permissionEventVersion: number;
   checkPermission(prompt: boolean): Promise<void>;
   openSettings(): Promise<void>;
@@ -18,7 +17,6 @@ type PendingAction = "check" | "open-settings" | "continue" | null;
 export function AccessibilityOnboarding({
   permission,
   operationError,
-  initialCheckComplete,
   permissionEventVersion,
   checkPermission,
   openSettings,
@@ -28,35 +26,6 @@ export function AccessibilityOnboarding({
   const headingRef = useRef<HTMLHeadingElement>(null);
   const mountedRef = useRef(false);
   const completedRef = useRef(false);
-  const permissionRef = useRef(permission);
-  const pollRef = useRef<number | null>(null);
-
-  permissionRef.current = permission;
-
-  const stopPolling = useCallback(() => {
-    if (pollRef.current === null) return;
-    window.clearInterval(pollRef.current);
-    pollRef.current = null;
-  }, []);
-
-  const startPolling = useCallback(() => {
-    stopPolling();
-    if (
-      !mountedRef.current ||
-      completedRef.current ||
-      document.visibilityState !== "visible" ||
-      permissionRef.current === "granted"
-    ) {
-      return;
-    }
-    pollRef.current = window.setInterval(() => {
-      if (document.visibilityState !== "visible") {
-        stopPolling();
-        return;
-      }
-      void checkPermission(false);
-    }, 750);
-  }, [checkPermission, stopPolling]);
 
   useEffect(() => {
     setPendingAction((current) => (current === "check" ? null : current));
@@ -67,37 +36,11 @@ export function AccessibilityOnboarding({
     completedRef.current = permission === "granted";
     headingRef.current?.focus();
 
-    const handleVisibilityChange = () => {
-      stopPolling();
-      if (
-        document.visibilityState !== "visible" ||
-        completedRef.current ||
-        permissionRef.current === "granted"
-      ) {
-        return;
-      }
-      void checkPermission(false).finally(() => {
-        if (
-          mountedRef.current &&
-          !completedRef.current &&
-          document.visibilityState === "visible" &&
-          permissionRef.current !== "granted"
-        ) {
-          startPolling();
-        }
-      });
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    if (initialCheckComplete) startPolling();
-
     return () => {
       mountedRef.current = false;
       completedRef.current = true;
-      stopPolling();
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [checkPermission, initialCheckComplete, permission, startPolling, stopPolling]);
+  }, [permission]);
 
   const runAction = async (
     action: Exclude<PendingAction, null>,
@@ -114,10 +57,7 @@ export function AccessibilityOnboarding({
   const handleContinue = async () => {
     setPendingAction("continue");
     try {
-      if (await continueWithoutCapture()) {
-        completedRef.current = true;
-        stopPolling();
-      }
+      if (await continueWithoutCapture()) completedRef.current = true;
     } finally {
       if (mountedRef.current && !completedRef.current) setPendingAction(null);
     }

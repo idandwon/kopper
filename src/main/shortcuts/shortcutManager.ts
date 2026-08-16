@@ -23,6 +23,8 @@ const shortcutConflict = (message: string): Result<never, KopperError> => ({
   },
 });
 
+const captureProbe = () => undefined;
+
 function normalize(accelerator: string): string {
   return accelerator.replaceAll(" ", "").toLowerCase();
 }
@@ -252,7 +254,21 @@ export class ShortcutManager {
     }
     active.toggle = preferences.togglePanel;
 
-    if (!captureEnabled) return { ok: true, value: active };
+    if (!captureEnabled) {
+      if (
+        preferences.capture.kind === "accelerator" &&
+        !this.probe(preferences.capture.accelerator)
+      ) {
+        return {
+          ok: false,
+          partial: active,
+          result: shortcutConflict(
+            `The shortcut ${preferences.capture.accelerator} is already in use.`,
+          ),
+        };
+      }
+      return { ok: true, value: active };
+    }
     if (preferences.capture.kind === "accelerator") {
       if (!this.register(preferences.capture.accelerator, this.options.onCapture)) {
         return {
@@ -334,6 +350,18 @@ export class ShortcutManager {
       });
     } catch {
       return false;
+    }
+  }
+
+  private probe(accelerator: string): boolean {
+    let registered = false;
+    try {
+      registered = this.globalShortcut.register(accelerator, captureProbe);
+      return registered;
+    } catch {
+      return false;
+    } finally {
+      if (registered) this.unregister(accelerator);
     }
   }
 
