@@ -180,12 +180,34 @@ export const OpenEditorResultSchema: z.ZodType<
   z.strictObject({ ok: z.literal(false), error: KopperErrorSchema }),
 ]);
 
+const LifecycleTokenSchema = z.enum(["capture", "organized", "completed"]);
+const DerivedLifecycleTokensSchema = z
+  .array(LifecycleTokenSchema)
+  .max(3)
+  .refine((tokens) => new Set(tokens).size === tokens.length);
+
+export interface ThemeImportPreview {
+  theme: ThemeDefinition;
+  derivedTokens: {
+    light: Array<"capture" | "organized" | "completed">;
+    dark: Array<"capture" | "organized" | "completed">;
+  };
+}
+
 export const ThemeImportResultSchema: z.ZodType<
-  Result<ThemeDefinition | null, KopperError>
+  Result<ThemeImportPreview | null, KopperError>
 > = z.discriminatedUnion("ok", [
   z.strictObject({
     ok: z.literal(true),
-    value: ThemeDefinitionSchema.nullable(),
+    value: z
+      .strictObject({
+        theme: ThemeDefinitionSchema,
+        derivedTokens: z.strictObject({
+          light: DerivedLifecycleTokensSchema,
+          dark: DerivedLifecycleTokensSchema,
+        }),
+      })
+      .nullable(),
   }),
   z.strictObject({ ok: z.literal(false), error: KopperErrorSchema }),
 ]);
@@ -228,7 +250,7 @@ export interface KopperApi {
   exportRecoveryBytes(): Promise<FileOperationResult>;
   createNewStore(): Promise<Result<KopperDocument, KopperError>>;
   getDataPath(): Promise<Result<string, KopperError>>;
-  importTheme(): Promise<Result<ThemeDefinition | null, KopperError>>;
+  importTheme(): Promise<Result<ThemeImportPreview | null, KopperError>>;
   exportTheme(themeId: string): Promise<Result<{ path: string } | null, KopperError>>;
   getNativeAppearance(): Promise<Result<boolean, KopperError>>;
   onNativeAppearanceChanged(listener: (useDarkColors: boolean) => void): () => void;

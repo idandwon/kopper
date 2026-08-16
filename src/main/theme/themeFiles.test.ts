@@ -94,15 +94,21 @@ describe("ThemeFiles", () => {
 
     await expect(files.importForPreview()).resolves.toEqual({
       ok: true,
-      value: expect.objectContaining({
-        id: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
-        name: input.name,
-        light: expect.objectContaining({
-          capture: input.light.primary,
-          organized: input.light.accent,
-          completed: input.light["muted-foreground"],
+      value: {
+        theme: expect.objectContaining({
+          id: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
+          name: input.name,
+          light: expect.objectContaining({
+            capture: input.light.primary,
+            organized: input.light.accent,
+            completed: input.light["muted-foreground"],
+          }),
         }),
-      }),
+        derivedTokens: {
+          light: ["capture", "organized", "completed"],
+          dark: [],
+        },
+      },
     });
     expect(createId).toHaveBeenCalledTimes(1);
     expect(fs.writeFile).not.toHaveBeenCalled();
@@ -197,7 +203,7 @@ describe("ThemeFiles", () => {
 
     await expect(files.importForPreview()).resolves.toMatchObject({
       ok: true,
-      value: { id: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5" },
+      value: { theme: { id: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5" } },
     });
     expect(fs.handle.read.mock.calls.length).toBeGreaterThan(2);
     expect(fs.handle.close).toHaveBeenCalledTimes(1);

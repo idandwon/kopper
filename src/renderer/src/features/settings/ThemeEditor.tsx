@@ -1,0 +1,234 @@
+import { converter, formatHex, parse as parseColor } from "culori";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import { ThemeDefinitionSchema, type ThemeDefinition } from "../../../../shared/domain/document";
+import { validateReadableTheme } from "../../../../shared/theme/deriveTheme";
+import { CompleteThemeModeSchema, THEME_FILE_SCHEMA_URL } from "../../../../shared/theme/themeSchema";
+import type { ThemeToken } from "../../../../shared/theme/tokens";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../components/ui/alert-dialog";
+import { Button } from "../../components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
+import { Input } from "../../components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
+import { useTheme } from "../../theme/ThemeProvider";
+
+const TOKEN_GROUPS: ReadonlyArray<{ name: string; tokens: readonly ThemeToken[] }> = [
+  { name: "Surface", tokens: ["background", "card", "popover", "secondary", "muted"] },
+  { name: "Text", tokens: ["foreground", "card-foreground", "popover-foreground", "secondary-foreground", "muted-foreground"] },
+  { name: "Action", tokens: ["primary", "primary-foreground", "accent", "accent-foreground", "ring"] },
+  { name: "State", tokens: ["destructive", "destructive-foreground", "capture", "organized", "completed"] },
+  { name: "Border", tokens: ["border", "input"] },
+  { name: "Shape", tokens: ["radius"] },
+];
+
+type EditorMode = "light" | "dark";
+type RawModes = Record<EditorMode, Record<ThemeToken, string>>;
+type Validation = { valid: boolean; message: string; tokenMessages: Partial<Record<`${EditorMode}:${ThemeToken}`, string>> };
+
+const toRgb = converter("rgb");
+
+function colorHex(value: string): string | null {
+  const parsed = parseColor(value);
+  if (parsed === undefined) return null;
+  const rgb = toRgb(parsed);
+  if (rgb === undefined || (rgb.alpha !== undefined && rgb.alpha !== 1)) return null;
+  return formatHex(rgb);
+}
+
+function rawModes(theme: ThemeDefinition): RawModes {
+  return {
+    light: { ...theme.light },
+    dark: { ...theme.dark },
+  };
+}
+
+function candidateFromRaw(id: string, name: string, raw: RawModes) {
+  return ThemeDefinitionSchema.safeParse({ id, name, version: 1, light: raw.light, dark: raw.dark });
+}
+
+function validateDraft(id: string, name: string, raw: RawModes): Validation {
+  const parsed = candidateFromRaw(id, name, raw);
+  if (!parsed.success) {
+    const tokenMessages: Validation["tokenMessages"] = {};
+    for (const issue of parsed.error.issues) {
+      const [mode, token] = issue.path;
+      if ((mode === "light" || mode === "dark") && typeof token === "string") {
+        tokenMessages[`${mode}:${token as ThemeToken}`] = issue.message;
+      }
+    }
+    return { valid: false, message: "Fix invalid theme values before saving.", tokenMessages };
+  }
+  const readable = validateReadableTheme({
+    $schema: THEME_FILE_SCHEMA_URL,
+    version: 1,
+    name: parsed.data.name,
+    light: parsed.data.light,
+    dark: parsed.data.dark,
+  });
+  if (readable.ok) return { valid: true, message: "Theme is readable in both modes.", tokenMessages: {} };
+
+  const tokenMessages: Validation["tokenMessages"] = {};
+  for (const failure of readable.error.failures) {
+    const message = `Contrast ${failure.ratio}:1; 4.5:1 required.`;
+    tokenMessages[`${failure.mode}:${failure.backgroundToken}`] = message;
+    tokenMessages[`${failure.mode}:${failure.foregroundToken}`] = message;
+  }
+  for (const mode of readable.error.opaqueBackgroundModes) {
+    tokenMessages[`${mode}:background`] = "The root background must be opaque.";
+  }
+  return { valid: false, message: readable.error.message, tokenMessages };
+}
+
+export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
+  baseTheme: ThemeDefinition;
+  custom: boolean;
+  open: boolean;
+  onOpenChange(open: boolean): void;
+}) {
+  const immutableBaseRef = useRef(structuredClone(baseTheme));
+  const initialThemeRef = useRef<ThemeDefinition | null>(null);
+  if (initialThemeRef.current === null) {
+    initialThemeRef.current = {
+      ...structuredClone(baseTheme),
+      id: custom ? baseTheme.id : globalThis.crypto.randomUUID(),
+      name: custom ? baseTheme.name : `${baseTheme.name} Custom`,
+    };
+  }
+  const initial = initialThemeRef.current;
+  const { previewTheme, cancelPreview, savePreview } = useTheme();
+  const [mode, setMode] = useState<EditorMode>("light");
+  const [name, setName] = useState(initial.name);
+  const [draft, setDraft] = useState<ThemeDefinition>(() => structuredClone(initial));
+  const [raw, setRaw] = useState<RawModes>(() => rawModes(initial));
+  const [validation, setValidation] = useState<Validation>(() => validateDraft(initial.id, initial.name, rawModes(initial)));
+  const [validating, setValidating] = useState(false);
+  const [confirmClose, setConfirmClose] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const initialFingerprint = useRef(JSON.stringify({ name: initial.name, raw: rawModes(initial) }));
+  const dirty = JSON.stringify({ name, raw }) !== initialFingerprint.current;
+
+  useEffect(() => {
+    setValidating(true);
+    const timer = globalThis.setTimeout(() => {
+      setValidation(validateDraft(initial.id, name, raw));
+      setValidating(false);
+    }, 150);
+    return () => globalThis.clearTimeout(timer);
+  }, [initial.id, name, raw]);
+
+  const updateToken = (token: ThemeToken, value: string) => {
+    const nextRaw = { ...raw, [mode]: { ...raw[mode], [token]: value } };
+    setRaw(nextRaw);
+    setMessage(null);
+    const modeParsed = CompleteThemeModeSchema.safeParse(nextRaw[mode]);
+    if (modeParsed.success) {
+      const next = { ...draft, [mode]: modeParsed.data };
+      setDraft(next);
+      previewTheme(next);
+    }
+  };
+
+  const resetToken = (token: ThemeToken) => updateToken(token, immutableBaseRef.current[mode][token]);
+
+  const resetAll = () => {
+    const next: ThemeDefinition = {
+      ...structuredClone(immutableBaseRef.current),
+      id: initial.id,
+      name: initial.name,
+    };
+    setName(next.name);
+    setRaw(rawModes(next));
+    setDraft(next);
+    previewTheme(next);
+    setMessage(null);
+  };
+
+  const discardAndClose = () => {
+    cancelPreview();
+    setConfirmClose(false);
+    onOpenChange(false);
+  };
+
+  const requestClose = () => {
+    if (dirty) setConfirmClose(true);
+    else discardAndClose();
+  };
+
+  const save = async () => {
+    const parsed = candidateFromRaw(initial.id, name, raw);
+    const currentValidation = validateDraft(initial.id, name, raw);
+    if (!parsed.success || !currentValidation.valid || !validation.valid || validating) return;
+    setSaving(true);
+    const saved = await savePreview(parsed.data);
+    setSaving(false);
+    if (saved) onOpenChange(false);
+    else setMessage("Theme could not be saved. Your changes are still open.");
+  };
+
+  const rows = useMemo(() => TOKEN_GROUPS.map((group) => (
+    <section key={group.name} aria-labelledby={`theme-group-${group.name.toLowerCase()}`}>
+      <h3 id={`theme-group-${group.name.toLowerCase()}`} className="sticky top-0 z-10 m-0 border-y border-border bg-background px-1 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{group.name}</h3>
+      <div className="divide-y divide-border">
+        {group.tokens.map((token) => {
+          const value = raw[mode][token];
+          const hex = token === "radius" ? null : colorHex(value);
+          const problem = validation.tokenMessages[`${mode}:${token}`];
+          return (
+            <div key={token} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-1 px-1 py-2">
+              <label htmlFor={`${mode}-${token}`} className="self-center text-xs">{token}</label>
+              <div className="flex items-center gap-1.5">
+                {hex !== null && <input aria-label={`${token} color picker`} type="color" value={hex} className="h-7 w-7 cursor-pointer border-0 bg-transparent p-0" onChange={(event) => updateToken(token, event.target.value)} />}
+                <Input id={`${mode}-${token}`} aria-invalid={problem !== undefined} value={value} onChange={(event) => updateToken(token, event.target.value)} className="h-7 w-40 font-mono text-[11px]" />
+                <Button type="button" size="xs" variant="ghost" onClick={() => resetToken(token)} aria-label={`Reset ${token}`}>Reset</Button>
+              </div>
+              {problem !== undefined && <p role="alert" className="col-span-2 m-0 text-[11px] text-destructive">{problem}</p>}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  )), [mode, raw, validation]);
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={(next) => !next && requestClose()}>
+        <DialogContent className="flex max-h-[92vh] max-w-xl flex-col gap-3 p-4">
+          <DialogHeader>
+            <DialogTitle>{custom ? "Edit custom theme" : "Customize theme"}</DialogTitle>
+            <DialogDescription>Changes preview immediately after each value becomes valid.</DialogDescription>
+          </DialogHeader>
+          <label className="grid gap-1 text-xs">Theme name<Input value={name} onChange={(event) => { setName(event.target.value); setMessage(null); }} /></label>
+          <Tabs value={mode} onValueChange={(value) => setMode(value as EditorMode)} className="min-h-0">
+            <TabsList aria-label="Theme mode"><TabsTrigger value="light">Light</TabsTrigger><TabsTrigger value="dark">Dark</TabsTrigger></TabsList>
+            <TabsContent value="light" className="max-h-[55vh] overflow-y-auto pr-1">{rows}</TabsContent>
+            <TabsContent value="dark" className="max-h-[55vh] overflow-y-auto pr-1">{rows}</TabsContent>
+          </Tabs>
+          <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
+            <div><p role="status" aria-live="polite" className="m-0 text-[11px] text-muted-foreground">{validating ? "Validating…" : validation.message}</p>{message && <p role="alert" className="m-0 text-[11px] text-destructive">{message}</p>}</div>
+            <DialogFooter>
+              <Button type="button" size="sm" variant="ghost" onClick={resetAll}>Reset all</Button>
+              <Button type="button" size="sm" variant="outline" onClick={requestClose}>Cancel</Button>
+              <Button type="button" size="sm" disabled={saving || validating || !validation.valid} onClick={() => void save()}>Save theme</Button>
+            </DialogFooter>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <AlertDialog open={confirmClose} onOpenChange={setConfirmClose}>
+        <AlertDialogContent>
+          <AlertDialogHeader><AlertDialogTitle>Discard theme changes?</AlertDialogTitle><AlertDialogDescription>Your unsaved values will be lost and the persisted theme will be restored.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogFooter><AlertDialogCancel>Keep editing</AlertDialogCancel><AlertDialogAction onClick={discardAndClose}>Discard changes</AlertDialogAction></AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}

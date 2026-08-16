@@ -6,6 +6,7 @@ import {
   type ThemeDefinition,
 } from "../../shared/domain/document";
 import type { KopperError, Result } from "../../shared/domain/errors";
+import type { ThemeImportPreview } from "../../shared/ipc/contract";
 import {
   deriveCompleteTheme,
   validateReadableTheme,
@@ -15,6 +16,7 @@ import {
   THEME_FILE_SCHEMA_URL,
   type ThemeFile,
 } from "../../shared/theme/themeSchema";
+import { KOPPER_THEME_TOKENS } from "../../shared/theme/tokens";
 
 const MAX_THEME_FILE_BYTES = 256 * 1024;
 const THEME_FILE_SUFFIX = ".kopper-theme.json";
@@ -106,7 +108,7 @@ export class ThemeFiles {
   }
 
   async importForPreview(): Promise<
-    Result<ThemeDefinition | null, KopperError>
+    Result<ThemeImportPreview | null, KopperError>
   > {
     const chosen = await this.dialog.showOpenDialog({
       title: "Import Kopper theme",
@@ -192,6 +194,14 @@ export class ThemeFiles {
         "The selected file is not a valid Kopper theme.",
       );
     }
+    const derivedTokens = {
+      light: KOPPER_THEME_TOKENS.filter(
+        (token) => parsed.data.light[token] === undefined,
+      ),
+      dark: KOPPER_THEME_TOKENS.filter(
+        (token) => parsed.data.dark[token] === undefined,
+      ),
+    };
     const readable = validateReadableTheme(deriveCompleteTheme(parsed.data));
     if (!readable.ok) return readable;
 
@@ -209,7 +219,10 @@ export class ThemeFiles {
         "The imported theme could not be assigned an identifier.",
       );
     }
-    return { ok: true, value: preview.data };
+    return {
+      ok: true,
+      value: { theme: preview.data, derivedTokens },
+    };
   }
 
   async exportTheme(

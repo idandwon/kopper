@@ -11,14 +11,20 @@ import type { KopperDocument } from "../../../shared/domain/document";
 import type { KopperError } from "../../../shared/domain/errors";
 import { Button } from "../components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "../components/ui/dialog";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { ScrollArea } from "../components/ui/scroll-area";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "../components/ui/sheet";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { AddSectionDialog } from "../features/sections/SectionManager";
 import { SectionGroup } from "../features/sections/SectionGroup";
 import { CompletedView } from "../features/completed/CompletedView";
@@ -28,6 +34,7 @@ import {
 } from "../features/editor/ExpandedEditorWindow";
 import { NoteComposer } from "../features/notes/NoteComposer";
 import { RecoveryScreen } from "../features/recovery/RecoveryScreen";
+import { AppearanceSettings } from "../features/settings/AppearanceSettings";
 import { DataSettings } from "../features/settings/DataSettings";
 import {
   initialSelectionState,
@@ -136,6 +143,8 @@ function DocumentPanel({ document }: { document: KopperDocument }) {
   const { error, pendingAction, retryLastAction, undo } = useKopperDocument();
   const [query, setQuery] = useState("");
   const [view, setView] = useState<NoteProjectionView>("active");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const panelMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const [selection, dispatchSelection] = useReducer(
     selectionReducer,
     initialSelectionState,
@@ -219,22 +228,32 @@ function DocumentPanel({ document }: { document: KopperDocument }) {
               <ViewButton view="completed" current={view} onSelect={setView} />
             </div>
             <div className="flex items-center gap-1">
-              <Dialog>
-                <DialogTrigger asChild>
-                  <Button type="button" variant="ghost" size="xs">
-                    Data
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button ref={panelMenuTriggerRef} type="button" variant="ghost" size="xs" aria-label="Panel menu">
+                    <span aria-hidden="true">•••</span>
                   </Button>
-                </DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Data settings</DialogTitle>
-                    <DialogDescription>
-                      Import and export the active local store.
-                    </DialogDescription>
-                  </DialogHeader>
-                  <DataSettings />
-                </DialogContent>
-              </Dialog>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>Settings…</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
+                <SheetContent onCloseAutoFocus={(event) => {
+                  event.preventDefault();
+                  panelMenuTriggerRef.current?.focus();
+                }}>
+                  <SheetHeader>
+                    <SheetTitle>Settings</SheetTitle>
+                    <SheetDescription>Appearance and local data controls.</SheetDescription>
+                  </SheetHeader>
+                  <Tabs defaultValue="appearance" className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
+                    <TabsList aria-label="Settings sections"><TabsTrigger value="appearance">Appearance</TabsTrigger><TabsTrigger value="data">Data</TabsTrigger></TabsList>
+                    <TabsContent value="appearance"><AppearanceSettings /></TabsContent>
+                    <TabsContent value="data"><DataSettings /></TabsContent>
+                  </Tabs>
+                </SheetContent>
+              </Sheet>
               <AddSectionDialog />
               <Button
                 type="button"

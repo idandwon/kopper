@@ -100,15 +100,26 @@ describe("IPC contract", () => {
       ...structuredClone(OXIDE_LEDGER_THEME),
       id: "custom:preview",
     };
+    const preview = {
+      theme: customTheme,
+      derivedTokens: {
+        light: ["capture", "organized"] as const,
+        dark: ["completed"] as const,
+      },
+    };
     expect(
-      ThemeImportResultSchema.parse({ ok: true, value: customTheme }),
-    ).toEqual({ ok: true, value: customTheme });
-    expect(() =>
-      ThemeImportResultSchema.parse({
-        ok: true,
-        value: { ...customTheme, unexpected: true },
-      }),
-    ).toThrow();
+      ThemeImportResultSchema.parse({ ok: true, value: preview }),
+    ).toEqual({ ok: true, value: preview });
+    for (const malformed of [
+      { ...preview, unexpected: true },
+      { ...preview, theme: { ...customTheme, unexpected: true } },
+      { ...preview, derivedTokens: { ...preview.derivedTokens, light: ["primary"] } },
+      { ...preview, derivedTokens: { ...preview.derivedTokens, dark: ["completed", "completed"] } },
+    ]) {
+      expect(() =>
+        ThemeImportResultSchema.parse({ ok: true, value: malformed }),
+      ).toThrow();
+    }
 
     const readabilityError = {
       code: "validation_failed" as const,

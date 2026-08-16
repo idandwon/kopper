@@ -310,7 +310,10 @@ describe("registerIpcHandlers", () => {
     const themeFiles: IpcThemeFiles = {
       importForPreview: vi.fn().mockResolvedValue({
         ok: true,
-        value: customTheme,
+        value: {
+          theme: customTheme,
+          derivedTokens: { light: [], dark: [] },
+        },
       }),
       exportTheme: vi.fn().mockResolvedValue({
         ok: true,
@@ -332,7 +335,10 @@ describe("registerIpcHandlers", () => {
 
     await expect(ipcMain.invoke(IPC_CHANNELS.importTheme)).resolves.toEqual({
       ok: true,
-      value: customTheme,
+      value: {
+        theme: customTheme,
+        derivedTokens: { light: [], dark: [] },
+      },
     });
     expect(commandExecutor.execute).not.toHaveBeenCalled();
     await expect(

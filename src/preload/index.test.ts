@@ -182,8 +182,12 @@ describe("preload bridge", () => {
       ],
       opaqueBackgroundModes: [],
     };
+    const importPreview = {
+      theme: customTheme,
+      derivedTokens: { light: ["capture"], dark: [] },
+    };
     electron.invoke
-      .mockResolvedValueOnce({ ok: true, value: customTheme })
+      .mockResolvedValueOnce({ ok: true, value: importPreview })
       .mockResolvedValueOnce({
         ok: true,
         value: { path: "/private/theme.kopper-theme.json" },
@@ -194,7 +198,7 @@ describe("preload bridge", () => {
 
     await expect(exposedApi().importTheme()).resolves.toEqual({
       ok: true,
-      value: customTheme,
+      value: importPreview,
     });
     await expect(exposedApi().exportTheme(customTheme.id)).resolves.toEqual({
       ok: true,

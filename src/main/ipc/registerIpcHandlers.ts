@@ -27,6 +27,7 @@ import {
   parseDocumentResult,
   type DataImportPreview,
   type FileOperationResult,
+  type ThemeImportPreview,
 } from "../../shared/ipc/contract";
 import { getThemeById } from "../../shared/theme/presets";
 import {
@@ -54,7 +55,7 @@ export interface IpcFileOperations {
 }
 
 export interface IpcThemeFiles {
-  importForPreview(): Promise<Result<ThemeDefinition | null, KopperError>>;
+  importForPreview(): Promise<Result<ThemeImportPreview | null, KopperError>>;
   exportTheme(
     theme: ThemeDefinition,
   ): Promise<Result<{ path: string } | null, KopperError>>;
