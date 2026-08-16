@@ -1,9 +1,6 @@
 import { z } from "zod";
 
-import {
-  KopperDocumentSchema,
-  type KopperDocument,
-} from "../domain/document";
+import { KopperDocumentSchema, type KopperDocument } from "../domain/document";
 import type { KopperError, Result } from "../domain/errors";
 
 export const IPC_CHANNELS = {

@@ -1,10 +1,7 @@
 import type { IpcMainInvokeEvent } from "electron";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  IPC_CHANNELS,
-  parseDocumentResult,
-} from "../../shared/ipc/contract";
+import { IPC_CHANNELS, parseDocumentResult } from "../../shared/ipc/contract";
 import {
   NoteRepository,
   type RepositoryLoadResult,
@@ -37,7 +34,8 @@ class FakeIpcMain implements IpcMainRegistrar {
 
   async invoke(channel: string, ...args: unknown[]): Promise<unknown> {
     const handler = this.handlers.get(channel);
-    if (handler === undefined) throw new Error(`Missing handler for ${channel}`);
+    if (handler === undefined)
+      throw new Error(`Missing handler for ${channel}`);
     return handler({} as IpcMainInvokeEvent, ...args);
   }
 }
