@@ -94,26 +94,24 @@ export function NoteComposer() {
 
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
-      const pendingSave = savePromiseRef.current;
-      if (pendingSave === null) {
-        void saveDraft({ body, sectionId });
-        return;
-      }
-
-      void pendingSave.then(() => {
-        if (
-          !mountedRef.current ||
-          submittingRef.current ||
-          savePromiseRef.current !== null
-        ) {
-          return;
-        }
+      const saveLatestIfNeeded = () => {
+        if (!mountedRef.current || submittingRef.current) return;
         const latest = latestRef.current;
         if (
           draftKey(latest.sectionId, latest.body) !== acknowledgedRef.current
         ) {
           void saveDraft(latest);
         }
+      };
+      const pendingSave = savePromiseRef.current;
+      if (pendingSave === null) {
+        saveLatestIfNeeded();
+        return;
+      }
+
+      void pendingSave.then(() => {
+        if (savePromiseRef.current !== null) return;
+        saveLatestIfNeeded();
       });
     }, DRAFT_DEBOUNCE_MS);
 

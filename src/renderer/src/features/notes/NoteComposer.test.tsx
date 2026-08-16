@@ -256,6 +256,34 @@ describe("NoteComposer", () => {
     });
   });
 
+  it("does not save the latest value again when its own debounce fires", async () => {
+    let resolveFirst: ((result: boolean) => void) | undefined;
+    execute.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveFirst = resolve;
+        }),
+    );
+    render(<NoteComposer />);
+    const composer = screen.getByRole("textbox");
+    fireEvent.change(composer, { target: { value: "Save A" } });
+    await act(() => vi.advanceTimersByTimeAsync(250));
+    fireEvent.change(composer, { target: { value: "Save B" } });
+    await act(() => vi.advanceTimersByTimeAsync(250));
+    fireEvent.change(composer, { target: { value: "Save C" } });
+
+    await act(async () => resolveFirst?.(true));
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(execute).toHaveBeenLastCalledWith({
+      type: "draft.set",
+      sectionId: "inbox",
+      body: "Save C",
+    });
+
+    await act(() => vi.advanceTimersByTimeAsync(250));
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
   it("clears after an in-flight save settles when the latest value is empty", async () => {
     let resolveFirst: ((result: boolean) => void) | undefined;
     execute.mockImplementationOnce(
