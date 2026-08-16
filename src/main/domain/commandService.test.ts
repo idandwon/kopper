@@ -39,6 +39,36 @@ function edit(body: string): DocumentCommand {
   return { type: "note.edit", noteId: "note-1", body };
 }
 
+function makeCompletedDocument(): KopperDocument {
+  const document = makeDocument();
+  document.notes[0].completedAt = timestamp;
+  document.notes[0].previousPlacement = { sectionId: "inbox", order: 0 };
+  return document;
+}
+
+function makeMergeDocument(): KopperDocument {
+  const document = makeDocument();
+  document.notes.push({
+    ...document.notes[0],
+    id: "note-2",
+    body: "Second",
+    order: 1,
+  });
+  return document;
+}
+
+function makeSectionDeleteDocument(): KopperDocument {
+  const document = makeDocument();
+  document.sections.push({
+    id: "later",
+    title: "Later",
+    order: 1,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  });
+  return document;
+}
+
 function makeService(initial = makeDocument()) {
   let stored = structuredClone(initial);
   const persist = async (
@@ -160,6 +190,37 @@ describe("CommandService", () => {
     expect(publish).toHaveBeenLastCalledWith(initial);
   });
 
+  it.each<{
+    command: DocumentCommand;
+    initial: () => KopperDocument;
+  }>([
+    {
+      command: { type: "note.restore", noteIds: ["note-1"] },
+      initial: makeCompletedDocument,
+    },
+    {
+      command: { type: "note.merge", noteIds: ["note-1", "note-2"] },
+      initial: makeMergeDocument,
+    },
+    {
+      command: { type: "section.delete", sectionId: "later" },
+      initial: makeSectionDeleteDocument,
+    },
+  ])("pushes and correctly undoes a snapshot for $command.type", async (testCase) => {
+    const initial = testCase.initial();
+    const { service, replace, publish } = makeService(initial);
+
+    await expect(service.execute(testCase.command)).resolves.toEqual({
+      ok: true,
+      value: expect.not.objectContaining(initial),
+    });
+    await expect(service.undo()).resolves.toEqual({ ok: true, value: initial });
+
+    expect(replace).toHaveBeenCalledTimes(2);
+    expect(replace).toHaveBeenLastCalledWith(initial);
+    expect(publish).toHaveBeenLastCalledWith(initial);
+  });
+
   it("keeps only the latest 20 successful undoable snapshots", async () => {
     const { service } = makeService();
 
@@ -223,15 +284,23 @@ describe("CommandService", () => {
     });
   });
 
-  it("clears older undo snapshots after a structural non-undoable command", async () => {
-    const { service } = makeService();
-
-    await service.execute(edit("Edited"));
-    await service.execute({
+  it.each<DocumentCommand>([
+    {
       type: "note.add",
       sectionId: "inbox",
       body: "Newer note",
+    },
+    { type: "section.add", title: "Later" },
+    { type: "section.rename", sectionId: "inbox", title: "Renamed" },
+  ])("clears older undo snapshots after successful $type", async (command) => {
+    const { service, replace } = makeService();
+
+    await service.execute(edit("Edited"));
+    await expect(service.execute(command)).resolves.toEqual({
+      ok: true,
+      value: expect.any(Object),
     });
+    expect(replace).toHaveBeenCalledTimes(2);
 
     await expect(service.undo()).resolves.toEqual({
       ok: false,

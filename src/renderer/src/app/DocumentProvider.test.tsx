@@ -237,6 +237,75 @@ describe("DocumentProvider", () => {
     expect(api.execute).toHaveBeenCalledTimes(2);
   });
 
+  it("replaces an older retry command with a newer retryable execute failure", async () => {
+    const olderCommand = edit("Older");
+    const newerCommand = edit("Newer");
+    const { api } = installApi();
+    vi.mocked(api.execute).mockResolvedValue({
+      ok: false,
+      error: retryableError,
+    });
+    const { result } = renderHook(() => useKopperDocument(), { wrapper });
+    await waitFor(() => expect(result.current.pendingAction).toBeNull());
+
+    await act(async () => {
+      await result.current.execute(olderCommand);
+      await result.current.execute(newerCommand);
+      await result.current.retryLastAction();
+    });
+
+    expect(vi.mocked(api.execute).mock.calls.map(([command]) => command)).toEqual([
+      olderCommand,
+      newerCommand,
+      newerCommand,
+    ]);
+    expect(vi.mocked(api.execute).mock.calls[2]?.[0]).toBe(newerCommand);
+  });
+
+  it("retains the exact retry command after another retryable retry failure", async () => {
+    const command = edit("Retry repeatedly");
+    const changed = documentWith("Eventually persisted");
+    const { api } = installApi();
+    vi.mocked(api.execute)
+      .mockResolvedValueOnce({ ok: false, error: retryableError })
+      .mockResolvedValueOnce({ ok: false, error: retryableError })
+      .mockResolvedValueOnce({ ok: true, value: changed });
+    const { result } = renderHook(() => useKopperDocument(), { wrapper });
+    await waitFor(() => expect(result.current.pendingAction).toBeNull());
+
+    await act(async () => {
+      await expect(result.current.execute(command)).resolves.toBe(false);
+      await expect(result.current.retryLastAction()).resolves.toBe(false);
+      await expect(result.current.retryLastAction()).resolves.toBe(true);
+    });
+
+    expect(vi.mocked(api.execute).mock.calls.map(([sent]) => sent)).toEqual([
+      command,
+      command,
+      command,
+    ]);
+    expect(vi.mocked(api.execute).mock.calls[2]?.[0]).toBe(command);
+    expect(result.current.document).toEqual(changed);
+  });
+
+  it("does not create retry intent for an initial document error", async () => {
+    const initialError: KopperError = {
+      code: "read_failed",
+      message: "The document could not be loaded.",
+      retryable: true,
+      recoveryAction: "retry",
+    };
+    const { api } = installApi({ ok: false, error: initialError });
+    const { result } = renderHook(() => useKopperDocument(), { wrapper });
+    await waitFor(() => expect(result.current.pendingAction).toBeNull());
+
+    await expect(result.current.retryLastAction()).resolves.toBe(false);
+
+    expect(result.current.error).toBe(initialError);
+    expect(api.execute).not.toHaveBeenCalled();
+    expect(api.undo).not.toHaveBeenCalled();
+  });
+
   it("clears stale retry intent for non-retryable execute failures and accepted undo", async () => {
     const { api } = installApi();
     vi.mocked(api.execute)
