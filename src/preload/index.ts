@@ -37,9 +37,19 @@ const api: KopperApi = {
   },
 
   async execute(command) {
-    const parsedCommand = DocumentCommandSchema.parse(command);
+    const parsedCommand = DocumentCommandSchema.safeParse(command);
+    if (!parsedCommand.success) {
+      return {
+        ok: false,
+        error: {
+          code: "validation_failed",
+          message: "The document command is invalid.",
+          retryable: false,
+        },
+      };
+    }
     return parseDocumentResult(
-      await ipcRenderer.invoke(IPC_CHANNELS.executeCommand, parsedCommand),
+      await ipcRenderer.invoke(IPC_CHANNELS.executeCommand, parsedCommand.data),
     );
   },
 

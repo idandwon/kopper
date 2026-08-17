@@ -74,6 +74,9 @@ describe("credentialed release preflight", () => {
       },
       { command: "pnpm", args: ["test"] },
       { command: "pnpm", args: ["build"] },
+      { command: "pnpm", args: ["test:e2e"] },
+      { command: "pnpm", args: ["audit:deps"] },
+      { command: "pnpm", args: ["audit:source"] },
       {
         command: "pnpm",
         args: ["exec", "electron-builder", "--mac", "dmg", "--universal"],
@@ -143,6 +146,30 @@ describe("credentialed release preflight", () => {
     for (const secret of Object.values(secrets)) {
       expect(output).not.toContain(secret);
     }
+  });
+
+  it.each([
+    ["test:e2e", "Credentialed release failed during end-to-end tests."],
+    ["audit:deps", "Credentialed release failed during dependency audit."],
+    ["audit:source", "Credentialed release failed during source audit."],
+  ])("labels a failed %s pre-package gate exactly", async (script, message) => {
+    const runner = createRunner();
+    runner.run.mockImplementation(async (command: string, args: string[]) => {
+      const call = [command, ...args].join(" ");
+      if (call === "git describe --tags --exact-match HEAD") {
+        return { stdout: "v0.1.0\n" };
+      }
+      if (command === "pnpm" && args[0] === script) throw new Error("unsafe");
+      return { stdout: "" };
+    });
+
+    await expect(
+      runRelease({ platform: "darwin", env: secrets, run: runner.run }),
+    ).rejects.toThrow(message);
+    const builderIndex = runner.calls.findIndex(({ args }) =>
+      args.includes("electron-builder"),
+    );
+    expect(builderIndex).toBe(-1);
   });
 
   it("replaces credential-bearing child failures before logs or stderr", async () => {

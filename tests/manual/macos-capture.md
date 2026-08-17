@@ -93,7 +93,7 @@ Expected for each: output includes both `arm64` and `x86_64`.
 | ONBOARD-03 | Select **Enable Capture**. If macOS does not grant access, select **Open System Settings**, enable Kopper under **Privacy & Security > Accessibility**, return to Kopper, and select **Check again**. |
 | ONBOARD-04 | Confirm the UI reaches the notes panel only after the grant is detected. |
 | ONBOARD-05 | Record whether the Accessibility grant required relaunching Kopper: **Yes** or **No**. |
-| ONBOARD-06 | Confirm Kopper appears in the Dock while running, has the expected app icon/name, and has no menu-bar status item unless the product UI explicitly documents one. |
+| ONBOARD-06 | Confirm Kopper is visible in the Dock with the expected app icon/name during onboarding. After the Accessibility grant is detected and onboarding continues, confirm the Dock icon is hidden and a Kopper status item is visible with **Open Kopper**, **Capture Selection**, **Settings…**, and **Quit** menu items. |
 | ONBOARD-07 | Record whether any unexpected login-item prompt appeared: **Yes** or **No**. The expected result is **No**. |
 
 Do not use **Continue without capture** for the capture matrices.

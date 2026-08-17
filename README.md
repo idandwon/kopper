@@ -12,7 +12,11 @@ Kopper stores its document locally at:
 
 Kopper has no accounts, cloud synchronization, telemetry, analytics, crash reporting, or automatic updates. It does not send note content to a service.
 
-Kopper requests macOS Accessibility access so that, only when capture is invoked, it can ask System Events to copy the text selected in the active application. This enables capture from other applications while Kopper restores the supported clipboard content after the attempt.
+## Accessibility
+
+Kopper requests macOS Accessibility access to observe only the configured global shortcut gestures. It asks System Events to copy selected text only when you explicitly invoke capture, and restores supported clipboard content after the attempt.
+
+During Accessibility onboarding Kopper remains visible in the Dock. After the grant is detected or you continue without capture, Kopper hides its Dock icon and provides a documented Kopper status item with **Open Kopper**, **Capture Selection**, **Settings…**, and **Quit**.
 
 ## Development
 
@@ -69,4 +73,6 @@ On a clean, exactly tagged, credentialed macOS release runner, the release gate 
 pnpm package:release
 ```
 
-The release workflow signs and notarizes the universal DMG, creates its SHA-256 checksum, and publishes only the DMG and checksum to the GitHub Release.
+The tag-triggered release workflow signs and notarizes the universal DMG, creates its SHA-256 checksum, and uploads only the DMG and checksum to a **draft GitHub Release**. That draft is an acceptance candidate, not a published release.
+
+Promotion is a separate manual action in the protected `release` environment. Run the **Promote Release** workflow with the exact candidate tag only after the versioned acceptance record is complete for the same tag, version, commit, DMG, and checksum. The promotion workflow verifies the draft and final evidence before changing the release to non-draft; any required `Fail` or `Not run` status blocks publication.

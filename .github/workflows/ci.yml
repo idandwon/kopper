@@ -20,6 +20,8 @@ jobs:
       - name: Check out repository
         # actions/checkout v4 => 11d5960a326750d5838078e36cf38b85af677262
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
 
       - name: Set up Node.js 24
         # actions/setup-node v4 => 49933ea5288caeca8642d1e84afbd3f7d6820020
@@ -35,6 +37,9 @@ jobs:
 
       - name: Run tests
         run: pnpm test
+
+      - name: Validate release documentation traceability
+        run: pnpm validate:release-docs
 
       - name: Run type checking
         run: pnpm typecheck

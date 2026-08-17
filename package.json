@@ -18,7 +18,8 @@
     "package:dir": "pnpm package:unsigned",
     "package:unsigned": "pnpm build && electron-builder --mac dir --universal -c.mac.identity=null -c.mac.notarize=false",
     "package:release": "node scripts/release.mjs",
-    "verify:package": "node scripts/verify-package.mjs"
+    "verify:package": "node scripts/verify-package.mjs",
+    "validate:release-docs": "node scripts/validate-release-doc-traceability.mjs"
   },
   "packageManager": "pnpm@10.15.0",
   "pnpm": {

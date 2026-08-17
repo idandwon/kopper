@@ -71,7 +71,7 @@ jobs:
           printf 'dmg_path=release/%s\n' "$dmg_name" >> "$output"
           printf 'checksum_path=release/%s\n' "$checksum_name" >> "$output"
 
-      - name: Create GitHub Release
+      - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
           DMG_PATH: ${{ steps.checksum.outputs.dmg_path }}
@@ -81,6 +81,7 @@ jobs:
             "$DMG_PATH" \
             "$CHECKSUM_PATH" \
             --verify-tag \
+            --draft \
             --title "$GITHUB_REF_NAME" \
             --generate-notes
 

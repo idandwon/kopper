@@ -102,6 +102,24 @@ export async function runRelease(options = {}) {
     },
     {
       command: "pnpm",
+      args: ["test:e2e"],
+      message: "Running Electron end-to-end tests.",
+      failure: "Credentialed release failed during end-to-end tests.",
+    },
+    {
+      command: "pnpm",
+      args: ["audit:deps"],
+      message: "Auditing production dependencies.",
+      failure: "Credentialed release failed during dependency audit.",
+    },
+    {
+      command: "pnpm",
+      args: ["audit:source"],
+      message: "Auditing application source.",
+      failure: "Credentialed release failed during source audit.",
+    },
+    {
+      command: "pnpm",
       args: ["exec", "electron-builder", "--mac", "dmg", "--universal"],
       message: "Building the signed universal DMG with built-in app notarization.",
       failure: "Credentialed release failed during universal DMG packaging.",

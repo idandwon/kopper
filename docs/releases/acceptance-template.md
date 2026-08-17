@@ -109,7 +109,7 @@ second line: []{} — END
 | ONBOARD-03 | Select **Enable Capture**. If macOS does not grant access, select **Open System Settings**, enable Kopper under **Privacy & Security > Accessibility**, return to Kopper, and select **Check again**. | Not run | Not run — protected installed app and physical clean-account onboarding required |
 | ONBOARD-04 | Confirm the UI reaches the notes panel only after the grant is detected. | Not run | Not run — protected installed app and physical clean-account onboarding required |
 | ONBOARD-05 | Record whether the Accessibility grant required relaunching Kopper: **Yes** or **No**. | Not run | Not run — record Yes or No during physical clean-account onboarding |
-| ONBOARD-06 | Confirm Kopper appears in the Dock while running, has the expected app icon/name, and has no menu-bar status item unless the product UI explicitly documents one. | Not run | Not run — protected installed app and physical macOS observation required |
+| ONBOARD-06 | Confirm Kopper is visible in the Dock with the expected app icon/name during onboarding. After the Accessibility grant is detected and onboarding continues, confirm the Dock icon is hidden and a Kopper status item is visible with **Open Kopper**, **Capture Selection**, **Settings…**, and **Quit** menu items. | Not run | Not run — protected installed app and physical macOS observation required |
 | ONBOARD-07 | Record whether any unexpected login-item prompt appeared: **Yes** or **No**. The expected result is **No**. | Not run | Not run — record Yes or No during physical clean-account onboarding |
 
 | ID | Source and disposable fixture | App version / exact text / before-and-after source identity / clipboard / note evidence | Status | Evidence/blocker |

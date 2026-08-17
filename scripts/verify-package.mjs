@@ -57,14 +57,19 @@ async function findFiles(root, predicate) {
 }
 
 async function findNativeBinaries(uiohookPath) {
-  const binaries = await findFiles(
+  const runtimeBinary = join(
     uiohookPath,
-    (name) => name === "uiohook_napi.node",
+    "build",
+    "Release",
+    "uiohook_napi.node",
   );
-  const runtimeBinary = binaries.find((path) =>
-    path.endsWith(`${sep}build${sep}Release${sep}uiohook_napi.node`),
-  );
-  return runtimeBinary ? [runtimeBinary] : binaries.slice(0, 1);
+  try {
+    await access(runtimeBinary);
+    return [runtimeBinary];
+  } catch (error) {
+    if (error && error.code === "ENOENT") return [];
+    throw error;
+  }
 }
 
 async function findUpdaterConfigurations(resourcesPath) {
@@ -104,8 +109,14 @@ const defaultPorts = {
 };
 
 function hasRequiredArchitectures(architectures) {
-  return REQUIRED_ARCHITECTURES.every((architecture) =>
-    architectures.includes(architecture),
+  return (
+    architectures.length === REQUIRED_ARCHITECTURES.length &&
+    [...architectures]
+      .sort()
+      .every(
+        (architecture, index) =>
+          architecture === [...REQUIRED_ARCHITECTURES].sort()[index],
+      )
   );
 }
 
@@ -130,15 +141,48 @@ const JAVASCRIPT_TYPES = new Set([
   "text/x-javascript",
 ]);
 
-function staticStringStartsWithRemoteUrl(node) {
+function staticJavaScriptString(node, bindings, seen = new Set()) {
   if (node?.type === "Literal" && typeof node.value === "string") {
-    return REMOTE_URL.test(node.value);
+    return node.value;
   }
-  if (node?.type !== "TemplateLiteral" || node.quasis.length === 0) {
-    return false;
+  if (node?.type === "TemplateLiteral") {
+    let value = "";
+    for (let index = 0; index < node.quasis.length; index += 1) {
+      const quasi = node.quasis[index].value;
+      value += quasi.cooked ?? quasi.raw;
+      if (index < node.expressions.length) {
+        const expression = staticJavaScriptString(
+          node.expressions[index],
+          bindings,
+          seen,
+        );
+        if (expression === undefined) return undefined;
+        value += expression;
+      }
+    }
+    return value;
   }
-  const firstQuasi = node.quasis[0].value;
-  return REMOTE_URL.test(firstQuasi.cooked ?? firstQuasi.raw);
+  if (node?.type === "BinaryExpression" && node.operator === "+") {
+    const left = staticJavaScriptString(node.left, bindings, seen);
+    const right = staticJavaScriptString(node.right, bindings, seen);
+    return left === undefined || right === undefined ? undefined : left + right;
+  }
+  if (node?.type !== "Identifier" || seen.has(node.name)) return undefined;
+  const initializer = bindings.get(node.name);
+  if (!initializer) return undefined;
+  const nextSeen = new Set(seen);
+  nextSeen.add(node.name);
+  return staticJavaScriptString(initializer, bindings, nextSeen);
+}
+
+function staticStringStartsWithRemoteUrl(node, bindings) {
+  const value = staticJavaScriptString(node, bindings);
+  if (value !== undefined) return REMOTE_URL.test(value);
+  if (node?.type === "TemplateLiteral" && node.quasis.length > 0) {
+    const firstQuasi = node.quasis[0].value;
+    return REMOTE_URL.test(firstQuasi.cooked ?? firstQuasi.raw);
+  }
+  return false;
 }
 
 function parseJavaScript(content) {
@@ -177,20 +221,43 @@ function inspectJavaScript(content) {
   const tree = parseJavaScript(content);
   if (!tree) return { parseError: true, remote: false };
 
+  const bindings = new Map();
+  const duplicateBindings = new Set();
+  const collectionStack = [tree];
+  while (collectionStack.length > 0) {
+    const node = collectionStack.pop();
+    if (!node || typeof node !== "object") continue;
+    if (node.type === "VariableDeclaration" && node.kind === "const") {
+      for (const declaration of node.declarations) {
+        if (declaration.id?.type !== "Identifier" || !declaration.init) continue;
+        if (bindings.has(declaration.id.name)) {
+          duplicateBindings.add(declaration.id.name);
+          bindings.delete(declaration.id.name);
+        } else if (!duplicateBindings.has(declaration.id.name)) {
+          bindings.set(declaration.id.name, declaration.init);
+        }
+      }
+    }
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) collectionStack.push(...value);
+      else if (value && typeof value === "object") collectionStack.push(value);
+    }
+  }
+
   const stack = [tree];
   while (stack.length > 0) {
     const node = stack.pop();
     if (!node || typeof node !== "object") continue;
+    const remote = (source) =>
+      staticStringStartsWithRemoteUrl(source, bindings);
 
     if (
-      (node.type === "ImportExpression" &&
-        staticStringStartsWithRemoteUrl(node.source)) ||
+      (node.type === "ImportExpression" && remote(node.source)) ||
       ((node.type === "ImportDeclaration" ||
         node.type === "ExportNamedDeclaration" ||
         node.type === "ExportAllDeclaration") &&
-        staticStringStartsWithRemoteUrl(node.source)) ||
-      (isImportScriptsCall(node) &&
-        node.arguments.some(staticStringStartsWithRemoteUrl))
+        remote(node.source)) ||
+      (isImportScriptsCall(node) && node.arguments.some(remote))
     ) {
       return { parseError: false, remote: true };
     }
@@ -1389,8 +1456,16 @@ export async function verifyPackage(appPath, injectedPorts = {}) {
     "node_modules",
     "uiohook-napi",
   );
+  const expectedNativeBinary = join(
+    uiohookPath,
+    "build",
+    "Release",
+    "uiohook_napi.node",
+  );
   try {
-    nativeBinaries = await ports.findNativeBinaries(uiohookPath);
+    nativeBinaries = (await ports.findNativeBinaries(uiohookPath)).filter(
+      (path) => resolve(path) === resolve(expectedNativeBinary),
+    );
   } catch {
     nativeBinaries = [];
   }

@@ -1,0 +1,114 @@
+---
+name: Promote Release
+
+"on":
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Exact draft release tag to promote (for example v0.1.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    name: Validate final evidence and publish draft
+    runs-on: macos-14
+    environment: release
+
+    steps:
+      - name: Check out exact release tag
+        # actions/checkout v4 => 11d5960a326750d5838078e36cf38b85af677262
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        # actions/setup-node v4 => 49933ea5288caeca8642d1e84afbd3f7d6820020
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 24
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies from lockfile
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify exact tag version and commit
+        id: candidate
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          if [[ ! "$INPUT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Promotion requires an exact v<major>.<minor>.<patch> tag." >&2
+            exit 1
+          fi
+          version="${INPUT_TAG#v}"
+          package_version="$(node -p "require('./package.json').version")"
+          test "$package_version" = "$version"
+          commit="$(git rev-parse HEAD)"
+          tag_commit="$(git rev-list -n 1 "$INPUT_TAG")"
+          test "$commit" = "$tag_commit"
+          test "$(git describe --tags --exact-match HEAD)" = "$INPUT_TAG"
+          artifact="Kopper-${version}-universal.dmg"
+          checksum="${artifact}.sha256"
+          {
+            printf 'version=%s\n' "$version"
+            printf 'tag=%s\n' "$INPUT_TAG"
+            printf 'commit=%s\n' "$commit"
+            printf 'artifact=%s\n' "$artifact"
+            printf 'checksum=%s\n' "$checksum"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Inspect draft and verify exact candidate assets
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.candidate.outputs.tag }}
+          ARTIFACT: ${{ steps.candidate.outputs.artifact }}
+          CHECKSUM: ${{ steps.candidate.outputs.checksum }}
+        run: |
+          release_json="$RUNNER_TEMP/kopper-release.json"
+          download_directory="$RUNNER_TEMP/kopper-release-assets"
+          rm -rf -- "$download_directory"
+          mkdir -p "$download_directory"
+          gh release view "$TAG" --json tagName,isDraft,assets > "$release_json"
+          gh release download "$TAG" \
+            --dir "$download_directory" \
+            --pattern "$ARTIFACT" \
+            --pattern "$CHECKSUM"
+          cd "$download_directory"
+          test -f "$ARTIFACT"
+          test -f "$CHECKSUM"
+          test "$(wc -l < "$CHECKSUM" | tr -d ' ')" = "1"
+          expected_line="$(cat "$CHECKSUM")"
+          checksum_pattern="^[0-9a-f]{64}[[:space:]][[:space:]]${ARTIFACT}$"
+          [[ "$expected_line" =~ $checksum_pattern ]]
+          shasum -a 256 -c "$CHECKSUM"
+          artifact_sha256="$(shasum -a 256 "$ARTIFACT" | awk '{print $1}')"
+          {
+            printf 'release_json=%s\n' "$release_json"
+            printf 'artifact_sha256=%s\n' "$artifact_sha256"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Validate final release evidence
+        run: >-
+          pnpm validate:release-docs -- --final
+          --version "${{ steps.candidate.outputs.version }}"
+          --tag "${{ steps.candidate.outputs.tag }}"
+          --commit "${{ steps.candidate.outputs.commit }}"
+          --artifact "${{ steps.candidate.outputs.artifact }}"
+          --checksum "${{ steps.candidate.outputs.checksum }}"
+          --artifact-sha256 "${{ steps.release.outputs.artifact_sha256 }}"
+          --release-json "${{ steps.release.outputs.release_json }}"
+
+      - name: Publish validated draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.candidate.outputs.tag }}
+        run: gh release edit "$TAG" --draft=false

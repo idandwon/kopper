@@ -980,6 +980,14 @@ describe("package verifier", () => {
       "void import /* webpackIgnore: true */ ('https://cdn.example.invalid/module.js')",
     ],
     [
+      "concatenated dynamic import",
+      "void import('https:' + '//cdn.example.invalid/module.js')",
+    ],
+    [
+      "aliased concatenated dynamic import",
+      "const origin = 'https:'; const source = origin + '//cdn.example.invalid/module.js'; void import(source)",
+    ],
+    [
       "interpolated remote-prefix dynamic import",
       "void import(`https://cdn.example.invalid/${moduleName}.js`)",
     ],
@@ -998,6 +1006,10 @@ describe("package verifier", () => {
     [
       "later importScripts argument",
       "self.importScripts('./local.js', /* fallback */ 'https://cdn.example.invalid/worker.js')",
+    ],
+    [
+      "aliased concatenated importScripts argument",
+      "const protocol = 'http:'; const worker = protocol + '//cdn.example.invalid/worker.js'; self.importScripts(worker)",
     ],
     [
       "static side-effect import",
@@ -1041,6 +1053,7 @@ describe("package verifier", () => {
       [
         "const dynamicExample = \"import('https://cdn.example.invalid/example.js')\";",
         "const workerExample = \"importScripts('http://cdn.example.invalid/example.js')\";",
+        "const inertRemote = 'https:' + '//cdn.example.invalid/inert.js';",
       ].join("\n"),
     ],
   ])("allows %s in renderer JavaScript", async (_name, content) => {
@@ -1284,6 +1297,42 @@ describe("package verifier", () => {
     const result = await verifyPackage(fixture.appPath, fixture.ports);
 
     expect(failureCodes(result)).toContain("missing_uiohook_native_module");
+  });
+
+  it("rejects a prebuild-only uiohook bundle when the exact runtime binary is missing", async () => {
+    const fixture = await createFixture();
+    const prebuild = join(
+      fixture.appPath,
+      "Contents/Resources/app.asar.unpacked/node_modules/uiohook-napi/prebuilds/darwin-arm64/uiohook_napi.node",
+    );
+    fixture.ports.findNativeBinaries.mockResolvedValueOnce([prebuild]);
+
+    const result = await verifyPackage(fixture.appPath, fixture.ports);
+
+    expect(failureCodes(result)).toContain("missing_uiohook_native_module");
+    expect(fixture.lipoCalls).toEqual([fixture.executablePath]);
+  });
+
+  it("rejects unexpected architecture slices instead of accepting a superset", async () => {
+    const fixture = await createFixture({
+      architectures: {
+        // Filled below with fixture-specific paths.
+      },
+    });
+    fixture.ports.readArchitectures.mockResolvedValue([
+      "arm64",
+      "x86_64",
+      "i386",
+    ]);
+
+    const result = await verifyPackage(fixture.appPath, fixture.ports);
+
+    expect(failureCodes(result)).toEqual(
+      expect.arrayContaining([
+        "main_executable_not_universal",
+        "uiohook_native_module_not_universal",
+      ]),
+    );
   });
 
   it("rejects an updater package in the ASAR", async () => {

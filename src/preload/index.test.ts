@@ -107,6 +107,20 @@ describe("preload bridge", () => {
     await expect(exposedApi().execute(command)).rejects.toThrow();
   });
 
+  it("returns the fixed validation result for malformed commands without IPC", async () => {
+    const malformed = { type: "note.delete", noteIds: [] } as never;
+
+    await expect(exposedApi().execute(malformed)).resolves.toEqual({
+      ok: false,
+      error: {
+        code: "validation_failed",
+        message: "The document command is invalid.",
+        retryable: false,
+      },
+    });
+    expect(electron.invoke).not.toHaveBeenCalled();
+  });
+
   it("invokes undo without arguments and validates its result", async () => {
     const document = createEmptyDocument(new Date("2026-08-16T12:00:00.000Z"));
     electron.invoke.mockResolvedValueOnce({ ok: true, value: document });

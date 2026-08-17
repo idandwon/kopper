@@ -155,16 +155,18 @@ test("keeps renderer isolation, navigation, bridge validation, and CSP intact", 
     },
   });
 
-  const malformedRejected = await page.evaluate(async () => {
-    try {
-      const api = (window as unknown as { kopper: KopperApi }).kopper;
-      await api.execute({ type: "note.delete", noteIds: [] });
-      return false;
-    } catch {
-      return true;
-    }
+  const malformedResult = await page.evaluate(() => {
+    const api = (window as unknown as { kopper: KopperApi }).kopper;
+    return api.execute({ type: "note.delete", noteIds: [] });
   });
-  expect(malformedRejected).toBe(true);
+  expect(malformedResult).toEqual({
+    ok: false,
+    error: {
+      code: "validation_failed",
+      message: "The document command is invalid.",
+      retryable: false,
+    },
+  });
 
   await kopper.closeKopper();
 });

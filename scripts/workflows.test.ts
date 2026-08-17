@@ -1,10 +1,17 @@
-import { readFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
 const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
 const release = readFileSync(
   new URL("../.github/workflows/release.yml", import.meta.url),
+  "utf8",
+);
+const promote = readFileSync(
+  new URL("../.github/workflows/promote-release.yml", import.meta.url),
   "utf8",
 );
 
@@ -28,7 +35,7 @@ const actionPins = new Map([
 
 describe("workflow security semantics", () => {
   it("pins every official action to the verified immutable v4 commit", () => {
-    for (const workflow of [ci, release]) {
+    for (const workflow of [ci, release, promote]) {
       const uses = [
         ...workflow.matchAll(/^\s+uses: (actions\/[^@\s]+)@([^\s]+)$/gmu),
       ];
@@ -79,7 +86,7 @@ describe("workflow security semantics", () => {
     const checkout = step(release, "Check out tagged revision");
     const prepareKey = step(release, "Prepare Apple API key");
     const packageRelease = step(release, "Build signed and notarized release");
-    const createRelease = step(release, "Create GitHub Release");
+    const createRelease = step(release, "Create draft GitHub Release");
     const cleanup = step(release, "Remove temporary Apple API key");
 
     expect(checkout).toContain("persist-credentials: false");
@@ -98,5 +105,129 @@ describe("workflow security semantics", () => {
     expect(createRelease).not.toContain("secrets.");
     expect(cleanup).not.toMatch(/secrets\.|APPLE_API_KEY_ID|APPLE_API_KEY_P8/u);
     expect(cleanup).toContain('$RUNNER_TEMP/kopper-release-secrets');
+  });
+
+  it("creates only a draft candidate from a pushed exact tag", () => {
+    const createRelease = step(release, "Create draft GitHub Release");
+    expect(createRelease).toContain('gh release create "$GITHUB_REF_NAME"');
+    expect(createRelease).toContain("--draft");
+    expect(createRelease).not.toContain("--draft=false");
+  });
+
+  it("promotes only after exact-tag final evidence validation", () => {
+    expect(promote).toContain("workflow_dispatch:");
+    expect(promote).toContain("environment: release");
+    expect(promote).toContain("permissions:\n  contents: write");
+    const checkout = step(promote, "Check out exact release tag");
+    expect(checkout).toContain("ref: ${{ inputs.tag }}");
+    expect(checkout).toContain("persist-credentials: false");
+    const validation = step(promote, "Validate final release evidence");
+    expect(validation).toContain("--final");
+    expect(validation).toContain('--version "${{ steps.candidate.outputs.version }}"');
+    expect(validation).toContain('--tag "${{ steps.candidate.outputs.tag }}"');
+    const publish = step(promote, "Publish validated draft release");
+    expect(publish).toContain('gh release edit "$TAG" --draft=false');
+    expect(publish).toContain("GH_TOKEN: ${{ github.token }}");
+    expect(promote.indexOf(validation)).toBeLessThan(promote.indexOf(publish));
+  });
+
+  it("runs nonfinal release-document validation in CI", () => {
+    const validation = step(ci, "Validate release documentation traceability");
+    expect(validation).toContain("run: pnpm validate:release-docs");
+    expect(validation).not.toContain("--final");
+  });
+
+  it("passes nonfinal trace validation and rejects the current incomplete v0.1.0 draft for final promotion", () => {
+    expect(() =>
+      execFileSync("node", ["scripts/validate-release-doc-traceability.mjs"], {
+        cwd: new URL("..", import.meta.url),
+        stdio: "pipe",
+      }),
+    ).not.toThrow();
+
+    const directory = mkdtempSync(join(tmpdir(), "kopper-release-json-"));
+    const releaseJson = join(directory, "release.json");
+    writeFileSync(
+      releaseJson,
+      JSON.stringify({
+        isDraft: true,
+        tagName: "v0.1.0",
+        assets: [
+          { name: "Kopper-0.1.0-universal.dmg" },
+          { name: "Kopper-0.1.0-universal.dmg.sha256" },
+        ],
+      }),
+    );
+    try {
+      const result = spawnSync(
+        "node",
+        [
+          "scripts/validate-release-doc-traceability.mjs",
+          "--final",
+          "--version",
+          "0.1.0",
+          "--tag",
+          "v0.1.0",
+          "--commit",
+          "b98857d81d77421d4261536f71ce55321f2c7ac1",
+          "--artifact",
+          "Kopper-0.1.0-universal.dmg",
+          "--checksum",
+          "Kopper-0.1.0-universal.dmg.sha256",
+          "--artifact-sha256",
+          "a".repeat(64),
+          "--release-json",
+          releaseJson,
+        ],
+        { cwd: new URL("..", import.meta.url), encoding: "utf8" },
+      );
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("final evidence cannot contain required status Not run");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects non-draft and mismatched final candidate metadata", () => {
+    const directory = mkdtempSync(join(tmpdir(), "kopper-release-json-"));
+    const releaseJson = join(directory, "release.json");
+    writeFileSync(
+      releaseJson,
+      JSON.stringify({ isDraft: false, tagName: "v9.9.9", assets: [] }),
+    );
+    try {
+      const result = spawnSync(
+        "node",
+        [
+          "scripts/validate-release-doc-traceability.mjs",
+          "--final",
+          "--version",
+          "0.1.0",
+          "--tag",
+          "v9.9.9",
+          "--commit",
+          "not-a-commit",
+          "--artifact",
+          "wrong.dmg",
+          "--checksum",
+          "wrong.sha256",
+          "--artifact-sha256",
+          "not-a-checksum",
+          "--release-json",
+          releaseJson,
+        ],
+        { cwd: new URL("..", import.meta.url), encoding: "utf8" },
+      );
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("Final tag must equal v<version> exactly.");
+      expect(result.stderr).toContain("Final commit must be a full lowercase 40-character SHA.");
+      expect(result.stderr).toContain("Final artifact must be named Kopper-0.1.0-universal.dmg.");
+      expect(result.stderr).toContain("Final checksum must be named Kopper-0.1.0-universal.dmg.sha256.");
+      expect(result.stderr).toContain("Final artifact SHA-256 must be 64 lowercase hexadecimal characters.");
+      expect(result.stderr).toContain("GitHub Release must still be a draft before promotion.");
+      expect(result.stderr).toContain("GitHub Release assets do not exactly match the DMG and checksum evidence.");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
