@@ -1,4 +1,4 @@
-import type * as React from "react"
+import * as React from "react"
 import { ScrollArea as ScrollAreaPrimitive } from "radix-ui"
 
 import { cn } from "../../lib/utils"
@@ -8,6 +8,17 @@ function ScrollArea({
   children,
   ...props
 }: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
+  const contentChildren: React.ReactNode[] = []
+  const explicitScrollBars: React.ReactNode[] = []
+
+  React.Children.forEach(children, (child) => {
+    if (React.isValidElement(child) && child.type === ScrollBar) {
+      explicitScrollBars.push(child)
+    } else {
+      contentChildren.push(child)
+    }
+  })
+
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
@@ -18,9 +29,10 @@ function ScrollArea({
         data-slot="scroll-area-viewport"
         className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none motion-reduce:transition-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
       >
-        {children}
+        {contentChildren}
       </ScrollAreaPrimitive.Viewport>
       <ScrollBar />
+      {explicitScrollBars}
       <ScrollAreaPrimitive.Corner />
     </ScrollAreaPrimitive.Root>
   )
