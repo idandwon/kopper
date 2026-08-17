@@ -18,10 +18,12 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        # actions/checkout v4 => 11d5960a326750d5838078e36cf38b85af677262
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
       - name: Set up Node.js 24
-        uses: actions/setup-node@v4
+        # actions/setup-node v4 => 49933ea5288caeca8642d1e84afbd3f7d6820020
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 24
 
@@ -55,8 +57,13 @@ jobs:
         run: pnpm package:unsigned
 
       - name: Upload failure Playwright traces
-        if: failure() && steps.e2e.outcome == 'failure'
-        uses: actions/upload-artifact@v4
+        if: >-
+          failure() &&
+          steps.e2e.outcome == 'failure' &&
+          hashFiles('test-results/**/trace.zip') != ''
+        continue-on-error: true
+        # actions/upload-artifact v4 => ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: playwright-traces-${{ github.run_id }}
           path: test-results/**/trace.zip
@@ -65,8 +72,13 @@ jobs:
           retention-days: 3
 
       - name: Upload failed unsigned application
-        if: failure() && steps.package_unsigned.outcome == 'failure'
-        uses: actions/upload-artifact@v4
+        if: >-
+          failure() &&
+          steps.package_unsigned.outcome == 'failure' &&
+          hashFiles('release/mac-universal/Kopper.app/**') != ''
+        continue-on-error: true
+        # actions/upload-artifact v4 => ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: unsigned-application-${{ github.run_id }}
           path: release/mac-universal/Kopper.app

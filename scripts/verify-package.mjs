@@ -664,7 +664,6 @@ function inspectApplicationSource(
   const webPreferencePaths = new Set();
   const webPreferenceObjects = new Set();
   const preferenceAliasEdges = [];
-  const preferencePathAliasEdges = [];
   const baseIdentities = new Map();
 
   const expressionProperty = (expression) => {
@@ -784,9 +783,6 @@ function inspectApplicationSource(
     };
   };
 
-  const preferencePathKey = (path) =>
-    `${path.base}:${JSON.stringify(path.properties)}`;
-
   const preferencePath = (expression) => {
     const path =
       ts.isIdentifier(expression) ||
@@ -795,58 +791,67 @@ function inspectApplicationSource(
       ts.isComputedPropertyName(expression)
         ? propertyDeclarationPath(expression)
         : staticExpressionPath(expression);
-    return path === undefined ? undefined : preferencePathKey(path);
+    return path === undefined
+      ? undefined
+      : `${path.base}:${JSON.stringify(path.properties)}`;
   };
 
-  const collectCalledMethodThisAliases = (call) => {
-    const callee = expressionProperty(call.expression);
-    if (callee?.name === undefined) return;
-    const receiverPath = staticExpressionPath(callee.receiver);
-    if (receiverPath === undefined) return;
-
-    const member = ts.isPropertyAccessExpression(call.expression)
-      ? call.expression.name
-      : ts.isElementAccessExpression(call.expression)
-        ? call.expression.argumentExpression
-        : undefined;
-    if (member === undefined) return;
-    const symbol = checker.getSymbolAtLocation(member);
-    if (symbol === undefined) return;
-
-    for (const handle of symbol.declarations) {
+  const structurallyWebPreferencesBinding = (expression) => {
+    if (!ts.isIdentifier(expression)) return false;
+    const symbol = expressionSymbol(expression, checker);
+    if (symbol === undefined) return false;
+    return symbol.declarations.some((handle) => {
       const declaration = handle.resolve();
-      if (!declaration || !ts.isMethodDeclaration(declaration)) continue;
-      const containingClass = declaration.parent;
-      if (
-        !ts.isClassDeclaration(containingClass) &&
-        !ts.isClassExpression(containingClass)
-      ) {
+      if (!declaration) return false;
+      if (ts.isParameterDeclaration(declaration)) {
+        return (
+          ts.isIdentifier(declaration.name) &&
+          declaration.name.text === "webPreferences"
+        );
+      }
+      if (!ts.isBindingElement(declaration)) return false;
+      const property = declaration.propertyName ?? declaration.name;
+      return (
+        (ts.isIdentifier(property) || ts.isStringLiteral(property)) &&
+        property.text === "webPreferences"
+      );
+    });
+  };
+
+  const expressionIsThisProperty = (expression) => {
+    const unwrapped = typeOnlyWrappedExpression(expression);
+    if (unwrapped !== undefined) return expressionIsThisProperty(unwrapped);
+    const property = expressionProperty(expression);
+    if (property === undefined) return false;
+    let receiver = property.receiver;
+    while (true) {
+      const receiverUnwrapped = typeOnlyWrappedExpression(receiver);
+      if (receiverUnwrapped !== undefined) {
+        receiver = receiverUnwrapped;
         continue;
       }
-      const thisBase = baseIdentity(containingClass);
-      const collectAssignedThisPaths = (node) => {
-        if (
-          ts.isBinaryExpression(node) &&
-          isAssignmentOperator(node.operatorToken.kind)
-        ) {
-          const assignedPath = staticExpressionPath(node.left);
-          if (assignedPath?.base === thisBase) {
-            preferencePathAliasEdges.push([
-              preferencePathKey(assignedPath),
-              preferencePathKey({
-                base: receiverPath.base,
-                properties: [
-                  ...receiverPath.properties,
-                  ...assignedPath.properties,
-                ],
-              }),
-            ]);
-          }
-        }
-        node.forEachChild(collectAssignedThisPaths);
-      };
-      declaration.forEachChild(collectAssignedThisPaths);
+      if (receiver.kind === ts.SyntaxKind.ThisKeyword) return true;
+      const receiverProperty = expressionProperty(receiver);
+      if (receiverProperty === undefined) return false;
+      receiver = receiverProperty.receiver;
     }
+  };
+
+  const isInsideClassMethod = (node) => {
+    let current = node.parent;
+    while (current !== undefined) {
+      if (ts.isMethodDeclaration(current)) {
+        return (
+          ts.isClassDeclaration(current.parent) ||
+          ts.isClassExpression(current.parent)
+        );
+      }
+      if (ts.isClassDeclaration(current) || ts.isClassExpression(current)) {
+        return false;
+      }
+      current = current.parent;
+    }
+    return false;
   };
 
   const collectPreferenceExpression = (expression, seenSymbols = new Set()) => {
@@ -903,6 +908,7 @@ function inspectApplicationSource(
     }
     const property = expressionProperty(expression);
     if (property?.name === "webPreferences") return true;
+    if (structurallyWebPreferencesBinding(expression)) return true;
     const symbol = preferenceSymbol(expression);
     if (symbol !== undefined && webPreferenceSymbols.has(symbol)) return true;
     const path = preferencePath(expression);
@@ -922,10 +928,6 @@ function inspectApplicationSource(
   };
 
   const collectWebPreferenceContexts = (node) => {
-    if (ts.isCallExpression(node)) {
-      collectCalledMethodThisAliases(node);
-    }
-
     if (
       (ts.isPropertyAssignment(node) ||
         ts.isShorthandPropertyAssignment(node)) &&
@@ -984,22 +986,6 @@ function inspectApplicationSource(
         }
       }
     }
-    for (const [methodPath, instancePath] of preferencePathAliasEdges) {
-      if (
-        webPreferencePaths.has(methodPath) &&
-        !webPreferencePaths.has(instancePath)
-      ) {
-        webPreferencePaths.add(instancePath);
-        changed = true;
-      }
-      if (
-        webPreferencePaths.has(instancePath) &&
-        !webPreferencePaths.has(methodPath)
-      ) {
-        webPreferencePaths.add(methodPath);
-        changed = true;
-      }
-    }
   } while (changed);
 
   const visit = (node) => {
@@ -1038,6 +1024,14 @@ function inspectApplicationSource(
       ts.isBinaryExpression(node) &&
       isAssignmentOperator(node.operatorToken.kind)
     ) {
+      if (
+        expressionIsThisProperty(node.left) &&
+        isInsideClassMethod(node) &&
+        isKnownWebPreferenceReceiver(node.right)
+      ) {
+        rules.add("insecure_web_preference");
+      }
+
       if (
         node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
         ts.isObjectLiteralExpression(node.left) &&

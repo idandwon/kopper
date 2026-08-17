@@ -679,28 +679,38 @@ describe("source security auditor", () => {
     });
   });
 
-  it("tracks a method this-property ingress to the exact named instance", async () => {
-    const root = await createSourceFixture({
-      "src/main/unsafe.ts": [
-        "const key = chooseKey(); const options = { webPreferences: {} };",
-        "class Holder { preferences: Record<string, unknown> = {}; attach(candidate: { webPreferences: Record<string, unknown> }) { this.preferences = candidate.webPreferences; } }",
-        "const securityHolder = new Holder(); securityHolder.attach(options); securityHolder.preferences[key] = value;",
-      ].join("\n"),
-    });
+  it.each([
+    [
+      "a wrapped property alias",
+      "class Holder { preferences: Record<string, unknown> = {}; attach(options: { webPreferences: Record<string, unknown> }) { const candidate = (options.webPreferences as Record<string, unknown>); this.preferences = (candidate); } } void Holder;",
+    ],
+    [
+      "a webPreferences parameter alias",
+      "class Holder { preferences: Record<string, unknown> = {}; attach(webPreferences: Record<string, unknown>) { const candidate = webPreferences; this.preferences = (candidate satisfies Record<string, unknown>); } } void Holder;",
+    ],
+    [
+      "known preference provenance",
+      "const preferences = {}; const options = { webPreferences: preferences }; class Holder { preferences: Record<string, unknown> = {}; attach() { this.preferences = preferences; } } void options; void Holder;",
+    ],
+  ])(
+    "rejects class this-property ingress from %s without invocation or a later sink",
+    async (_name, source) => {
+      const root = await createSourceFixture({ "src/main/unsafe.ts": source });
 
-    const result = await verifySource(root);
+      const result = await verifySource(root);
 
-    expect(result.failures).toContainEqual({
-      file: "src/main/unsafe.ts",
-      rule: "insecure_web_preference",
-    });
-  });
+      expect(result.failures).toContainEqual({
+        file: "src/main/unsafe.ts",
+        rule: "insecure_web_preference",
+      });
+    },
+  );
 
-  it("keeps this-property provenance isolated between disconnected classes", async () => {
+  it("keeps this-properties in disconnected classes benign without preference ingress", async () => {
     const root = await createSourceFixture({
       "src/main/safe.ts": [
         "const key = chooseKey();",
-        "class SecurityHolder { preferences: Record<string, unknown> = {}; attach(candidate: { webPreferences: Record<string, unknown> }) { this.preferences = candidate.webPreferences; } }",
+        "class SecurityHolder { preferences: Record<string, unknown> = {}; attach(candidate: Record<string, unknown>) { this.preferences = candidate; } }",
         "class ThemeHolder { preferences: Record<string, unknown> = {}; write() { this.preferences[key] = value; } }",
         "void SecurityHolder; void ThemeHolder;",
       ].join("\n"),
@@ -768,7 +778,7 @@ describe("source security auditor", () => {
     ],
     [
       "class property",
-      "class Holder { preferences: Record<string, unknown> = {}; attach(options: { webPreferences: Record<string, unknown> }) { this.preferences = options.webPreferences; } } const securityHolder = new Holder(); const themeHolder = new Holder();",
+      "class Holder { preferences: Record<string, unknown> = {}; } const securityHolder = new Holder(); const themeHolder = new Holder();",
     ],
   ])(
     "keeps separate receiver instances isolated for a shared %s symbol",
