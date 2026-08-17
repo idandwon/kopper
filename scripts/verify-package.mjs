@@ -771,11 +771,7 @@ function inspectApplicationSource(
 
     if (
       ts.isObjectLiteralExpression(node) &&
-      hasUnsafeWebPreference(
-        node,
-        checker,
-        webPreferenceObjects.has(node),
-      )
+      hasUnsafeWebPreference(node, checker, webPreferenceObjects.has(node))
     ) {
       rules.add("insecure_web_preference");
     }
