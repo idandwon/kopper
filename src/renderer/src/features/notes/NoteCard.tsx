@@ -5,6 +5,7 @@ import type { NoteProjectionView } from "../search/projectNotes";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { cn } from "../../lib/utils";
 import { NoteContextMenu, type NoteMenuAction } from "./NoteContextMenu";
+import { resolveNoteKeyboardIntent } from "./noteKeyboardIntent";
 
 export interface NoteSelectIntent {
   id: string;
@@ -31,6 +32,9 @@ export interface NoteCardProps {
   onMoveFocus(sourceId: string, direction: -1 | 1, extend: boolean): void;
   onAction(action: NoteMenuAction): void;
 }
+
+const ignoreEditingChange = () => undefined;
+const rejectSave = async () => false;
 
 function isApplicationShortcutTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
@@ -78,48 +82,22 @@ export function NoteCard({
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (disabled || isApplicationShortcutTarget(event.target)) return;
-    const key = event.key.toLocaleLowerCase();
-    const command = event.metaKey || event.ctrlKey;
-    let action: NoteMenuAction | undefined;
+    const intent = resolveNoteKeyboardIntent(
+      {
+        key: event.key,
+        commandPressed: event.metaKey || event.ctrlKey,
+        shiftPressed: event.shiftKey,
+      },
+      { noteId: note.id, effectiveNoteIds, view },
+    );
+    if (intent === null) return;
 
-    if (event.key === "Enter" && !command) {
-      event.preventDefault();
-      onAction({ type: "edit", noteId: note.id });
+    event.preventDefault();
+    if (intent.type === "move-focus") {
+      onMoveFocus(note.id, intent.direction, intent.extend);
       return;
     }
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-      event.preventDefault();
-      onMoveFocus(
-        note.id,
-        event.key === "ArrowDown" ? 1 : -1,
-        event.shiftKey,
-      );
-      return;
-    }
-    if (event.key === " ") {
-      action = { type: statusAction, noteIds: effectiveNoteIds };
-    } else if (event.key === "Delete" || event.key === "Backspace") {
-      action = { type: "delete", noteIds: effectiveNoteIds };
-    } else if (command && key === "c") {
-      action = {
-        type: "copy",
-        noteIds: effectiveNoteIds,
-        mode: event.shiftKey ? "markdown-list" : "plain",
-      };
-    } else if (
-      command &&
-      event.shiftKey &&
-      key === "m" &&
-      view === "active" &&
-      effectiveNoteIds.length >= 2
-    ) {
-      action = { type: "merge", noteIds: effectiveNoteIds };
-    }
-
-    if (action !== undefined) {
-      event.preventDefault();
-      onAction(action);
-    }
+    onAction(intent.action);
   };
 
   return (
@@ -144,9 +122,10 @@ export function NoteCard({
           data-focused={focused}
           data-selected={selected}
           data-capture-highlighted={captureHighlighted}
+          data-preview-clamped={!editing}
           tabIndex={tabbable ? 0 : -1}
           className={cn(
-            "rounded-lg border border-border bg-card py-3 pr-3 pl-10 text-[13px] leading-relaxed text-card-foreground outline-none transition-colors motion-reduce:transition-none",
+            "kopper-note-card kopper-note-card-preview rounded-[calc(var(--radius)+0.25rem)] border border-border bg-card py-3 pr-3 pl-10 text-[13px] leading-relaxed text-card-foreground outline-none transition-colors motion-reduce:transition-none",
             "focus-visible:ring-2 focus-visible:ring-ring/50",
             focused && "ring-1 ring-ring/40",
             selected && "border-primary/60 bg-accent",
@@ -166,8 +145,8 @@ export function NoteCard({
             editing={editing}
             disabled={disabled}
             autoFocus
-            onEditingChange={onEditingChange ?? (() => undefined)}
-            onSave={onSave ?? (async () => false)}
+            onEditingChange={onEditingChange ?? ignoreEditingChange}
+            onSave={onSave ?? rejectSave}
           />
         </article>
         <button

@@ -64,6 +64,22 @@ describe("NoteCard", () => {
     expect(card).toHaveAttribute("data-selected", "false");
   });
 
+  it("keeps complete long Markdown available behind a clamped card preview", () => {
+    const longBody = [
+      "**First line**",
+      "Second line",
+      "Third line",
+      "Fourth line",
+      "Fifth line remains available",
+    ].join("\n\n");
+    render(<NoteCard {...props({ note: { ...note, body: longBody } })} />);
+
+    const card = screen.getByRole("option");
+    expect(card).toHaveAttribute("aria-label", `Note: ${longBody}`);
+    expect(card).toHaveAttribute("data-preview-clamped", "true");
+    expect(screen.getByText("Fifth line remains available")).toBeInTheDocument();
+  });
+
   it("reports click modifiers without conflating focus and selection", async () => {
     const onSelect = vi.fn<NoteCardProps["onSelect"]>();
     render(<NoteCard {...props({ onSelect })} />);

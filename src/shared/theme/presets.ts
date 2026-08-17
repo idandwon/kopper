@@ -3,6 +3,8 @@ import type { CompleteThemeMode } from "./themeSchema";
 
 interface ModePalette {
   background: string;
+  card: string;
+  popover: string;
   foreground: string;
   primary: string;
   primaryForeground: string;
@@ -27,9 +29,9 @@ function createMode(palette: ModePalette): CompleteThemeMode {
   return {
     background: palette.background,
     foreground: palette.foreground,
-    card: palette.background,
+    card: palette.card,
     "card-foreground": palette.foreground,
-    popover: palette.background,
+    popover: palette.popover,
     "popover-foreground": palette.foreground,
     primary: palette.primary,
     "primary-foreground": palette.primaryForeground,
@@ -57,6 +59,8 @@ export const OXIDE_LEDGER_THEME: ThemeDefinition = {
   name: "Oxide Ledger",
   light: createMode({
     background: "#F6F9F6",
+    card: "#FFFFFF",
+    popover: "#FFFFFF",
     foreground: "#173D35",
     primary: "#173D35",
     primaryForeground: "#F6F9F6",
@@ -78,6 +82,8 @@ export const OXIDE_LEDGER_THEME: ThemeDefinition = {
   }),
   dark: createMode({
     background: "#173D35",
+    card: "#20483F",
+    popover: "#20483F",
     foreground: "#F6F9F6",
     primary: "#F6F9F6",
     primaryForeground: "#173D35",
@@ -105,6 +111,8 @@ const NIGHT_WORKSHOP_THEME: ThemeDefinition = {
   name: "Night Workshop",
   light: createMode({
     background: "#F0ECE6",
+    card: "#FAF8F4",
+    popover: "#FFFFFF",
     foreground: "#25282A",
     primary: "#774028",
     primaryForeground: "#FFFFFF",
@@ -126,6 +134,8 @@ const NIGHT_WORKSHOP_THEME: ThemeDefinition = {
   }),
   dark: createMode({
     background: "#202326",
+    card: "#2A2E31",
+    popover: "#303538",
     foreground: "#F0ECE6",
     primary: "#D59774",
     primaryForeground: "#202326",
@@ -153,6 +163,8 @@ const INDEX_DRAWER_THEME: ThemeDefinition = {
   name: "Index Drawer",
   light: createMode({
     background: "#F4F0E7",
+    card: "#FFFDF8",
+    popover: "#FFFFFF",
     foreground: "#29251F",
     primary: "#8B4B2D",
     primaryForeground: "#FFFFFF",
@@ -174,6 +186,8 @@ const INDEX_DRAWER_THEME: ThemeDefinition = {
   }),
   dark: createMode({
     background: "#29251F",
+    card: "#342F28",
+    popover: "#3B352D",
     foreground: "#F4F0E7",
     primary: "#D59A77",
     primaryForeground: "#29251F",

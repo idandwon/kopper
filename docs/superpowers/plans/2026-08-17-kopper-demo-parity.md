@@ -129,11 +129,11 @@
 - Consumes: strict theme token schema and existing semantic variables.
 - Produces: distinct panel/card/composer/popover elevation, clamped card previews with an explicit expansion path, and complete Markdown typography across all valid themes.
 
-- [ ] Add failing tests for preset contrast and card-preview semantics.
-- [ ] Differentiate surfaces using valid opaque theme tokens and presentation-level blending.
-- [ ] Implement deterministic preview clamping without hiding content from assistive technology or the expanded editor.
-- [ ] Style supported Markdown elements and preserve inert links.
-- [ ] Run theme suites, renderer suites, typecheck, and commit.
+- [x] Add failing tests for preset contrast and card-preview semantics.
+- [x] Differentiate surfaces using valid opaque theme tokens and presentation-level blending.
+- [x] Implement deterministic preview clamping without hiding content from assistive technology or the expanded editor.
+- [x] Style supported Markdown elements and preserve inert links.
+- [x] Run theme suites, renderer suites, typecheck, and commit.
 
 ### Task 6: Selection and Clipboard Feedback
 

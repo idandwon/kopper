@@ -36,6 +36,16 @@ describe("bundled themes", () => {
   });
 
   it.each(BUNDLED_THEMES)(
+    "$id gives cards and popovers distinct light and dark surfaces",
+    (theme) => {
+      expect(theme.light.card).not.toBe(theme.light.background);
+      expect(theme.light.popover).not.toBe(theme.light.background);
+      expect(theme.dark.card).not.toBe(theme.dark.background);
+      expect(theme.dark.popover).not.toBe(theme.dark.background);
+    },
+  );
+
+  it.each(BUNDLED_THEMES)(
     "$id passes external schema projection, derivation, and readability",
     (theme) => {
       const parsed = ThemeFileSchema.safeParse(toExternalTheme(theme));

@@ -1,8 +1,22 @@
-import { useEffect, useState, type KeyboardEvent } from "react";
-import ReactMarkdown from "react-markdown";
+import {
+  useEffect,
+  useState,
+  type ComponentProps,
+  type KeyboardEvent,
+} from "react";
+import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 import { Button } from "../../components/ui/button";
+
+function InertMarkdownLink({ children }: ComponentProps<"a">) {
+  return <span>{children}</span>;
+}
+
+const MARKDOWN_COMPONENTS: Components = {
+  a: InertMarkdownLink,
+};
+const MARKDOWN_PLUGINS = [remarkGfm];
 
 export interface MarkdownEditorProps {
   noteId: string;
@@ -71,10 +85,8 @@ export function MarkdownEditor({
     return (
       <div className="kopper-markdown min-w-0" data-note-markdown={noteId}>
         <ReactMarkdown
-          remarkPlugins={[remarkGfm]}
-          components={{
-            a: ({ children }) => <span>{children}</span>,
-          }}
+          remarkPlugins={MARKDOWN_PLUGINS}
+          components={MARKDOWN_COMPONENTS}
         >
           {body}
         </ReactMarkdown>
@@ -97,7 +109,7 @@ export function MarkdownEditor({
         }}
         onKeyDown={handleKeyDown}
       />
-      {validationMessage !== null && (
+      {validationMessage === null ? null : (
         <p role="alert" className="m-0 text-xs text-destructive">
           {validationMessage}
         </p>
