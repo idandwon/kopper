@@ -90,6 +90,24 @@ async function openAppearanceSettings(page: Page): Promise<void> {
   await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
 }
 
+async function expectNotesViewportAboveComposer(page: Page): Promise<void> {
+  const notesViewport = page
+    .locator('[data-scroll-owner="notes"]')
+    .locator('[data-slot="scroll-area-viewport"]');
+  const composer = page.locator('[data-composer-surface="true"]');
+  await expect(notesViewport).toBeVisible();
+  await expect(composer).toBeVisible();
+
+  const notesBounds = await notesViewport.boundingBox();
+  const composerBounds = await composer.boundingBox();
+  expect(notesBounds).not.toBeNull();
+  expect(composerBounds).not.toBeNull();
+  if (notesBounds === null || composerBounds === null) return;
+  expect(notesBounds.y + notesBounds.height).toBeLessThanOrEqual(
+    composerBounds.y,
+  );
+}
+
 async function expectVisualBaselines(
   page: Page,
   mode: "light" | "dark",
@@ -108,6 +126,15 @@ async function expectVisualBaselines(
   ] as const) {
     await setSurfaceSize(page, width, height);
     await expectSurfaceContained(page, "notes");
+    if (width === 340 && height === 480) {
+      // Keep the final fixture card fully visible at the owning viewport edge.
+      await page
+        .getByRole("option", {
+          name: "Note: Which edge cases should double-Shift capture handle?",
+        })
+        .evaluate((note) => note.scrollIntoView({ block: "end" }));
+      await expectNotesViewportAboveComposer(page);
+    }
     await page.mouse.move(1, Math.floor(height / 2));
     await expect(page).toHaveScreenshot(
       `oxide-ledger-${mode}-${width}x${height}.png`,
@@ -209,6 +236,10 @@ test("preserves notes state through the full keyboard Settings traversal", async
     name: "Note: Which edge cases should double-Shift capture handle?",
   });
   await expect(preservedNote).toBeVisible();
+  const activeView = page.getByRole("button", { name: "Active notes" });
+  const completedView = page.getByRole("button", { name: "Completed notes" });
+  await expect(activeView).toHaveAttribute("aria-pressed", "true");
+  await expect(completedView).toHaveAttribute("aria-pressed", "false");
   await expectSurfaceContained(page, "notes");
 
   const panelMenu = page.getByRole("button", { name: "Panel menu" });
@@ -233,7 +264,8 @@ test("preserves notes state through the full keyboard Settings traversal", async
   await back.focus();
   await back.press("Enter");
   await expect(search).toHaveValue("edge cases");
-  await expect(page.getByRole("button", { name: "Completed notes" })).toBeVisible();
+  await expect(activeView).toHaveAttribute("aria-pressed", "true");
+  await expect(completedView).toHaveAttribute("aria-pressed", "false");
   await expect(preservedNote).toBeVisible();
   await expect(panelMenu).toBeFocused();
   await expectSurfaceContained(page, "notes");
