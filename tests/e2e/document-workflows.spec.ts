@@ -1,5 +1,6 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
+import { createEmptyDocument } from "../../src/shared/domain/document";
 import {
   continueWithoutCaptureIfNeeded,
   expect,
@@ -47,6 +48,133 @@ async function openNoteMenu(page: Page, body: string): Promise<void> {
   const menu = page.getByRole("menu", { name: "Note actions" });
   await expectOverlayContained(page, menu);
 }
+
+async function expectWrappedInsideViewport(locator: Locator): Promise<void> {
+  const geometry = await locator.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const bounds = element.getBoundingClientRect();
+    return {
+      whiteSpace: style.whiteSpace,
+      wordBreak: style.wordBreak,
+      scrollWidth: element.scrollWidth,
+      clientWidth: element.clientWidth,
+      left: bounds.left,
+      right: bounds.right,
+      viewportWidth: document.documentElement.clientWidth,
+    };
+  });
+  expect(geometry.whiteSpace).toBe("normal");
+  expect(geometry.wordBreak).toBe("break-all");
+  expect(geometry.scrollWidth).toBeLessThanOrEqual(geometry.clientWidth);
+  expect(geometry.left).toBeGreaterThanOrEqual(0);
+  expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth);
+}
+
+async function expectEllipsisInsideViewport(locator: Locator): Promise<void> {
+  const geometry = await locator.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const bounds = element.getBoundingClientRect();
+    return {
+      overflow: style.overflow,
+      textOverflow: style.textOverflow,
+      whiteSpace: style.whiteSpace,
+      left: bounds.left,
+      right: bounds.right,
+      viewportWidth: document.documentElement.clientWidth,
+    };
+  });
+  expect(geometry.overflow).toBe("hidden");
+  expect(geometry.textOverflow).toBe("ellipsis");
+  expect(geometry.whiteSpace).toBe("nowrap");
+  expect(geometry.left).toBeGreaterThanOrEqual(0);
+  expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth);
+}
+
+test("contains long spaced and unbroken section names across every minimum-size surface", async ({
+  kopper,
+}) => {
+  const initial = createEmptyDocument(new Date("2026-08-16T12:00:00.000Z"));
+  const sourceTitle =
+    "Source section with a deliberately detailed valid heading for capture decisions";
+  const spacedTitle =
+    "Research references and decisions for an unusually detailed capture workflow";
+  const unbrokenTitle =
+    "AValidUnbrokenSectionNameThatMustRemainInsideTheMinimumPanelViewportWithoutHorizontalOverflow";
+  const timestamp = "2026-08-16T12:00:00.000Z";
+  const inbox = initial.sections[0];
+  if (inbox === undefined) throw new Error("Long-name fixture requires Inbox.");
+  initial.sections = [
+    { ...inbox, id: "source", title: sourceTitle },
+    {
+      id: "spaced",
+      title: spacedTitle,
+      order: 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    },
+    {
+      id: "unbroken",
+      title: unbrokenTitle,
+      order: 2,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    },
+  ];
+  initial.activeSectionId = "source";
+  initial.notes = [
+    {
+      id: "long-section-note",
+      sectionId: "source",
+      body: "Long section containment note",
+      order: 0,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      completedAt: null,
+      previousPlacement: null,
+    },
+  ];
+
+  const page = await kopper.launchKopper(initial);
+  await continueWithoutCaptureIfNeeded(page);
+  await setSurfaceSize(page, 340, 480);
+  await expectSurfaceContained(page, "notes");
+
+  await expectWrappedInsideViewport(
+    page.getByRole("button", { name: spacedTitle, exact: true }),
+  );
+  await expectWrappedInsideViewport(
+    page.getByRole("button", { name: unbrokenTitle, exact: true }),
+  );
+
+  await openNoteMenu(page, "Long section containment note");
+  const moveTo = page.getByRole("menuitem", { name: "Move to" });
+  await moveTo.focus();
+  await moveTo.press("ArrowRight");
+  const moveMenu = page.getByRole("menu").last();
+  await expectOverlayContained(page, moveMenu);
+  await expectEllipsisInsideViewport(moveMenu.getByTitle(spacedTitle));
+  await expectEllipsisInsideViewport(moveMenu.getByTitle(unbrokenTitle));
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Escape");
+
+  await page.getByRole("button", { name: `Manage ${sourceTitle}` }).click();
+  await page.getByRole("menuitem", { name: "Delete" }).click();
+  const deleteDialog = page.getByRole("alertdialog");
+  await expectOverlayContained(page, deleteDialog);
+  const destination = deleteDialog.getByRole("combobox", {
+    name: "Move notes to",
+  });
+  await destination.click();
+  const listbox = page.getByRole("listbox");
+  await expectOverlayContained(page, listbox);
+  await expectEllipsisInsideViewport(listbox.getByTitle(spacedTitle));
+  await expectEllipsisInsideViewport(listbox.getByTitle(unbrokenTitle));
+  await page.getByRole("option", { name: unbrokenTitle }).click();
+  const selectedValue = destination.locator('[data-slot="select-value"]');
+  await expect(selectedValue).toHaveAttribute("title", unbrokenTitle);
+  await expectEllipsisInsideViewport(selectedValue);
+  await expectSurfaceContained(page, "notes");
+});
 
 test("isolates a complete document journey and persists only acknowledged state", async ({
   kopper,

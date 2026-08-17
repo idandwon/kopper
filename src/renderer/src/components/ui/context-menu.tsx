@@ -37,7 +37,7 @@ function ContextMenuSubContent({
       <ContextMenuPrimitive.SubContent
         collisionPadding={collisionPadding}
         className={cn(
-          "z-50 max-h-[calc(100dvh-2rem)] w-36 min-w-0 max-w-[min(calc(100vw-2rem),var(--radix-context-menu-content-available-width))] overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md outline-none motion-safe:animate-in motion-safe:fade-in-0",
+          "z-50 max-h-[calc(100dvh-2rem)] w-52 min-w-0 max-w-[min(calc(100vw-2rem),var(--radix-context-menu-content-available-width))] overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md outline-none motion-safe:animate-in motion-safe:fade-in-0",
           className,
         )}
         {...props}
@@ -53,7 +53,7 @@ function ContextMenuItem({
   return (
     <ContextMenuPrimitive.Item
       className={cn(
-        "relative flex cursor-default items-center gap-3 rounded-md px-2 py-1.5 text-sm outline-none select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+        "relative flex min-w-0 cursor-default items-center gap-3 rounded-md px-2 py-1.5 text-sm outline-none select-none focus:bg-accent focus:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
         className,
       )}
       {...props}
@@ -84,7 +84,7 @@ function ContextMenuSubTrigger({
   return (
     <ContextMenuPrimitive.SubTrigger
       className={cn(
-        "relative flex cursor-default select-none items-center rounded-md px-2 py-1.5 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent",
+        "relative flex min-w-0 cursor-default select-none items-center rounded-md px-2 py-1.5 text-sm outline-none focus:bg-accent focus:text-accent-foreground data-[state=open]:bg-accent",
         className,
       )}
       {...props}

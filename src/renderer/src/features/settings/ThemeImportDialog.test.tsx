@@ -83,13 +83,19 @@ describe("ThemeImportDialog", () => {
     expect(previewTheme).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Preview" }));
-    expect(previewTheme).toHaveBeenCalledWith(preview.theme);
+    expect(previewTheme).toHaveBeenCalledWith(
+      expect.anything(),
+      preview.theme,
+    );
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(cancelPreview).toHaveBeenCalledOnce();
 
     await user.click(screen.getByRole("button", { name: "Import theme" }));
     await user.click(await screen.findByRole("button", { name: "Save imported theme" }));
-    expect(savePreview).toHaveBeenCalledWith(preview.theme);
+    expect(savePreview).toHaveBeenCalledWith(
+      expect.anything(),
+      preview.theme,
+    );
     expect(await screen.findByRole("status")).toHaveTextContent("Export is now available");
   });
 
@@ -111,6 +117,19 @@ describe("ThemeImportDialog", () => {
 
     await act(async () => resolveSave?.({ status: "saved" }));
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("releases its preview ownership when a forced route unmounts the dialog", async () => {
+    const user = userEvent.setup();
+    const view = render(
+      <ThemeImportDialog api={api({ ok: true, value: preview })} />,
+    );
+    await user.click(screen.getByRole("button", { name: "Import theme" }));
+    await user.click(screen.getByRole("button", { name: "Preview" }));
+
+    view.unmount();
+
+    expect(cancelPreview).toHaveBeenCalledOnce();
   });
 
   it("announces not-saved and saved-but-not-activated outcomes as alerts", async () => {

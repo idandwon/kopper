@@ -9,24 +9,42 @@ import { SettingsPage } from "./SettingsPage";
 vi.mock("./ShortcutSettings", () => ({
   ShortcutSettings: () => <div>Shortcut controls</div>,
 }));
-vi.mock("./AppearanceSettings", () => ({
-  AppearanceSettings: () => (
-    <div>
-      Appearance controls
-      <input aria-label="Appearance input" />
-      <textarea aria-label="Appearance textarea" />
-      <select aria-label="Appearance select" />
-      <div contentEditable aria-label="Appearance editor" />
-      <div role="menu" aria-label="Appearance menu">
-        <button type="button">Menu action</button>
+vi.mock("./AppearanceSettings", async () => {
+  const {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+  } = await import("../../components/ui/select");
+
+  return {
+    AppearanceSettings: () => (
+      <div>
+        Appearance controls
+        <input aria-label="Appearance input" />
+        <textarea aria-label="Appearance textarea" />
+        <div contentEditable aria-label="Appearance editor" />
+        <div role="menu" aria-label="Appearance menu">
+          <button type="button">Menu action</button>
+        </div>
+        <div role="dialog" aria-label="Appearance dialog">
+          <button type="button">Dialog action</button>
+        </div>
+        <Select defaultValue="system">
+          <SelectTrigger aria-label="Appearance mode">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="system">System</SelectItem>
+            <SelectItem value="light">Light</SelectItem>
+          </SelectContent>
+        </Select>
+        <button type="button">Page action</button>
       </div>
-      <div role="dialog" aria-label="Appearance dialog">
-        <button type="button">Dialog action</button>
-      </div>
-      <button type="button">Page action</button>
-    </div>
-  ),
-}));
+    ),
+  };
+});
 vi.mock("./DataSettings", () => ({
   DataSettings: () => <div>Data controls</div>,
 }));
@@ -40,6 +58,9 @@ beforeEach(() => {
       disconnect() {}
     },
   );
+  HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
+  HTMLElement.prototype.releasePointerCapture = vi.fn();
+  HTMLElement.prototype.scrollIntoView = vi.fn();
 });
 
 afterEach(() => {
@@ -79,7 +100,8 @@ describe("SettingsPage", () => {
     expect(screen.queryByText("Appearance controls")).not.toBeInTheDocument();
   });
 
-  it("closes on route-level Escape unless an interactive owner keeps it", () => {
+  it("lets the real shared Select own the first Escape before closing Settings", async () => {
+    const user = userEvent.setup();
     const closeSettings = vi.fn();
     render(
       <SettingsPage
@@ -90,18 +112,11 @@ describe("SettingsPage", () => {
       />,
     );
 
-    const protectedOwners = [
-      screen.getByRole("textbox", { name: "Appearance input" }),
-      screen.getByRole("textbox", { name: "Appearance textarea" }),
-      screen.getByRole("combobox", { name: "Appearance select" }),
-      screen.getByLabelText("Appearance editor"),
-      screen.getByRole("button", { name: "Menu action" }),
-      screen.getByRole("button", { name: "Dialog action" }),
-    ];
-    for (const owner of protectedOwners) {
-      owner.focus();
-      fireEvent.keyDown(window, { key: "Escape" });
-    }
+    await user.click(screen.getByRole("combobox", { name: "Appearance mode" }));
+    expect(screen.getByRole("listbox")).toBeVisible();
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     expect(closeSettings).not.toHaveBeenCalled();
 
     screen.getByRole("button", { name: "Page action" }).focus();

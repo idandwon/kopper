@@ -129,6 +129,34 @@ describe("SectionGroup", () => {
     expect(screen.getByText("First")).toBeVisible();
   });
 
+  it("gives valid long spaced and unbroken headings an intentional wrapping seam", () => {
+    const longTitles = [
+      "Research references and decisions for the unusually detailed capture workflow",
+      "AValidUnbrokenSectionNameThatMustRemainInsideTheMinimumPanelViewportWithoutHorizontalOverflow",
+    ];
+
+    for (const title of longTitles) {
+      const section = { ...document.sections[0], title };
+      const view = renderWithPanelFeedback(
+        <SectionGroup
+          projection={{ section, notes: [] }}
+          view="active"
+          displayedIds={[]}
+          selection={{ focusedId: null, anchorId: null, selectedIds: [] }}
+          dispatchSelection={vi.fn()}
+        />,
+      );
+
+      expect(screen.getByRole("heading", { name: title })).toHaveClass("min-w-0");
+      expect(screen.getByRole("button", { name: title })).toHaveClass(
+        "min-w-0",
+        "whitespace-normal",
+        "break-all",
+      );
+      view.unmount();
+    }
+  });
+
   it("preserves displayed selection order when dispatching a batch shortcut", () => {
     renderWithPanelFeedback(
       <SectionGroup

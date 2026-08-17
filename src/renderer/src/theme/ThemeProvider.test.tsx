@@ -341,12 +341,13 @@ describe("ThemeProvider resolution and root application", () => {
 });
 
 describe("ThemeProvider previews", () => {
+  const previewOwner = Symbol("theme provider test preview");
   it("keeps preview in renderer memory and cancel restores persisted tokens", () => {
     setDocumentContext(makeDocument({ mode: "light" }));
     const theme = customTheme();
     const { result } = renderHook(() => useTheme(), { wrapper });
 
-    act(() => result.current.previewTheme(theme));
+    act(() => result.current.previewTheme(previewOwner, theme));
     expect(result.current.activeTheme).toBe(theme);
     flushFrames();
     expect(
@@ -354,7 +355,7 @@ describe("ThemeProvider previews", () => {
     ).toBe(theme.light.background);
     expect(execute).not.toHaveBeenCalled();
 
-    act(() => result.current.cancelPreview());
+    act(() => result.current.cancelPreview(previewOwner));
     expect(result.current.activeTheme).toBe(OXIDE_LEDGER_THEME);
     flushFrames();
     expect(
@@ -368,7 +369,7 @@ describe("ThemeProvider previews", () => {
     const theme = customTheme();
     const { result } = renderHook(() => useTheme(), { wrapper });
 
-    act(() => result.current.previewTheme(theme, "dark"));
+    act(() => result.current.previewTheme(previewOwner, theme, "dark"));
     expect(result.current.resolvedMode).toBe("dark");
     expect(document.documentElement).toHaveClass("dark");
     flushFrames();
@@ -380,7 +381,7 @@ describe("ThemeProvider previews", () => {
     act(() => nativeListener?.(false));
     expect(result.current.resolvedMode).toBe("dark");
 
-    act(() => result.current.cancelPreview());
+    act(() => result.current.cancelPreview(previewOwner));
     expect(result.current.resolvedMode).toBe("light");
     expect(document.documentElement).not.toHaveClass("dark");
     flushFrames();
@@ -393,10 +394,12 @@ describe("ThemeProvider previews", () => {
     const theme = customTheme();
     execute.mockResolvedValueOnce(false);
     const { result } = renderHook(() => useTheme(), { wrapper });
-    act(() => result.current.previewTheme(theme));
+    act(() => result.current.previewTheme(previewOwner, theme));
 
     await act(async () => {
-      await expect(result.current.savePreview(theme)).resolves.toEqual({
+      await expect(
+        result.current.savePreview(previewOwner, theme),
+      ).resolves.toEqual({
         status: "upsert_failed",
       });
     });
@@ -420,11 +423,11 @@ describe("ThemeProvider previews", () => {
       )
       .mockResolvedValueOnce(false);
     const { result } = renderHook(() => useTheme(), { wrapper });
-    act(() => result.current.previewTheme(theme));
+    act(() => result.current.previewTheme(previewOwner, theme));
 
     let saving: ReturnType<typeof result.current.savePreview> | undefined;
     act(() => {
-      saving = result.current.savePreview(theme);
+      saving = result.current.savePreview(previewOwner, theme);
     });
     expect(execute).toHaveBeenCalledTimes(1);
     expect(result.current.activeTheme).toBe(theme);
@@ -444,10 +447,12 @@ describe("ThemeProvider previews", () => {
     const persistedDocument = makeDocument({ mode: "light" });
     setDocumentContext(persistedDocument);
     const { result } = renderHook(() => useTheme(), { wrapper });
-    act(() => result.current.previewTheme(theme));
+    act(() => result.current.previewTheme(previewOwner, theme));
 
     await act(async () => {
-      await expect(result.current.savePreview(theme)).resolves.toEqual({
+      await expect(
+        result.current.savePreview(previewOwner, theme),
+      ).resolves.toEqual({
         status: "saved",
       });
     });
@@ -468,10 +473,12 @@ describe("ThemeProvider previews", () => {
     const laterTheme = { ...customTheme("custom:later"), name: "Later Theme" };
     const rendered = renderHook(() => useTheme(), { wrapper });
 
-    act(() => rendered.result.current.previewTheme(editedPreview));
+    act(() =>
+      rendered.result.current.previewTheme(previewOwner, editedPreview),
+    );
     await act(async () => {
       await expect(
-        rendered.result.current.savePreview(persistedCopy),
+        rendered.result.current.savePreview(previewOwner, persistedCopy),
       ).resolves.toEqual({ status: "saved" });
     });
     expect(rendered.result.current.activeTheme).toBe(OXIDE_LEDGER_THEME);
@@ -501,7 +508,7 @@ describe("ThemeProvider previews", () => {
 
     let saving: ReturnType<typeof result.current.savePreview> | undefined;
     act(() => {
-      saving = result.current.savePreview(theme, "dark");
+      saving = result.current.savePreview(previewOwner, theme, "dark");
     });
     expect(result.current.resolvedMode).toBe("dark");
     await act(async () => upsert.resolve(true));
@@ -509,6 +516,24 @@ describe("ThemeProvider previews", () => {
     await act(async () => activate.resolve(true));
     await expect(saving).resolves.toEqual({ status: "saved" });
     expect(result.current.resolvedMode).toBe("light");
+    expect(result.current.activeTheme).toBe(OXIDE_LEDGER_THEME);
+  });
+
+  it("lets an unmounted preview owner release only its own preview", () => {
+    const firstOwner = Symbol("first preview owner");
+    const newerOwner = Symbol("newer preview owner");
+    const firstTheme = customTheme("custom:first");
+    const newerTheme = customTheme("custom:newer");
+    const { result } = renderHook(() => useTheme(), { wrapper });
+
+    act(() => result.current.previewTheme(firstOwner, firstTheme, "dark"));
+    act(() => result.current.previewTheme(newerOwner, newerTheme, "light"));
+    act(() => result.current.cancelPreview(firstOwner));
+
+    expect(result.current.activeTheme).toBe(newerTheme);
+    expect(result.current.resolvedMode).toBe("light");
+
+    act(() => result.current.cancelPreview(newerOwner));
     expect(result.current.activeTheme).toBe(OXIDE_LEDGER_THEME);
   });
 
@@ -524,15 +549,21 @@ describe("ThemeProvider previews", () => {
       .mockImplementationOnce(() => upsert.promise)
       .mockImplementationOnce(() => activate.promise);
     const { result } = renderHook(() => useTheme(), { wrapper });
-    act(() => result.current.previewTheme(savedTheme, "dark"));
+    act(() => result.current.previewTheme(previewOwner, savedTheme, "dark"));
 
     let saving: ReturnType<typeof result.current.savePreview> | undefined;
     act(() => {
-      saving = result.current.savePreview(savedTheme, "dark");
+      saving = result.current.savePreview(previewOwner, savedTheme, "dark");
     });
     expect(execute).toHaveBeenCalledOnce();
 
-    act(() => result.current.previewTheme(newerPreview, "light"));
+    act(() =>
+      result.current.previewTheme(
+        Symbol("newer save preview"),
+        newerPreview,
+        "light",
+      ),
+    );
     expect(result.current.activeTheme).toBe(newerPreview);
     expect(result.current.resolvedMode).toBe("light");
 

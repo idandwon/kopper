@@ -158,6 +158,66 @@ describe("panel feedback", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("cancels the notice timer on provider unmount with no later timer work", () => {
+    vi.useFakeTimers();
+    const view = render(
+      <PanelFeedbackProvider>
+        <FeedbackHarness />
+      </PanelFeedbackProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Report first notice" }));
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
+
+    view.unmount();
+
+    expect(vi.getTimerCount()).toBe(0);
+    act(() => vi.runAllTimers());
+    expect(vi.getTimerCount()).toBe(0);
+    expect(document.querySelector('[data-slot="toast"]')).not.toBeInTheDocument();
+  });
+
+  it("cancels the timer when Radix requests onOpenChange(false)", () => {
+    vi.useFakeTimers();
+    render(
+      <PanelFeedbackProvider>
+        <FeedbackHarness />
+      </PanelFeedbackProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Report first notice" }));
+    const toast = document.querySelector<HTMLElement>('[data-slot="toast"]');
+    expect(toast).not.toBeNull();
+    if (toast !== null) {
+      toast.setPointerCapture = vi.fn();
+      toast.hasPointerCapture = vi.fn(() => true);
+      toast.releasePointerCapture = vi.fn();
+      fireEvent.pointerDown(toast, {
+        button: 0,
+        clientX: 0,
+        clientY: 0,
+        pointerId: 1,
+        pointerType: "mouse",
+      });
+      fireEvent.pointerMove(toast, {
+        clientX: 100,
+        clientY: 0,
+        pointerId: 1,
+        pointerType: "mouse",
+      });
+      fireEvent.pointerUp(toast, {
+        clientX: 100,
+        clientY: 0,
+        pointerId: 1,
+        pointerType: "mouse",
+      });
+    }
+
+    expect(document.querySelector('[data-slot="toast"]')).not.toBeInTheDocument();
+    expect(vi.getTimerCount()).toBe(0);
+    act(() => vi.runAllTimers());
+    expect(vi.getTimerCount()).toBe(0);
+    expect(document.querySelector('[data-slot="toast"]')).not.toBeInTheDocument();
+  });
+
   it("shows failures visibly while Radix owns one assertive announcement", async () => {
     const view = render(
       <PanelFeedbackProvider>

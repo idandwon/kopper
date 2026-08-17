@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { KopperError } from "../../../../shared/domain/errors";
 import type { KopperApi, ThemeImportPreview } from "../../../../shared/ipc/contract";
@@ -8,7 +8,10 @@ import type { ThemeToken } from "../../../../shared/theme/tokens";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Separator } from "../../components/ui/separator";
-import { useTheme } from "../../theme/ThemeProvider";
+import {
+  useTheme,
+  type ThemePreviewOwner,
+} from "../../theme/ThemeProvider";
 
 const PREVIEW_TOKENS: readonly ThemeToken[] = [
   "background",
@@ -58,12 +61,20 @@ function ModePreview({ mode, preview }: { mode: "light" | "dark"; preview: Theme
 
 export function ThemeImportDialog({ api = window.kopper }: { api?: Pick<KopperApi, "importTheme"> }) {
   const { previewTheme, cancelPreview, savePreview } = useTheme();
+  const [previewOwner] = useState<ThemePreviewOwner>(() =>
+    Symbol("theme import preview"),
+  );
   const [preview, setPreview] = useState<ThemeImportPreview | null>(null);
   const [didPreview, setDidPreview] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState(false);
   const [importError, setImportError] = useState<KopperError | null>(null);
+
+  useEffect(
+    () => () => cancelPreview(previewOwner),
+    [cancelPreview, previewOwner],
+  );
 
   const chooseImport = async () => {
     setBusy(true);
@@ -88,14 +99,14 @@ export function ThemeImportDialog({ api = window.kopper }: { api?: Pick<KopperAp
 
   const close = () => {
     if (busy) return;
-    if (didPreview) cancelPreview();
+    if (didPreview) cancelPreview(previewOwner);
     setDidPreview(false);
     setPreview(null);
   };
 
   const applyPreview = () => {
     if (preview === null || busy) return;
-    previewTheme(preview.theme);
+    previewTheme(previewOwner, preview.theme);
     setDidPreview(true);
   };
 
@@ -103,7 +114,7 @@ export function ThemeImportDialog({ api = window.kopper }: { api?: Pick<KopperAp
     if (preview === null || busy) return;
     setBusy(true);
     setError(false);
-    const result = await savePreview(preview.theme);
+    const result = await savePreview(previewOwner, preview.theme);
     setBusy(false);
     switch (result.status) {
       case "saved":

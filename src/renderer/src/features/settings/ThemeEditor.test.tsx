@@ -107,6 +107,7 @@ describe("ThemeEditor", () => {
       target: { value: "#123456" },
     });
     expect(previewTheme).toHaveBeenLastCalledWith(
+      expect.anything(),
       expect.objectContaining({
         light: expect.objectContaining({
           background: customTheme.light.background,
@@ -127,6 +128,7 @@ describe("ThemeEditor", () => {
 
     fireEvent.change(background, { target: { value: "#ffffff" } });
     expect(previewTheme).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({
         id: customTheme.id,
         light: expect.objectContaining({ background: "#ffffff" }),
@@ -143,6 +145,7 @@ describe("ThemeEditor", () => {
       ctrlKey: false,
     });
     expect(previewTheme).toHaveBeenLastCalledWith(
+      expect.anything(),
       expect.objectContaining({ id: customTheme.id }),
       "dark",
     );
@@ -150,6 +153,7 @@ describe("ThemeEditor", () => {
       target: { value: "#101112" },
     });
     expect(previewTheme).toHaveBeenLastCalledWith(
+      expect.anything(),
       expect.objectContaining({
         light: customTheme.light,
         dark: expect.objectContaining({ background: "#101112" }),
@@ -159,6 +163,7 @@ describe("ThemeEditor", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Reset background" }));
     expect(previewTheme).toHaveBeenLastCalledWith(
+      expect.anything(),
       expect.objectContaining({
         dark: expect.objectContaining({ background: customTheme.dark.background }),
       }),
@@ -169,6 +174,7 @@ describe("ThemeEditor", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Reset all" }));
     expect(previewTheme).toHaveBeenLastCalledWith(
+      expect.anything(),
       expect.objectContaining({ dark: customTheme.dark }),
       "dark",
     );
@@ -176,6 +182,7 @@ describe("ThemeEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save theme" }));
     await act(async () => {});
     expect(savePreview).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({ id: customTheme.id }),
       "dark",
     );
@@ -187,6 +194,7 @@ describe("ThemeEditor", () => {
       target: { value: customTheme.light.foreground },
     });
     expect(previewTheme).toHaveBeenLastCalledWith(
+      expect.anything(),
       expect.objectContaining({
         light: expect.objectContaining({
           background: customTheme.light.foreground,
@@ -206,6 +214,7 @@ describe("ThemeEditor", () => {
     const radius = screen.getByLabelText("radius");
     fireEvent.change(radius, { target: { value: "0rem" } });
     expect(previewTheme).toHaveBeenLastCalledWith(
+      expect.anything(),
       expect.objectContaining({
         light: expect.objectContaining({ radius: "0rem" }),
       }),
@@ -213,6 +222,7 @@ describe("ThemeEditor", () => {
     );
     fireEvent.change(radius, { target: { value: "2rem" } });
     expect(previewTheme).toHaveBeenLastCalledWith(
+      expect.anything(),
       expect.objectContaining({
         light: expect.objectContaining({ radius: "2rem" }),
       }),
@@ -280,6 +290,7 @@ describe("ThemeEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save theme" }));
     await act(async () => {});
     expect(savePreview).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({ id: customTheme.id, name: "Saved Editor" }),
       "light",
     );
@@ -294,6 +305,18 @@ describe("ThemeEditor", () => {
     expect(screen.getByText("Discard theme changes?")).toBeInTheDocument();
     expect(cancelPreview).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Discard changes" }));
+    expect(cancelPreview).toHaveBeenCalledOnce();
+  });
+
+  it("releases its preview ownership when a forced route unmounts the editor", () => {
+    const view = renderEditor();
+    fireEvent.change(screen.getByLabelText("primary"), {
+      target: { value: "#123456" },
+    });
+    expect(previewTheme).toHaveBeenCalled();
+
+    view.unmount();
+
     expect(cancelPreview).toHaveBeenCalledOnce();
   });
 
@@ -315,6 +338,7 @@ describe("ThemeEditor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save theme" }));
     await act(async () => {});
     expect(savePreview).toHaveBeenCalledWith(
+      expect.anything(),
       expect.objectContaining({ id: generatedId }),
       "light",
     );

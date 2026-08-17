@@ -25,7 +25,10 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
-import { useTheme } from "../../theme/ThemeProvider";
+import {
+  useTheme,
+  type ThemePreviewOwner,
+} from "../../theme/ThemeProvider";
 
 const TOKEN_GROUPS: ReadonlyArray<{ name: string; tokens: readonly ThemeToken[] }> = [
   { name: "Surface", tokens: ["background", "card", "popover", "secondary", "muted"] },
@@ -127,6 +130,9 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
   }
   const initial = initialThemeRef.current;
   const { previewTheme, cancelPreview, savePreview } = useTheme();
+  const [previewOwner] = useState<ThemePreviewOwner>(() =>
+    Symbol("theme editor preview"),
+  );
   const [mode, setMode] = useState<EditorMode>("light");
   const [name, setName] = useState(initial.name);
   const [draft, setDraft] = useState<ThemeDefinition>(() => structuredClone(initial));
@@ -148,6 +154,11 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
     return () => globalThis.clearTimeout(timer);
   }, [initial.id, name, raw]);
 
+  useEffect(
+    () => () => cancelPreview(previewOwner),
+    [cancelPreview, previewOwner],
+  );
+
   const updateToken = (token: ThemeToken, value: string) => {
     if (saving) return;
     const nextRaw = { ...raw, [mode]: { ...raw[mode], [token]: value } };
@@ -163,7 +174,7 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
     if (modeParsed.success) {
       const next = { ...draft, [mode]: modeParsed.data };
       setDraft(next);
-      previewTheme(next, mode);
+      previewTheme(previewOwner, next, mode);
     }
   };
 
@@ -181,13 +192,13 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
     setName(next.name);
     setRaw(rawModes(next));
     setDraft(next);
-    previewTheme(next, mode);
+    previewTheme(previewOwner, next, mode);
     setMessage(null);
   };
 
   const discardAndClose = () => {
     if (saving) return;
-    cancelPreview();
+    cancelPreview(previewOwner);
     setConfirmClose(false);
     onOpenChange(false);
   };
@@ -205,7 +216,7 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
     if (!parsed.success || !currentValidation.valid || !validation.valid || validating) return;
     setConfirmClose(false);
     setSaving(true);
-    const result = await savePreview(parsed.data, mode);
+    const result = await savePreview(previewOwner, parsed.data, mode);
     setSaving(false);
     switch (result.status) {
       case "saved":
@@ -333,7 +344,7 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
               const nextMode = parseEditorMode(value);
               if (nextMode === null) return;
               setMode(nextMode);
-              previewTheme(draft, nextMode);
+              previewTheme(previewOwner, draft, nextMode);
             }}
             className="flex min-h-0 min-w-0 flex-1 flex-col"
           >

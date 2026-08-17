@@ -67,6 +67,9 @@ export function SectionManager({ section }: SectionManagerProps) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [title, setTitle] = useState(section.title);
   const [destinationId, setDestinationId] = useState("");
+  const selectedDestination = destinations.find(
+    ({ id }) => id === destinationId,
+  );
   const trimmedTitle = title.trim();
 
   const rename = async (event: FormEvent) => {
@@ -218,13 +221,24 @@ export function SectionManager({ section }: SectionManagerProps) {
                   value={destinationId}
                   onValueChange={setDestinationId}
                 >
-                  <SelectTrigger id={`delete-destination-${section.id}`}>
-                    <SelectValue placeholder="Select a section" />
+                  <SelectTrigger
+                    id={`delete-destination-${section.id}`}
+                    className="w-full min-w-0"
+                  >
+                    <SelectValue
+                      placeholder="Select a section"
+                      title={selectedDestination?.title}
+                    />
                   </SelectTrigger>
                   <SelectContent>
                     {destinations.map((destination) => (
                       <SelectItem key={destination.id} value={destination.id}>
-                        {destination.title}
+                        <span
+                          className="block min-w-0 truncate"
+                          title={destination.title}
+                        >
+                          {destination.title}
+                        </span>
                       </SelectItem>
                     ))}
                   </SelectContent>

@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createEmptyDocument } from "../../../../shared/domain/document";
 import { useKopperDocument } from "../../app/DocumentProvider";
-import { ShortcutSettings } from "./ShortcutSettings";
+import { ShortcutSettings as ShortcutSettingsSurface } from "./ShortcutSettings";
 
 vi.mock("../../app/DocumentProvider", () => ({ useKopperDocument: vi.fn() }));
 
@@ -20,6 +20,19 @@ function deferred<T>() {
     reject = fail;
   });
   return { promise, resolve, reject };
+}
+
+function ShortcutSettings({
+  captureUnavailable,
+}: {
+  captureUnavailable: boolean;
+}) {
+  return (
+    <ShortcutSettingsSurface
+      active
+      captureUnavailable={captureUnavailable}
+    />
+  );
 }
 
 function publish(nextDocument = document) {

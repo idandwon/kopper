@@ -25,18 +25,26 @@ export type ThemeSaveResult =
   | { status: "upsert_failed" }
   | { status: "activation_failed" };
 
+export type ThemePreviewOwner = symbol;
+
 export interface ThemeContextValue {
   resolvedMode: "light" | "dark";
   activeTheme: ThemeDefinition;
-  previewTheme(theme: ThemeDefinition, modeOverride?: "light" | "dark"): void;
-  cancelPreview(): void;
+  previewTheme(
+    owner: ThemePreviewOwner,
+    theme: ThemeDefinition,
+    modeOverride?: "light" | "dark",
+  ): void;
+  cancelPreview(owner: ThemePreviewOwner): void;
   savePreview(
+    owner: ThemePreviewOwner,
     theme: ThemeDefinition,
     modeOverride?: "light" | "dark",
   ): Promise<ThemeSaveResult>;
 }
 
 interface ThemePreview {
+  readonly owner: ThemePreviewOwner;
   readonly theme: ThemeDefinition;
   readonly modeOverride?: "light" | "dark";
 }
@@ -126,24 +134,31 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [activeTheme, resolvedMode]);
 
   const previewTheme = useCallback(
-    (theme: ThemeDefinition, modeOverride?: "light" | "dark") => {
-      setPreview({ theme, modeOverride });
+    (
+      owner: ThemePreviewOwner,
+      theme: ThemeDefinition,
+      modeOverride?: "light" | "dark",
+    ) => {
+      setPreview({ owner, theme, modeOverride });
     },
     [],
   );
 
-  const cancelPreview = useCallback(() => {
-    setPreview(null);
+  const cancelPreview = useCallback((owner: ThemePreviewOwner) => {
+    setPreview((current) =>
+      current !== null && current.owner === owner ? null : current,
+    );
   }, []);
 
   const savePreview = useCallback(
     async (
+      owner: ThemePreviewOwner,
       theme: ThemeDefinition,
       modeOverride?: "light" | "dark",
     ): Promise<ThemeSaveResult> => {
       // The exact immutable wrapper is the authoritative save state, allowing
-      // a newer same-ID theme or mode preview to survive this acknowledgment.
-      const savingPreview: ThemePreview = { theme, modeOverride };
+      // a newer owner, same-ID theme, or mode preview to survive acknowledgment.
+      const savingPreview: ThemePreview = { owner, theme, modeOverride };
       setPreview(savingPreview);
       const upserted = await execute({
         type: "appearance.upsertCustomTheme",

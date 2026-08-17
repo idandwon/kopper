@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import { Button } from "../../components/ui/button";
 import { ScrollArea } from "../../components/ui/scroll-area";
@@ -16,6 +16,7 @@ import { isSettingsTab, type SettingsTab } from "./settingsRoute";
 interface SettingsPageProps {
   activeTab: SettingsTab;
   captureUnavailable: boolean;
+  focusRequest?: number;
   changeTab(tab: SettingsTab): void;
   closeSettings(): void;
 }
@@ -28,20 +29,33 @@ function focusedOwnerKeepsEscape(element: Element | null): boolean {
     element instanceof HTMLSelectElement ||
     element.isContentEditable ||
     element.closest("[contenteditable]") !== null ||
-    element.closest('[role="menu"], [role="dialog"]') !== null
+    element.closest(
+      '[role="menu"], [role="dialog"], [role="listbox"], [role="option"]',
+    ) !== null
   );
 }
 
 export function SettingsPage({
   activeTab,
   captureUnavailable,
+  focusRequest = 0,
   changeTab,
   closeSettings,
 }: SettingsPageProps) {
+  const backButtonRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const frame = globalThis.requestAnimationFrame(() =>
+      backButtonRef.current?.focus({ preventScroll: true }),
+    );
+    return () => globalThis.cancelAnimationFrame(frame);
+  }, [focusRequest]);
+
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (
         event.key !== "Escape" ||
+        event.defaultPrevented ||
         focusedOwnerKeepsEscape(globalThis.document.activeElement)
       ) {
         return;
@@ -71,6 +85,7 @@ export function SettingsPage({
             type="button"
             size="sm"
             variant="ghost"
+            ref={backButtonRef}
             autoFocus
             aria-label="Back to notes"
             onClick={closeSettings}
@@ -98,8 +113,16 @@ export function SettingsPage({
         aria-label="Settings content"
       >
         <div className="min-w-0 px-4 py-4 pl-5">
-          <TabsContent value="shortcuts" className="mt-0 min-w-0">
-            <ShortcutSettings captureUnavailable={captureUnavailable} />
+          <TabsContent
+            value="shortcuts"
+            forceMount
+            hidden={activeTab !== "shortcuts"}
+            className="mt-0 min-w-0"
+          >
+            <ShortcutSettings
+              active={activeTab === "shortcuts"}
+              captureUnavailable={captureUnavailable}
+            />
           </TabsContent>
           <TabsContent value="appearance" className="mt-0 min-w-0">
             <AppearanceSettings />

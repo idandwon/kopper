@@ -434,9 +434,18 @@ describe("WindowManager", () => {
 
   it("creates one fixed template status item with shared lifecycle actions", () => {
     const requestCapture = vi.fn();
-    const openSettings = vi.fn();
-    const manager = new WindowManager({ requestCapture, openSettings });
-    manager.createMainWindow();
+    let manager: WindowManager | undefined;
+    const openSettings = vi.fn(() =>
+      manager?.sendToMain("kopper:settings:open"),
+    );
+    manager = new WindowManager({ requestCapture, openSettings });
+    const mainWindow = manager.createMainWindow() as unknown as InstanceType<
+      typeof electron.FakeWindow
+    >;
+    mainWindow.emit("ready-to-show");
+    mainWindow.hide();
+    mainWindow.show.mockClear();
+    mainWindow.focus.mockClear();
     manager.completeOnboarding();
     manager.completeOnboarding();
 
@@ -450,7 +459,12 @@ describe("WindowManager", () => {
     template.find(({ label }) => label === "Settings…")?.click?.();
     template.find(({ label }) => label === "Quit")?.click?.();
     expect(requestCapture).toHaveBeenCalledOnce();
+    expect(mainWindow.show).toHaveBeenCalledOnce();
+    expect(mainWindow.focus).toHaveBeenCalledOnce();
     expect(openSettings).toHaveBeenCalledOnce();
+    expect(mainWindow.webContents.send).toHaveBeenCalledWith(
+      "kopper:settings:open",
+    );
     expect(electron.quit).toHaveBeenCalledOnce();
   });
 });

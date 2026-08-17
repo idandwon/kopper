@@ -131,6 +131,7 @@ export function DocumentPanel({
   const [query, setQuery] = useState("");
   const [view, setView] = useState<NoteProjectionView>("active");
   const [route, setRoute] = useState<PanelRoute>({ page: "notes" });
+  const [settingsFocusRequest, setSettingsFocusRequest] = useState(0);
   const [captureHighlightedNoteId, setCaptureHighlightedNoteId] = useState<
     string | null
   >(null);
@@ -144,6 +145,7 @@ export function DocumentPanel({
   }, []);
 
   const openSettingsFromNativeEvent = useCallback(() => {
+    setSettingsFocusRequest((request) => request + 1);
     setRoute({
       page: "settings",
       tab: "shortcuts",
@@ -237,6 +239,7 @@ export function DocumentPanel({
               <SettingsPage
                 activeTab={route.tab}
                 captureUnavailable={captureUnavailable}
+                focusRequest={settingsFocusRequest}
                 changeTab={changeSettingsTab}
                 closeSettings={closeSettings}
               />

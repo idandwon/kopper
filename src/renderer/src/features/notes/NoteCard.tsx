@@ -190,7 +190,7 @@ export function NoteCard({
                 className={cn(
                   "absolute top-4 left-4 size-3.5 rounded-full border-2 p-0",
                   completedMarker
-                    ? "border-[var(--completed)] bg-[var(--completed)]"
+                    ? "border-[var(--completed)] bg-[var(--completed)] hover:bg-[var(--completed)] dark:hover:bg-[var(--completed)]"
                     : "border-[var(--capture)] hover:bg-[var(--capture)]",
                 )}
                 onClick={() =>

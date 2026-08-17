@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useState } from "react";
 
 import {
   DEFAULT_SHORTCUT_PREFERENCES,
@@ -35,8 +35,10 @@ function shortcutFingerprint(preferences: ShortcutPreferences): string {
 }
 
 export function ShortcutSettings({
+  active,
   captureUnavailable,
 }: {
+  active: boolean;
   captureUnavailable: boolean;
 }) {
   const { document } = useKopperDocument();
@@ -53,8 +55,15 @@ export function ShortcutSettings({
     setCandidate(structuredClone(document.shortcuts));
   }, [authoritativeShortcutFingerprint]);
 
-  useEffect(() => {
-    if (!recording) return;
+  useLayoutEffect(() => {
+    if (!active && recording) {
+      setRecording(false);
+      setMessage(null);
+    }
+  }, [active, recording]);
+
+  useLayoutEffect(() => {
+    if (!active || !recording) return;
     const onKeyDown = (event: KeyboardEvent) => {
       event.preventDefault();
       if (event.key === "Escape") {
@@ -74,7 +83,7 @@ export function ShortcutSettings({
     };
     globalThis.addEventListener("keydown", onKeyDown, true);
     return () => globalThis.removeEventListener("keydown", onKeyDown, true);
-  }, [recording]);
+  }, [active, recording]);
 
   const save = async (preferences: ShortcutPreferences, reset = false) => {
     if (busy) return;
