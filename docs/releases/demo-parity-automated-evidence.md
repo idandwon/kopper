@@ -2,7 +2,7 @@
 
 **Purpose:** Map the storyboard’s `DEMO-*` criteria to repeatable evidence without treating automated renderer coverage as signing, notarization, or physical macOS acceptance.
 
-**Exact automated-gate source:** `c319d7c07960a003d627cfc8d43805ccd8a1820e` (tree `8759e679c9d4f9a373044370ecfd4a3e9c8f0d39`). The later evidence-pointer commit changes no application/package source and is not the tested source SHA.
+**Exact automated-gate source:** `2828fa40f69478a11e5e99f61afe0fd046deeb7d` (tree `2fb3f0279134cc1ced9dadd27f62558435b23a01`). This tested source includes the approved E2E host-input isolation correction; the later evidence-pointer and plan-ledger commits change documentation only, change no production/package source, and are not the tested source SHA.
 
 | ID | Automated evidence | Remaining manual evidence |
 | --- | --- | --- |
