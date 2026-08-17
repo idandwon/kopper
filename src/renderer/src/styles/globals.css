@@ -170,7 +170,8 @@ html[data-renderer-surface="capture-hud"] #root {
   }
 
   .kopper-markdown pre {
-    overflow-x: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
     border: 1px solid var(--border);
     border-radius: calc(var(--radius) - 0.2rem);
     background: color-mix(in srgb, var(--muted) 55%, transparent);
@@ -178,18 +179,22 @@ html[data-renderer-surface="capture-hud"] #root {
   }
 
   .kopper-markdown pre code {
+    white-space: inherit;
+    overflow-wrap: anywhere;
     background: transparent;
     padding: 0;
   }
 
   .kopper-markdown table {
-    display: block;
+    width: 100%;
     max-width: 100%;
-    overflow-x: auto;
+    table-layout: fixed;
     border-collapse: collapse;
   }
 
   .kopper-markdown :is(th, td) {
+    overflow-wrap: anywhere;
+    word-break: break-word;
     border: 1px solid var(--border);
     padding: 0.3rem 0.45rem;
     text-align: left;

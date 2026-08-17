@@ -79,6 +79,53 @@ export async function expectSurfaceContained(
   );
 }
 
+export async function expectNoHorizontalOverflow(
+  page: Page,
+  selector: string,
+): Promise<void> {
+  const geometry = await page.evaluate((targetSelector) => {
+    const root = document.documentElement;
+    const target = document.querySelector<HTMLElement>(targetSelector);
+    if (target === null) return null;
+    const descendants = [
+      target,
+      ...Array.from(target.querySelectorAll<HTMLElement>("*")),
+    ].filter((element) => {
+      const style = getComputedStyle(element);
+      return (
+        element.getClientRects().length > 0 &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        element.closest("[hidden]") === null
+      );
+    });
+    return {
+      rootClientWidth: root.clientWidth,
+      rootScrollWidth: root.scrollWidth,
+      violations: descendants
+        .filter((element) => {
+          const overflowX = getComputedStyle(element).overflowX;
+          return (
+            overflowX === "auto" ||
+            overflowX === "scroll" ||
+            element.scrollWidth > element.clientWidth + 0.5
+          );
+        })
+        .map((element) => ({
+          tag: element.tagName,
+          overflowX: getComputedStyle(element).overflowX,
+          clientWidth: element.clientWidth,
+          scrollWidth: element.scrollWidth,
+        })),
+    };
+  }, selector);
+
+  expect(geometry).not.toBeNull();
+  if (geometry === null) return;
+  expect(geometry.rootScrollWidth).toBe(geometry.rootClientWidth);
+  expect(geometry.violations).toEqual([]);
+}
+
 export async function expectOverlayContained(
   page: Page,
   overlay: Locator,

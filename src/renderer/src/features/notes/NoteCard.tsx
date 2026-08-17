@@ -1,4 +1,4 @@
-import type { KeyboardEvent, MouseEvent } from "react";
+import { useState, type KeyboardEvent, type MouseEvent } from "react";
 
 import type { Note, Section } from "../../../../shared/domain/document";
 import { Button } from "../../components/ui/button";
@@ -12,6 +12,7 @@ import type { NoteProjectionView } from "../search/projectNotes";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { cn } from "../../lib/utils";
 import { NoteContextMenu, type NoteMenuAction } from "./NoteContextMenu";
+import { useNotesSurfaceOverlay } from "./NotesSurfaceVisibility";
 import type { NotePresentationEntry } from "./notePresentationReducer";
 import { resolveNoteKeyboardIntent } from "./noteKeyboardIntent";
 
@@ -75,6 +76,8 @@ export function NoteCard({
   onMoveFocus,
   onAction,
 }: NoteCardProps) {
+  const [tooltipOpen, setTooltipOpen] = useState(false);
+  const tooltipOverlay = useNotesSurfaceOverlay(tooltipOpen, setTooltipOpen);
   const interactionDisabled = disabled || presentation !== undefined;
   const completing =
     presentation?.kind === "complete" && presentation.phase === "exiting";
@@ -179,7 +182,7 @@ export function NoteCard({
           />
         </article>
         <TooltipProvider>
-          <Tooltip>
+          <Tooltip {...tooltipOverlay}>
             <TooltipTrigger asChild>
               <Button
                 type="button"

@@ -13,6 +13,7 @@ import {
 } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
+import { useNotesSurfaceOverlay } from "../notes/NotesSurfaceVisibility";
 
 type AddSectionDialogProps =
   | { mode?: "trigger" }
@@ -29,6 +30,7 @@ export function AddSectionDialog(props: AddSectionDialogProps = {}) {
   const controlled = props.mode === "controlled";
   const open = controlled ? props.open : internalOpen;
   const changeOpen = controlled ? props.onOpenChange : setInternalOpen;
+  const dialogOverlay = useNotesSurfaceOverlay(open, changeOpen);
   const trimmedTitle = title.trim();
 
   const submit = async (event: FormEvent) => {
@@ -40,7 +42,7 @@ export function AddSectionDialog(props: AddSectionDialogProps = {}) {
   };
 
   return (
-    <Dialog open={open} onOpenChange={changeOpen}>
+    <Dialog {...dialogOverlay}>
       {controlled ? null : (
         <DialogTrigger asChild>
           <Button type="button" variant="ghost" size="xs">

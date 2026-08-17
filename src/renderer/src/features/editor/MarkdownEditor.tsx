@@ -19,6 +19,7 @@ import {
 } from "../../components/ui/alert-dialog";
 import { Button } from "../../components/ui/button";
 import { Textarea } from "../../components/ui/textarea";
+import { useNotesSurfaceOverlay } from "../notes/NotesSurfaceVisibility";
 
 function InertMarkdownLink({ children }: ComponentProps<"a">) {
   return <span>{children}</span>;
@@ -52,6 +53,7 @@ export function MarkdownEditor({
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [discardOpen, setDiscardOpen] = useState(false);
+  const discardOverlay = useNotesSurfaceOverlay(discardOpen, setDiscardOpen);
 
   useEffect(() => {
     if (!editing) {
@@ -159,9 +161,9 @@ export function MarkdownEditor({
         </Button>
       </div>
       <AlertDialog
-        open={discardOpen}
+        open={discardOverlay.open}
         onOpenChange={(open) => {
-          if (!saving) setDiscardOpen(open);
+          if (!saving) discardOverlay.onOpenChange(open);
         }}
       >
         <AlertDialogContent>

@@ -7,6 +7,7 @@ import {
   test,
 } from "./fixtures/electronApp";
 import {
+  expectNoHorizontalOverflow,
   expectOverlayContained,
   expectSurfaceContained,
   setSurfaceSize,
@@ -174,6 +175,71 @@ test("contains long spaced and unbroken section names across every minimum-size 
   await expect(selectedValue).toHaveAttribute("title", unbrokenTitle);
   await expectEllipsisInsideViewport(selectedValue);
   await expectSurfaceContained(page, "notes");
+});
+
+test("wraps adversarial code and GFM tables without horizontal owners at minimum sizes", async ({
+  kopper,
+}) => {
+  const initial = createEmptyDocument(new Date("2026-08-16T12:00:00.000Z"));
+  const section = initial.sections[0];
+  if (section === undefined) throw new Error("Markdown fixture requires Inbox.");
+  const longCode = `code-${"X".repeat(720)}-end`;
+  const longCell = `cell-${"Y".repeat(280)}-end`;
+  const body = [
+    "## Overflow contract",
+    "",
+    "```text",
+    longCode,
+    "```",
+    "",
+    "| First column | Second column | Third column | Fourth column | Fifth column | Sixth column |",
+    "| --- | --- | --- | --- | --- | --- |",
+    `| ${longCell} | ${longCell} | ${longCell} | ${longCell} | ${longCell} | ${longCell} |`,
+  ].join("\n");
+  initial.notes = [
+    {
+      id: "markdown-overflow",
+      sectionId: section.id,
+      body,
+      order: 0,
+      createdAt: section.createdAt,
+      updatedAt: section.updatedAt,
+      completedAt: null,
+      previousPlacement: null,
+    },
+  ];
+
+  const page = await kopper.launchKopper(initial);
+  await continueWithoutCaptureIfNeeded(page);
+  await setSurfaceSize(page, 340, 480);
+  await expectSurfaceContained(page, "notes");
+  const note = page.locator('[data-note-id="markdown-overflow"]');
+  const noteMarkdown = page.locator('[data-note-markdown="markdown-overflow"]');
+  await expect(note).toHaveAttribute("aria-label", `Note: ${body}`);
+  await expect(noteMarkdown).toContainText(longCode);
+  await expect(noteMarkdown).toContainText(longCell);
+  await expectNoHorizontalOverflow(
+    page,
+    '[data-note-markdown="markdown-overflow"]',
+  );
+
+  await note.click({ button: "right" });
+  const editorWindow = kopper.electronApp.waitForEvent("window");
+  await page.getByRole("menuitem", { name: "Edit in new window" }).click();
+  const editor = await editorWindow;
+  await setSurfaceSize(editor, 420, 480);
+  await editor.getByRole("button", { name: "Cancel" }).click();
+  const editorMarkdown = editor.locator(
+    '[data-note-markdown="markdown-overflow"]',
+  );
+  await expect(editorMarkdown).toContainText(longCode);
+  await expect(editorMarkdown).toContainText(longCell);
+  await expectSurfaceContained(editor, "editor");
+  await expectNoHorizontalOverflow(
+    editor,
+    '[data-note-markdown="markdown-overflow"]',
+  );
+  await editor.close();
 });
 
 test("isolates a complete document journey and persists only acknowledged state", async ({

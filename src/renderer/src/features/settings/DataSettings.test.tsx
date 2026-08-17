@@ -37,6 +37,36 @@ describe("DataSettings", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Export cancelled");
   });
 
+  it("renders export and import operation failures as alerts", async () => {
+    const user = userEvent.setup();
+    api.exportData.mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: "write_failed",
+        message: "Data export could not be written.",
+        retryable: true,
+      },
+    });
+    api.chooseDataImport.mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: "read_failed",
+        message: "Data import could not be read.",
+        retryable: true,
+      },
+    });
+    render(<DataSettings api={api} />);
+
+    await user.click(screen.getByRole("button", { name: "Export data" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Data export could not be written.",
+    );
+    await user.click(screen.getByRole("button", { name: "Import data" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Data import could not be read.",
+    );
+  });
+
   it("shows a complete long import filename and replaces only after explicit confirmation", async () => {
     const user = userEvent.setup();
     const fileName =

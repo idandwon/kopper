@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import type { Note, Section } from "../../../../shared/domain/document";
 import type { NoteClipboardMode } from "../../../../shared/ipc/contract";
@@ -13,6 +13,7 @@ import {
   ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "../../components/ui/context-menu";
+import { useNotesSurfaceOverlay } from "./NotesSurfaceVisibility";
 
 export type NoteMenuAction =
   | { type: "copy"; noteIds: string[]; mode: NoteClipboardMode }
@@ -38,6 +39,10 @@ export function NoteContextMenu({
   onAction,
   children,
 }: NoteContextMenuProps) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [submenuOpen, setSubmenuOpen] = useState(false);
+  const menuOverlay = useNotesSurfaceOverlay(menuOpen, setMenuOpen);
+  const submenuOverlay = useNotesSurfaceOverlay(submenuOpen, setSubmenuOpen);
   const noteIds = selectedNotes.map(({ id }) => id);
   const singleNote = selectedNotes.length === 1 ? selectedNotes[0] : undefined;
   const allActive =
@@ -48,7 +53,7 @@ export function NoteContextMenu({
     selectedNotes.every(({ completedAt }) => completedAt !== null);
 
   return (
-    <ContextMenu>
+    <ContextMenu {...menuOverlay}>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent aria-label="Note actions">
         <ContextMenuItem
@@ -121,7 +126,7 @@ export function NoteContextMenu({
                 <ContextMenuShortcut aria-hidden="true">⇧⌘M</ContextMenuShortcut>
               </ContextMenuItem>
             )}
-            <ContextMenuSub>
+            <ContextMenuSub {...submenuOverlay}>
               <ContextMenuSubTrigger>Move to</ContextMenuSubTrigger>
               <ContextMenuSubContent>
                 {sections.map((section) => (

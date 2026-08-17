@@ -43,6 +43,7 @@ import {
   TooltipTrigger,
 } from "../../components/ui/tooltip";
 import { useKopperDocument } from "../../app/DocumentProvider";
+import { useNotesSurfaceOverlay } from "../notes/NotesSurfaceVisibility";
 
 function orderedSections(sections: Section[]): Section[] {
   return [...sections].sort((left, right) => left.order - right.order);
@@ -63,10 +64,21 @@ export function SectionManager({ section }: SectionManagerProps) {
         note.sectionId === section.id ||
         note.previousPlacement?.sectionId === section.id,
     ) || document.draft?.sectionId === section.id;
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [tooltipOpen, setTooltipOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [destinationOpen, setDestinationOpen] = useState(false);
   const [title, setTitle] = useState(section.title);
   const [destinationId, setDestinationId] = useState("");
+  const menuOverlay = useNotesSurfaceOverlay(menuOpen, setMenuOpen);
+  const tooltipOverlay = useNotesSurfaceOverlay(tooltipOpen, setTooltipOpen);
+  const renameOverlay = useNotesSurfaceOverlay(renameOpen, setRenameOpen);
+  const deleteOverlay = useNotesSurfaceOverlay(deleteOpen, setDeleteOpen);
+  const destinationOverlay = useNotesSurfaceOverlay(
+    destinationOpen,
+    setDestinationOpen,
+  );
   const selectedDestination = destinations.find(
     ({ id }) => id === destinationId,
   );
@@ -103,9 +115,9 @@ export function SectionManager({ section }: SectionManagerProps) {
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu {...menuOverlay}>
         <TooltipProvider>
-          <Tooltip>
+          <Tooltip {...tooltipOverlay}>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -165,7 +177,7 @@ export function SectionManager({ section }: SectionManagerProps) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Dialog open={renameOpen} onOpenChange={setRenameOpen}>
+      <Dialog {...renameOverlay}>
         <DialogContent>
           <form onSubmit={(event) => void rename(event)} className="grid gap-4">
             <DialogHeader>
@@ -195,7 +207,7 @@ export function SectionManager({ section }: SectionManagerProps) {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+      <AlertDialog {...deleteOverlay}>
         <AlertDialogContent>
           <form
             onSubmit={(event) => {
@@ -218,6 +230,7 @@ export function SectionManager({ section }: SectionManagerProps) {
                   Move notes to
                 </Label>
                 <Select
+                  {...destinationOverlay}
                   value={destinationId}
                   onValueChange={setDestinationId}
                 >

@@ -13,6 +13,10 @@ import {
 } from "../../components/ui/alert-dialog";
 import { Button } from "../../components/ui/button";
 import { Separator } from "../../components/ui/separator";
+import {
+  SettingsFeedback,
+  type SettingsFeedbackValue,
+} from "./SettingsFeedback";
 
 export function DataSettings({
   api = window.kopper,
@@ -20,20 +24,26 @@ export function DataSettings({
   api?: Pick<KopperApi, "exportData" | "chooseDataImport" | "confirmDataImport">;
 }) {
   const [preview, setPreview] = useState<DataImportPreview | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<SettingsFeedbackValue | null>(null);
   const [busy, setBusy] = useState(false);
 
   const exportData = async () => {
     setBusy(true);
+    setFeedback(null);
     try {
       const result = await api.exportData();
-      setMessage(
+      setFeedback(
         result.ok
-          ? result.value.cancelled
-            ? "Export cancelled."
-            : `Exported ${result.value.fileName ?? "Kopper data"}.`
-          : result.error.message,
+          ? {
+              text: result.value.cancelled
+                ? "Export cancelled."
+                : `Exported ${result.value.fileName ?? "Kopper data"}.`,
+              tone: "status",
+            }
+          : { text: result.error.message, tone: "error" },
       );
+    } catch {
+      setFeedback({ text: "Data export could not run.", tone: "error" });
     } finally {
       setBusy(false);
     }
@@ -41,15 +51,18 @@ export function DataSettings({
 
   const chooseImport = async () => {
     setBusy(true);
+    setFeedback(null);
     try {
       const result = await api.chooseDataImport();
       if (!result.ok) {
-        setMessage(result.error.message);
+        setFeedback({ text: result.error.message, tone: "error" });
       } else if (result.value === null) {
-        setMessage("Import cancelled.");
+        setFeedback({ text: "Import cancelled.", tone: "status" });
       } else {
         setPreview(result.value);
       }
+    } catch {
+      setFeedback({ text: "Data import could not be opened.", tone: "error" });
     } finally {
       setBusy(false);
     }
@@ -60,9 +73,16 @@ export function DataSettings({
     const token = preview.token;
     setPreview(null);
     setBusy(true);
+    setFeedback(null);
     try {
       const result = await api.confirmDataImport(token);
-      setMessage(result.ok ? "Import complete." : result.error.message);
+      setFeedback(
+        result.ok
+          ? { text: "Import complete.", tone: "status" }
+          : { text: result.error.message, tone: "error" },
+      );
+    } catch {
+      setFeedback({ text: "Data import could not be completed.", tone: "error" });
     } finally {
       setBusy(false);
     }
@@ -90,11 +110,7 @@ export function DataSettings({
           Import data
         </Button>
       </div>
-      {message !== null && (
-        <p role="status" className="m-0 break-words text-xs">
-          {message}
-        </p>
-      )}
+      <SettingsFeedback value={feedback} />
 
       <AlertDialog open={preview !== null} onOpenChange={(open) => !open && setPreview(null)}>
         <AlertDialogContent>

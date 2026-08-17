@@ -62,7 +62,9 @@ describe("AppearanceSettings", () => {
     execute.mockResolvedValueOnce(false);
     await user.click(select);
     await user.click(screen.getByRole("option", { name: "Dark" }));
-    expect(await screen.findByText("Appearance mode could not be changed.")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Appearance mode could not be changed.",
+    );
   });
 
   it("renders bundled presets, activates by authoritative ID, and exports that ID", async () => {
@@ -80,6 +82,45 @@ describe("AppearanceSettings", () => {
     ).toBeInTheDocument();
     await userEvent.click(screen.getByRole("menuitem", { name: "Export" }));
     expect(window.kopper.exportTheme).toHaveBeenCalledWith("builtin:night-workshop");
+  });
+
+  it("keeps a failed custom-theme deletion authoritative, visible, and retryable", async () => {
+    const user = userEvent.setup();
+    const customTheme = {
+      ...structuredClone(OXIDE_LEDGER_THEME),
+      id: "custom:deletion-failure",
+      name: "Deletion Failure Theme",
+    };
+    vi.mocked(useKopperDocument).mockReturnValue({
+      document: { ...document, customThemes: [customTheme] },
+      ready: true,
+      pendingAction: null,
+      error: null,
+      execute,
+      undo: vi.fn(),
+      retryLastAction: vi.fn(),
+      clearError: vi.fn(),
+    });
+    execute.mockResolvedValueOnce(false);
+    render(<AppearanceSettings />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Actions for Deletion Failure Theme" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Delete" }));
+    await user.click(screen.getByRole("button", { name: "Delete theme" }));
+
+    expect(execute).toHaveBeenCalledWith({
+      type: "appearance.deleteCustomTheme",
+      themeId: "custom:deletion-failure",
+    });
+    expect(screen.getByText("Deletion Failure Theme")).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Custom theme could not be deleted.",
+    );
+    expect(
+      screen.getByRole("button", { name: "Delete theme" }),
+    ).toBeEnabled();
   });
 
   it("keeps a long theme name in a shrinking column with one bounded action menu", () => {

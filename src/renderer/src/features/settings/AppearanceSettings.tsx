@@ -33,6 +33,10 @@ import {
 } from "../../components/ui/select";
 import { Separator } from "../../components/ui/separator";
 import { useTheme } from "../../theme/ThemeProvider";
+import {
+  SettingsFeedback,
+  type SettingsFeedbackValue,
+} from "./SettingsFeedback";
 import { ThemeEditor } from "./ThemeEditor";
 import { ThemeImportDialog } from "./ThemeImportDialog";
 
@@ -48,22 +52,23 @@ export function AppearanceSettings() {
   const { resolvedMode } = useTheme();
   const [editing, setEditing] = useState<ThemeDefinition | null>(null);
   const [deleteTheme, setDeleteTheme] = useState<ThemeDefinition | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<SettingsFeedbackValue | null>(null);
   const [modePending, setModePending] = useState(false);
   const busy = pendingAction !== null || modePending;
   const themes = [...BUNDLED_THEMES, ...document.customThemes];
 
   const changeMode = async (mode: AppearanceMode) => {
     if (busy) return;
-    setMessage(null);
+    setFeedback(null);
     setModePending(true);
     const changed = await execute({ type: "appearance.setMode", mode });
     setModePending(false);
-    setMessage(
-      changed
+    setFeedback({
+      text: changed
         ? `Appearance mode changed to ${mode}.`
         : "Appearance mode could not be changed.",
-    );
+      tone: changed ? "status" : "error",
+    });
   };
 
   const selectMode = (value: string) => {
@@ -73,27 +78,31 @@ export function AppearanceSettings() {
   };
 
   const activate = async (themeId: string) => {
-    setMessage(null);
+    setFeedback(null);
     const saved = await execute({
       type: "appearance.setActiveTheme",
       themeId,
     });
-    setMessage(saved ? "Theme activated." : "Theme activation failed.");
+    setFeedback({
+      text: saved ? "Theme activated." : "Theme activation failed.",
+      tone: saved ? "status" : "error",
+    });
   };
 
   const exportTheme = async (themeId: string) => {
-    setMessage(null);
+    setFeedback(null);
     try {
       const result = await window.kopper.exportTheme(themeId);
-      setMessage(
-        result.ok
-          ? result.value === null
-            ? "Export cancelled."
-            : "Theme exported."
-          : result.error.message,
-      );
+      if (!result.ok) {
+        setFeedback({ text: result.error.message, tone: "error" });
+        return;
+      }
+      setFeedback({
+        text: result.value === null ? "Export cancelled." : "Theme exported.",
+        tone: "status",
+      });
     } catch {
-      setMessage("Theme export failed.");
+      setFeedback({ text: "Theme export failed.", tone: "error" });
     }
   };
 
@@ -103,11 +112,12 @@ export function AppearanceSettings() {
       type: "appearance.deleteCustomTheme",
       themeId: deleteTheme.id,
     });
-    setMessage(
-      deleted
+    setFeedback({
+      text: deleted
         ? "Custom theme deleted."
         : "Custom theme could not be deleted.",
-    );
+      tone: deleted ? "status" : "error",
+    });
     if (deleted) setDeleteTheme(null);
   };
 
@@ -222,7 +232,10 @@ export function AppearanceSettings() {
                       </DropdownMenuItem>
                       {custom ? (
                         <DropdownMenuItem
-                          onSelect={() => setDeleteTheme(theme)}
+                          onSelect={() => {
+                            setFeedback(null);
+                            setDeleteTheme(theme);
+                          }}
                         >
                           Delete
                         </DropdownMenuItem>
@@ -238,13 +251,11 @@ export function AppearanceSettings() {
 
       <div className="flex min-w-0 flex-wrap items-center gap-2">
         <ThemeImportDialog />
-        {message !== null ? (
-          <p
-            role="status"
-            className="m-0 min-w-0 flex-1 break-words text-[11px] text-muted-foreground"
-          >
-            {message}
-          </p>
+        {deleteTheme === null ? (
+          <SettingsFeedback
+            value={feedback}
+            className="flex-1 text-[11px] text-muted-foreground"
+          />
         ) : null}
       </div>
 
@@ -274,9 +285,18 @@ export function AppearanceSettings() {
                 : `${deleteTheme.name} will be removed. If active, Oxide Ledger becomes active.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          <SettingsFeedback
+            value={feedback}
+            className="text-[11px] text-muted-foreground"
+          />
           <AlertDialogFooter className="flex-wrap">
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void removeTheme()}>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void removeTheme();
+              }}
+            >
               Delete theme
             </AlertDialogAction>
           </AlertDialogFooter>

@@ -14,6 +14,7 @@ import { PanelFeedbackProvider } from "../features/feedback/PanelFeedback";
 import { NoteCollection } from "../features/notes/NoteCollection";
 import { NotePresentationProvider } from "../features/notes/NotePresentation";
 import { NoteComposer } from "../features/notes/NoteComposer";
+import { NotesSurfaceVisibilityProvider } from "../features/notes/NotesSurfaceVisibility";
 import type { AccessibilityPermissionPanelControls } from "../features/onboarding/AccessibilityPermissionGate";
 import { PanelHeader } from "../features/panel/PanelHeader";
 import { PanelShell } from "../features/panel/PanelShell";
@@ -195,68 +196,69 @@ export function DocumentPanel({
   return (
     <PanelFeedbackProvider>
       <NotePresentationProvider>
-        <div className="contents">
-          <PanelShell>
-            <div
-              data-panel-surface="notes"
-              hidden={route.page !== "notes"}
-              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
-            >
-              <PanelHeader
-                query={query}
-                view={view}
-                searchInputRef={searchInputRef}
-                menuTriggerRef={menuTriggerRef}
-                notesVisible={route.page === "notes"}
-                changeQuery={setQuery}
-                changeView={setView}
-                openSettings={openSettingsFromMenu}
-              />
+        <NotesSurfaceVisibilityProvider visible={route.page === "notes"}>
+          <div className="contents">
+            <PanelShell>
+              <div
+                data-panel-surface="notes"
+                hidden={route.page !== "notes"}
+                className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+              >
+                <PanelHeader
+                  query={query}
+                  view={view}
+                  searchInputRef={searchInputRef}
+                  menuTriggerRef={menuTriggerRef}
+                  changeQuery={setQuery}
+                  changeView={setView}
+                  openSettings={openSettingsFromMenu}
+                />
 
-              {captureUnavailable ? (
-                <CaptureAccessPanel controls={permissionControls} />
+                {captureUnavailable ? (
+                  <CaptureAccessPanel controls={permissionControls} />
+                ) : null}
+
+                {error === null ? null : (
+                  <DocumentError
+                    error={error}
+                    retry={retryLastAction}
+                    disabled={busy}
+                  />
+                )}
+
+                <NoteCollection
+                  document={document}
+                  query={query}
+                  view={view}
+                  captureHighlightedNoteId={captureHighlightedNoteId}
+                />
+
+                {view === "active" ? <NoteComposer /> : null}
+              </div>
+
+              {route.page === "settings" ? (
+                <SettingsPage
+                  activeTab={route.tab}
+                  captureUnavailable={captureUnavailable}
+                  focusRequest={settingsFocusRequest}
+                  changeTab={changeSettingsTab}
+                  closeSettings={closeSettings}
+                />
               ) : null}
 
-              {error === null ? null : (
-                <DocumentError
-                  error={error}
-                  retry={retryLastAction}
-                  disabled={busy}
-                />
-              )}
-
-              <NoteCollection
-                document={document}
-                query={query}
-                view={view}
-                captureHighlightedNoteId={captureHighlightedNoteId}
+              <PanelShortcuts
+                disabled={busy}
+                enabled={route.page === "notes"}
+                focusSearch={focusSearch}
+                undo={undoLastAction}
               />
-
-              {view === "active" ? <NoteComposer /> : null}
-            </div>
-
-            {route.page === "settings" ? (
-              <SettingsPage
-                activeTab={route.tab}
-                captureUnavailable={captureUnavailable}
-                focusRequest={settingsFocusRequest}
-                changeTab={changeSettingsTab}
-                closeSettings={closeSettings}
-              />
-            ) : null}
-
-            <PanelShortcuts
-              disabled={busy}
-              enabled={route.page === "notes"}
-              focusSearch={focusSearch}
-              undo={undoLastAction}
+            </PanelShell>
+            <CaptureToast
+              displayNotice={false}
+              onHighlightedNoteChange={setCaptureHighlightedNoteId}
             />
-          </PanelShell>
-          <CaptureToast
-            displayNotice={false}
-            onHighlightedNoteChange={setCaptureHighlightedNoteId}
-          />
-        </div>
+          </div>
+        </NotesSurfaceVisibilityProvider>
       </NotePresentationProvider>
     </PanelFeedbackProvider>
   );

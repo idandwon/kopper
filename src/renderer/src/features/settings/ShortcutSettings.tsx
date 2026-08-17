@@ -13,6 +13,10 @@ import {
   RadioGroupItem,
 } from "../../components/ui/radio-group";
 import { Separator } from "../../components/ui/separator";
+import {
+  SettingsFeedback,
+  type SettingsFeedbackValue,
+} from "./SettingsFeedback";
 
 function acceleratorFromEvent(event: KeyboardEvent): string | null {
   if (["Meta", "Control", "Alt", "Shift"].includes(event.key)) return null;
@@ -48,7 +52,7 @@ export function ShortcutSettings({
   const [recording, setRecording] = useState(false);
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<SettingsFeedbackValue | null>(null);
   const authoritativeShortcutFingerprint = shortcutFingerprint(document.shortcuts);
 
   useEffect(() => {
@@ -58,7 +62,7 @@ export function ShortcutSettings({
   useLayoutEffect(() => {
     if (!active && recording) {
       setRecording(false);
-      setMessage(null);
+      setFeedback(null);
     }
   }, [active, recording]);
 
@@ -69,7 +73,10 @@ export function ShortcutSettings({
       if (event.key === "Escape") {
         event.stopImmediatePropagation();
         setRecording(false);
-        setMessage("Shortcut recording cancelled.");
+        setFeedback({
+          text: "Shortcut recording cancelled.",
+          tone: "status",
+        });
         return;
       }
       const accelerator = acceleratorFromEvent(event);
@@ -79,7 +86,7 @@ export function ShortcutSettings({
         capture: { kind: "accelerator", accelerator },
       }));
       setRecording(false);
-      setMessage(null);
+      setFeedback(null);
     };
     globalThis.addEventListener("keydown", onKeyDown, true);
     return () => globalThis.removeEventListener("keydown", onKeyDown, true);
@@ -88,22 +95,25 @@ export function ShortcutSettings({
   const save = async (preferences: ShortcutPreferences, reset = false) => {
     if (busy) return;
     setBusy(true);
-    setMessage(null);
+    setFeedback(null);
     try {
       const valid = await window.kopper.validateShortcuts(preferences);
       if (!valid.ok) {
-        setMessage(valid.error.message);
+        setFeedback({ text: valid.error.message, tone: "error" });
         return;
       }
       const saved = await window.kopper.saveShortcuts(preferences);
       if (!saved.ok) {
-        setMessage(saved.error.message);
+        setFeedback({ text: saved.error.message, tone: "error" });
         return;
       }
       setCandidate(structuredClone(saved.value.shortcuts));
-      setMessage(reset ? "Shortcuts reset to defaults." : "Shortcuts saved.");
+      setFeedback({
+        text: reset ? "Shortcuts reset to defaults." : "Shortcuts saved.",
+        tone: "status",
+      });
     } catch {
-      setMessage("Shortcuts could not be saved.");
+      setFeedback({ text: "Shortcuts could not be saved.", tone: "error" });
     } finally {
       setBusy(false);
     }
@@ -111,24 +121,30 @@ export function ShortcutSettings({
 
   const changeToggle = (togglePanel: string) => {
     setCandidate((current) => ({ ...current, togglePanel }));
-    setMessage(null);
+    setFeedback(null);
   };
 
   const pin = async () => {
     if (busy) return;
     setBusy(true);
-    setMessage(null);
+    setFeedback(null);
     try {
       const result = await window.kopper.setPinned(!document.window.pinned);
-      setMessage(
+      setFeedback(
         result.ok
-          ? result.value.window.pinned
-            ? "Panel pinned."
-            : "Panel unpinned."
-          : result.error.message,
+          ? {
+              text: result.value.window.pinned
+                ? "Panel pinned."
+                : "Panel unpinned.",
+              tone: "status",
+            }
+          : { text: result.error.message, tone: "error" },
       );
     } catch {
-      setMessage("The panel pin could not be changed.");
+      setFeedback({
+        text: "The panel pin could not be changed.",
+        tone: "error",
+      });
     } finally {
       setBusy(false);
     }
@@ -137,18 +153,18 @@ export function ShortcutSettings({
   const testCapture = async () => {
     if (captureUnavailable || busy || testing) return;
     setTesting(true);
-    setMessage("Testing capture…");
+    setFeedback({ text: "Testing capture…", tone: "status" });
     try {
       const result = await window.kopper.requestCapture();
-      setMessage(
-        result.status === "captured"
-          ? "Test capture saved."
-          : result.status === "empty"
-            ? "No selected text was found."
-            : result.error.message,
-      );
+      if (result.status === "captured") {
+        setFeedback({ text: "Test capture saved.", tone: "status" });
+      } else if (result.status === "empty") {
+        setFeedback({ text: "No selected text was found.", tone: "status" });
+      } else {
+        setFeedback({ text: result.error.message, tone: "error" });
+      }
     } catch {
-      setMessage("Test capture could not run.");
+      setFeedback({ text: "Test capture could not run.", tone: "error" });
     } finally {
       setTesting(false);
     }
@@ -192,12 +208,15 @@ export function ShortcutSettings({
                 ...current,
                 capture: { kind: "double-modifier", modifier: "shift" },
               }));
-              setMessage(null);
+              setFeedback(null);
               return;
             }
             if (value === "accelerator") {
               setRecording(true);
-              setMessage("Press a shortcut, or Escape to cancel.");
+              setFeedback({
+                text: "Press a shortcut, or Escape to cancel.",
+                tone: "status",
+              });
             }
           }}
         >
@@ -223,7 +242,10 @@ export function ShortcutSettings({
                 disabled={busy}
                 onClick={() => {
                   setRecording(true);
-                  setMessage("Press a shortcut, or Escape to cancel.");
+                  setFeedback({
+                    text: "Press a shortcut, or Escape to cancel.",
+                    tone: "status",
+                  });
                 }}
               >
                 {recording ? "Recording…" : "Record shortcut"}
@@ -277,11 +299,7 @@ export function ShortcutSettings({
           Capture is unavailable until Accessibility access is granted.
         </p>
       )}
-      {message !== null && (
-        <p role="status" aria-live="polite" className="m-0 text-xs text-muted-foreground">
-          {message}
-        </p>
-      )}
+      <SettingsFeedback value={feedback} className="text-muted-foreground" />
 
       <div className="flex flex-wrap gap-2">
         <Button type="button" size="xs" disabled={busy} onClick={() => void save(candidate)}>

@@ -202,7 +202,7 @@ describe("ShortcutSettings", () => {
     await userEvent.type(toggle, "CommandOrControl+Shift+C");
     await userEvent.click(screen.getByRole("button", { name: "Save shortcuts" }));
 
-    expect(await screen.findByRole("status")).toHaveTextContent(
+    expect(await screen.findByRole("alert")).toHaveTextContent(
       "Capture and panel shortcuts must be different.",
     );
     expect(window.kopper.saveShortcuts).not.toHaveBeenCalled();
@@ -253,8 +253,8 @@ describe("ShortcutSettings", () => {
 
     await act(async () => pending.reject(new Error("private IPC detail")));
 
-    expect(screen.getByRole("status")).toHaveTextContent("Test capture could not run.");
-    expect(screen.getByRole("status")).not.toHaveTextContent("private IPC detail");
+    expect(screen.getByRole("alert")).toHaveTextContent("Test capture could not run.");
+    expect(screen.getByRole("alert")).not.toHaveTextContent("private IPC detail");
     expect(testButton).not.toBeDisabled();
   });
 
@@ -277,7 +277,7 @@ describe("ShortcutSettings", () => {
     const pin = screen.getByRole("button", { name: "Pin panel" });
     await userEvent.click(pin);
     expect(pin).toHaveAttribute("aria-pressed", "false");
-    expect(await screen.findByRole("status")).toHaveTextContent(
+    expect(await screen.findByRole("alert")).toHaveTextContent(
       "Pin could not be saved.",
     );
   });

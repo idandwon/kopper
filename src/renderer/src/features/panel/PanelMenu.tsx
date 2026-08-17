@@ -1,4 +1,4 @@
-import { useEffect, useState, type Ref } from "react";
+import { useState, type Ref } from "react";
 
 import { useKopperDocument } from "../../app/DocumentProvider";
 import { Button } from "../../components/ui/button";
@@ -17,29 +17,25 @@ import {
   TooltipTrigger,
 } from "../../components/ui/tooltip";
 import { usePanelFeedback } from "../feedback/PanelFeedback";
+import { useNotesSurfaceOverlay } from "../notes/NotesSurfaceVisibility";
 import { AddSectionDialog } from "../sections/AddSectionDialog";
 import type { SettingsTab } from "../settings/settingsRoute";
 import { PanelMenuIcon } from "./PanelMenuIcon";
 
 interface PanelMenuProps {
-  notesVisible: boolean;
   openSettings(tab: SettingsTab): void;
   triggerRef: Ref<HTMLButtonElement>;
 }
 
-export function PanelMenu({
-  notesVisible,
-  openSettings,
-  triggerRef,
-}: PanelMenuProps) {
+export function PanelMenu({ openSettings, triggerRef }: PanelMenuProps) {
   const { document, pendingAction, undo } = useKopperDocument();
   const { reportNotice } = usePanelFeedback();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [tooltipOpen, setTooltipOpen] = useState(false);
   const [sectionDialogOpen, setSectionDialogOpen] = useState(false);
+  const menuOverlay = useNotesSurfaceOverlay(menuOpen, setMenuOpen);
+  const tooltipOverlay = useNotesSurfaceOverlay(tooltipOpen, setTooltipOpen);
   const busy = pendingAction !== null;
-
-  useEffect(() => {
-    if (!notesVisible) setSectionDialogOpen(false);
-  }, [notesVisible]);
 
   const openAppearanceSettings = () => {
     openSettings("appearance");
@@ -74,9 +70,9 @@ export function PanelMenu({
 
   return (
     <>
-      <DropdownMenu>
+      <DropdownMenu {...menuOverlay}>
         <TooltipProvider>
-          <Tooltip>
+          <Tooltip {...tooltipOverlay}>
             <TooltipTrigger asChild>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -118,7 +114,7 @@ export function PanelMenu({
 
       <AddSectionDialog
         mode="controlled"
-        open={notesVisible && sectionDialogOpen}
+        open={sectionDialogOpen}
         onOpenChange={setSectionDialogOpen}
       />
     </>

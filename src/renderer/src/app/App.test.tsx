@@ -89,6 +89,13 @@ const document: KopperDocument = {
       createdAt: timestamp,
       updatedAt: timestamp,
     },
+    {
+      id: "later",
+      title: "Later",
+      order: 1,
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    },
   ],
   notes: [
     {
@@ -152,6 +159,40 @@ function contextValue(
     clearError: vi.fn(),
     ...overrides,
   };
+}
+
+async function expectNativeSettingsOwnsSurface(
+  user: ReturnType<typeof userEvent.setup>,
+  portal: HTMLElement,
+): Promise<void> {
+  act(() => openSettingsListener?.());
+
+  expect(portal).not.toBeInTheDocument();
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Settings" })).toBeVisible();
+  expect(screen.getByRole("tab", { name: "Shortcuts" })).toHaveAttribute(
+    "data-state",
+    "active",
+  );
+  expect(screen.getByText("Shortcut controls")).toBeVisible();
+  expect(screen.queryByText("Appearance controls")).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("searchbox", { name: "Search notes" }),
+  ).not.toBeInTheDocument();
+  expect(visiblePrimaryScrollOwners()).toHaveLength(1);
+  expect(visiblePrimaryScrollOwners()[0]).toHaveAttribute(
+    "data-scroll-owner",
+    "settings",
+  );
+  const back = screen.getByRole("button", { name: "Back to notes" });
+  await vi.waitFor(() => expect(back).toHaveFocus());
+
+  await user.click(back);
+  expect(
+    screen.getByRole("searchbox", { name: "Search notes" }),
+  ).toHaveFocus();
 }
 
 beforeEach(() => {
@@ -364,35 +405,103 @@ describe("Oxide Ledger App", () => {
     expect(trigger).toHaveFocus();
   });
 
-  it("closes Add Section before native Shortcuts Settings and restores Search focus", async () => {
+  it("closes the panel dropdown before native Shortcuts Settings", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Panel menu" }));
+    await expectNativeSettingsOwnsSurface(user, screen.getByRole("menu"));
+  });
+
+  it("closes Add Section before native Shortcuts Settings", async () => {
     const user = userEvent.setup();
     render(<App />);
 
     await user.click(screen.getByRole("button", { name: "Panel menu" }));
     await user.click(screen.getByRole("menuitem", { name: "Add section" }));
-    expect(screen.getByRole("dialog", { name: "Add section" })).toBeVisible();
+    await expectNativeSettingsOwnsSurface(
+      user,
+      screen.getByRole("dialog", { name: "Add section" }),
+    );
+  });
 
-    act(() => openSettingsListener?.());
+  it("closes the section dropdown before native Shortcuts Settings", async () => {
+    const user = userEvent.setup();
+    render(<App />);
 
-    expect(
-      screen.queryByRole("dialog", { name: "Add section" }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Settings" })).toBeVisible();
-    expect(screen.getByRole("tab", { name: "Shortcuts" })).toHaveAttribute(
-      "data-state",
-      "active",
+    await user.click(screen.getByRole("button", { name: "Manage Inbox" }));
+    await expectNativeSettingsOwnsSurface(user, screen.getByRole("menu"));
+  });
+
+  it("closes section rename before native Shortcuts Settings", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Manage Inbox" }));
+    await user.click(screen.getByRole("menuitem", { name: "Rename" }));
+    await expectNativeSettingsOwnsSurface(
+      user,
+      screen.getByRole("dialog", { name: "Rename section" }),
+    );
+  });
+
+  it("closes section deletion before native Shortcuts Settings", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Manage Inbox" }));
+    await user.click(screen.getByRole("menuitem", { name: "Delete" }));
+    await expectNativeSettingsOwnsSurface(
+      user,
+      screen.getByRole("alertdialog", { name: "Delete Inbox?" }),
+    );
+  });
+
+  it("closes note context menus and submenus before native Shortcuts Settings", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    fireEvent.contextMenu(
+      screen.getByRole("option", { name: "Note: Captured note" }),
+    );
+    const moveTo = screen.getByRole("menuitem", { name: "Move to" });
+    moveTo.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(screen.getAllByRole("menu")).toHaveLength(2);
+    await expectNativeSettingsOwnsSurface(user, screen.getAllByRole("menu")[1]);
+  });
+
+  it("closes Markdown discard without losing editing, selection, or composer state", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.type(
+      screen.getByRole("textbox", { name: "Add a note or prompt" }),
+      "Local composer draft",
+    );
+    fireEvent.contextMenu(
+      screen.getByRole("option", { name: "Note: Captured note" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Edit" }));
+    const editor = screen.getByRole("textbox", { name: "Edit note" });
+    await user.clear(editor);
+    await user.type(editor, "Unsaved editor draft");
+    await user.keyboard("{Escape}");
+    const discard = screen.getByRole("alertdialog", {
+      name: "Discard your unsaved changes?",
+    });
+
+    await expectNativeSettingsOwnsSurface(user, discard);
+
+    expect(screen.getByRole("textbox", { name: "Edit note" })).toHaveValue(
+      "Unsaved editor draft",
     );
     expect(
-      screen.queryByRole("searchbox", { name: "Search notes" }),
-    ).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole("button", { name: "Back to notes" }));
+      screen.getByRole("textbox", { name: "Add a note or prompt" }),
+    ).toHaveValue("Local composer draft");
     expect(
-      screen.getByRole("searchbox", { name: "Search notes" }),
-    ).toHaveFocus();
-    expect(
-      screen.queryByRole("dialog", { name: "Add section" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("option", { name: "Note: Captured note" }),
+    ).toHaveAttribute("aria-selected", "true");
   });
 
   it("opens native Settings on Shortcuts and restores Search focus with Escape", async () => {
