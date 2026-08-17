@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import type { CaptureOutcome } from "../../../../shared/ipc/contract";
 
 export const CAPTURE_ACKNOWLEDGEMENT_MS = 1800;
 
 export interface CaptureToastProps {
+  displayNotice?: boolean;
   onHighlightedNoteChange?(noteId: string | null): void;
 }
 
@@ -24,6 +25,7 @@ function copyFor(outcome: CaptureOutcome): string {
 }
 
 export function CaptureToast({
+  displayNotice = true,
   onHighlightedNoteChange,
 }: CaptureToastProps) {
   const [outcome, setOutcome] = useState<CaptureOutcome | null>(null);
@@ -31,7 +33,7 @@ export function CaptureToast({
   const highlightListenerRef = useRef(onHighlightedNoteChange);
   highlightListenerRef.current = onHighlightedNoteChange;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const clearTimer = () => {
       if (timerRef.current === undefined) return;
       clearTimeout(timerRef.current);
@@ -56,14 +58,14 @@ export function CaptureToast({
     };
   }, []);
 
-  if (outcome === null) return null;
+  if (outcome === null || !displayNotice) return null;
 
   return (
     <div
       role="status"
       aria-live="polite"
       aria-atomic="true"
-      className="pointer-events-none fixed right-4 bottom-5 z-50 rounded-lg border border-border bg-popover px-3 py-2 text-sm text-popover-foreground shadow-lg motion-safe:animate-[capture-toast_180ms_ease-out] motion-reduce:animate-[capture-toast-reduced_180ms_ease-out]"
+      className="pointer-events-none fixed right-4 bottom-5 z-50 rounded-full border border-foreground bg-foreground px-3 py-2 text-sm font-medium text-background shadow-lg motion-safe:animate-[capture-toast_180ms_ease-out] motion-reduce:animate-[capture-toast-reduced_180ms_ease-out]"
     >
       {copyFor(outcome)}
     </div>

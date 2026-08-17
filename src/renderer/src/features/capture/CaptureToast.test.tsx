@@ -61,6 +61,26 @@ describe("CaptureToast", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it("publishes highlight changes without rendering an in-panel notice", () => {
+    const onHighlightedNoteChange = vi.fn();
+    render(
+      <CaptureToast
+        displayNotice={false}
+        onHighlightedNoteChange={onHighlightedNoteChange}
+      />,
+    );
+
+    outcome({
+      status: "captured",
+      noteId: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
+    });
+
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(onHighlightedNoteChange).toHaveBeenCalledWith(
+      "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
+    );
+  });
+
   it("highlights only a captured ID for the same timer and cleans subscription/timer", () => {
     const onHighlightedNoteChange = vi.fn();
     const view = render(

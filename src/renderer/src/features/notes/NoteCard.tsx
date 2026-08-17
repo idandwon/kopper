@@ -131,7 +131,7 @@ export function NoteCard({
             selected && "border-primary bg-card ring-2 ring-primary/35",
             selected && focused && "pr-20",
             captureHighlighted &&
-              "border-[var(--capture)] ring-2 ring-[var(--capture)]/35",
+              "border-[var(--capture)] ring-2 ring-[var(--capture)]/35 motion-safe:animate-[captured-note-settle_180ms_ease-out]",
             disabled && "opacity-60",
           )}
           onClick={handleClick}

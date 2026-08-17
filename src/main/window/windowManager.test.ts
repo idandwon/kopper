@@ -34,7 +34,12 @@ const electron = vi.hoisted(() => {
     });
     readonly isVisible = vi.fn(() => this.visible);
     readonly isFocused = vi.fn(() => this.focused);
-    readonly isDestroyed = vi.fn(() => false);
+    readonly isDestroyed = vi.fn(() => this.destroyed);
+    readonly destroy = vi.fn(() => {
+      this.destroyed = true;
+      this.visible = false;
+    });
+    readonly setIgnoreMouseEvents = vi.fn();
     readonly getBounds = vi.fn(() => ({ ...this.bounds }));
     readonly setBounds = vi.fn((bounds: any) => {
       this.bounds = { ...bounds };
@@ -42,6 +47,7 @@ const electron = vi.hoisted(() => {
     visible = false;
     focused = false;
     alwaysOnTop = false;
+    destroyed = false;
     bounds: { x: number; y: number; width: number; height: number };
 
     constructor(readonly options: Record<string, any>) {
@@ -230,66 +236,109 @@ describe("WindowManager", () => {
     expect(quittingPreventDefault).not.toHaveBeenCalled();
   });
 
-  it("toggles normally but acknowledges hidden capture without activation and auto-hides", () => {
+  it("shows a click-through capture HUD while leaving the hidden panel hidden", () => {
     const manager = new WindowManager();
-    const window = manager.createMainWindow() as unknown as InstanceType<typeof electron.FakeWindow>;
-    window.emit("ready-to-show");
-    window.visible = false;
-    window.show.mockClear();
-    manager.acknowledgeCapture();
-    expect(window.showInactive).toHaveBeenCalledOnce();
-    expect(window.show).not.toHaveBeenCalled();
-    expect(window.focus).not.toHaveBeenCalled();
+    manager.createMainWindow();
+    const mainWindow = electron.FakeWindow.instances[0];
+    expect(mainWindow).toBeDefined();
+    if (mainWindow === undefined) return;
+    mainWindow.emit("ready-to-show");
+    mainWindow.visible = false;
+    mainWindow.show.mockClear();
+    manager.showCaptureOutcome({ status: "captured", noteId: "note-1" });
+
+    const hudWindow = electron.FakeWindow.instances[1];
+    expect(hudWindow).toBeDefined();
+    if (hudWindow === undefined) return;
+    expect(mainWindow.showInactive).not.toHaveBeenCalled();
+    expect(mainWindow.show).not.toHaveBeenCalled();
+    expect(mainWindow.focus).not.toHaveBeenCalled();
+    expect(hudWindow.options).toMatchObject({
+      width: 240,
+      height: 72,
+      frame: false,
+      transparent: true,
+      focusable: false,
+      resizable: false,
+      skipTaskbar: true,
+      show: false,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    });
+    expect(hudWindow.setIgnoreMouseEvents).toHaveBeenCalledWith(true);
+    expect(hudWindow.loadFile).toHaveBeenCalledWith(expect.any(String), {
+      hash: "capture-hud",
+    });
+
+    hudWindow.emit("ready-to-show");
+    expect(hudWindow.webContents.send).toHaveBeenCalledWith(
+      "kopper:capture:outcome",
+      { status: "captured", noteId: "note-1" },
+    );
+    expect(hudWindow.showInactive).toHaveBeenCalledOnce();
+    expect(manager.getWindows()).toEqual([mainWindow, hudWindow]);
+    expect(manager.getContentWindows()).toStrictEqual([mainWindow]);
 
     vi.advanceTimersByTime(1_800);
-    expect(window.hide).toHaveBeenCalledOnce();
+    expect(hudWindow.hide).toHaveBeenCalledOnce();
+    expect(mainWindow.hide).not.toHaveBeenCalled();
+  });
+
+  it("queues only the latest capture outcome until the HUD is ready", () => {
+    const manager = new WindowManager();
+    manager.showCaptureOutcome({ status: "empty" });
+    manager.showCaptureOutcome({
+      status: "failed",
+      error: {
+        code: "capture_timeout",
+        message: "The source app did not provide text",
+        retryable: true,
+      },
+    });
+
+    const hudWindow = electron.FakeWindow.instances[0];
+    expect(hudWindow).toBeDefined();
+    if (hudWindow === undefined) return;
+    expect(electron.FakeWindow.instances).toHaveLength(1);
+    expect(hudWindow.webContents.send).not.toHaveBeenCalled();
+
+    hudWindow.emit("ready-to-show");
+
+    expect(hudWindow.webContents.send).toHaveBeenCalledOnce();
+    expect(hudWindow.webContents.send).toHaveBeenCalledWith(
+      "kopper:capture:outcome",
+      {
+        status: "failed",
+        error: {
+          code: "capture_timeout",
+          message: "The source app did not provide text",
+          retryable: true,
+        },
+      },
+    );
+  });
+
+  it("keeps normal panel toggling independent from the capture HUD", () => {
+    const manager = new WindowManager();
+    manager.createMainWindow();
+    const mainWindow = electron.FakeWindow.instances[0];
+    expect(mainWindow).toBeDefined();
+    if (mainWindow === undefined) return;
+    mainWindow.emit("ready-to-show");
+    mainWindow.visible = true;
+    mainWindow.show.mockClear();
+
+    manager.showCaptureOutcome({ status: "empty" });
+    expect(mainWindow.showInactive).not.toHaveBeenCalled();
 
     manager.toggle();
-    expect(window.show).toHaveBeenCalledOnce();
-    expect(window.focus).toHaveBeenCalledOnce();
+    expect(mainWindow.hide).toHaveBeenCalledOnce();
     manager.toggle();
-    expect(window.hide).toHaveBeenCalledTimes(2);
-  });
-
-  it("suppresses the default ready show after an early inactive acknowledgement", () => {
-    const manager = new WindowManager();
-    manager.acknowledgeCapture();
-    const window = electron.FakeWindow.instances[0]!;
-
-    expect(window.showInactive).toHaveBeenCalledOnce();
-    window.emit("ready-to-show");
-
-    expect(window.show).not.toHaveBeenCalled();
-    expect(window.focus).not.toHaveBeenCalled();
-  });
-
-  it("lets an explicit Open before ready override inactive-show suppression", () => {
-    const manager = new WindowManager();
-    manager.acknowledgeCapture();
-    const window = electron.FakeWindow.instances[0]!;
-
-    manager.show();
-    expect(window.show).not.toHaveBeenCalled();
-    window.emit("ready-to-show");
-
-    expect(window.show).toHaveBeenCalledOnce();
-    expect(window.focus).toHaveBeenCalledOnce();
-    vi.advanceTimersByTime(1_800);
-    expect(window.hide).not.toHaveBeenCalled();
-  });
-
-  it("leaves an already visible capture panel unchanged and cancels auto-hide on focus", () => {
-    const manager = new WindowManager();
-    const window = manager.createMainWindow() as unknown as InstanceType<typeof electron.FakeWindow>;
-    window.visible = true;
-    manager.acknowledgeCapture();
-    expect(window.showInactive).not.toHaveBeenCalled();
-
-    window.visible = false;
-    manager.acknowledgeCapture();
-    window.emit("focus");
-    vi.advanceTimersByTime(1_800);
-    expect(window.hide).not.toHaveBeenCalled();
+    expect(mainWindow.show).toHaveBeenCalledOnce();
+    expect(mainWindow.focus).toHaveBeenCalledOnce();
   });
 
   it("debounces bounds persistence and flushes it before hide", async () => {

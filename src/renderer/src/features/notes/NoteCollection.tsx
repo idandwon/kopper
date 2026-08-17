@@ -148,6 +148,14 @@ export function NoteCollection({
     focusedCard?.focus();
   }, [visibleSelection.focusedId]);
 
+  useEffect(() => {
+    if (captureHighlightedNoteId === null) return;
+    const capturedCard = Array.from(
+      globalThis.document.querySelectorAll<HTMLElement>("[data-note-id]"),
+    ).find(({ dataset }) => dataset.noteId === captureHighlightedNoteId);
+    capturedCard?.scrollIntoView({ block: "nearest" });
+  }, [captureHighlightedNoteId]);
+
   return (
     <ScrollArea className="min-h-0 flex-1" aria-label="Notes by section">
       <div className="space-y-5 px-4 pt-1 pb-36 pl-5">

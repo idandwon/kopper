@@ -155,7 +155,10 @@ export function DocumentPanel({
 
           {view === "active" ? <NoteComposer /> : null}
         </PanelShell>
-        <CaptureToast onHighlightedNoteChange={setCaptureHighlightedNoteId} />
+        <CaptureToast
+          displayNotice={false}
+          onHighlightedNoteChange={setCaptureHighlightedNoteId}
+        />
       </div>
     </PanelFeedbackProvider>
   );

@@ -192,11 +192,11 @@
 - Consumes: `CaptureOutcome`, authoritative inserted note ID, window visibility/focus state.
 - Produces: nonactivating acknowledgment at the storyboard-defined seam, authoritative card reveal/scroll/highlight, and bounded cleanup.
 
-- [ ] Characterize visible-panel and hidden-panel capture behavior before changing windows.
-- [ ] Test that source focus is not stolen and no success state appears before persistence acknowledgement.
-- [ ] Implement the smallest secure HUD/window change that matches storyboard evidence while preserving hidden-panel product requirements.
-- [ ] Reveal and highlight the authoritative card with reduced-motion fallback.
-- [ ] Run focused tests, capture E2E where automatable, typecheck/build, and commit.
+- [x] Characterize visible-panel and hidden-panel capture behavior before changing windows.
+- [x] Test that source focus is not stolen and no success state appears before persistence acknowledgement.
+- [x] Implement the smallest secure HUD/window change that matches storyboard evidence while preserving hidden-panel product requirements.
+- [x] Reveal and highlight the authoritative card with reduced-motion fallback.
+- [x] Run focused tests, capture E2E where automatable, typecheck/build, and commit.
 
 ### Task 9: Safe Completion Presentation
 

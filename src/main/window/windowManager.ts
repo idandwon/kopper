@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { pathToFileURL } from "node:url";
 import {
   app,
   BrowserWindow,
@@ -11,14 +11,16 @@ import {
 } from "electron";
 
 import type { WindowBounds } from "../../shared/domain/document";
+import type { CaptureOutcome } from "../../shared/ipc/contract";
 import type { SecurityWindowRegistry } from "../security/securityPolicy";
+import { CaptureHud } from "./captureHud";
+import { loadRenderer } from "./loadRenderer";
 
 const PANEL_WIDTH = 380;
 const PANEL_HEIGHT = 640;
 const MIN_WIDTH = 340;
 const MIN_HEIGHT = 480;
 const EDGE_INSET = 24;
-const ACKNOWLEDGEMENT_MS = 1_800;
 const BOUNDS_DEBOUNCE_MS = 250;
 
 const secureWebPreferences = {
@@ -26,7 +28,7 @@ const secureWebPreferences = {
   contextIsolation: true,
   nodeIntegration: false,
   sandbox: true,
-} as const;
+};
 
 function rendererEntryUrl(): URL {
   if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
@@ -93,17 +95,34 @@ export class WindowManager implements SecurityWindowRegistry {
   private persistBounds: (bounds: WindowBounds) => void | Promise<void>;
   private boundsTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingBounds: WindowBounds | undefined;
-  private acknowledgementTimer: ReturnType<typeof setTimeout> | undefined;
   private boundsPersistenceTail: Promise<void> = Promise.resolve();
   private mainWindowReady = false;
-  private suppressReadyShow = false;
   private explicitOpenPending = false;
+  private readonly captureHud: CaptureHud;
   private readonly windowCreatedListeners = new Set<
     (window: BrowserWindow) => void
   >();
 
   constructor(private readonly options: WindowManagerOptions = {}) {
     this.persistBounds = options.persistBounds ?? (() => undefined);
+    this.captureHud = new CaptureHud({
+      rendererUrl: this.rendererUrl,
+      createWindow: (bounds) =>
+        new BrowserWindow({
+          ...bounds,
+          frame: false,
+          transparent: true,
+          backgroundColor: "#00000000",
+          focusable: false,
+          resizable: false,
+          skipTaskbar: true,
+          show: false,
+          alwaysOnTop: true,
+          hasShadow: false,
+          webPreferences: secureWebPreferences,
+        }),
+      windowCreated: (window) => this.notifyWindowCreated(window),
+    });
   }
 
   setBoundsPersistence(
@@ -134,25 +153,22 @@ export class WindowManager implements SecurityWindowRegistry {
     this.mainWindow = window;
     this.notifyWindowCreated(window);
     this.mainWindowReady = false;
-    this.suppressReadyShow = false;
     this.explicitOpenPending = false;
-    this.loadRenderer(window);
+    loadRenderer(window, this.rendererUrl);
     window.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
     window.setAlwaysOnTop(this.options.pinned ?? false);
     window.once("ready-to-show", () => {
       this.mainWindowReady = true;
       if (this.explicitOpenPending) {
         this.explicitOpenPending = false;
-        this.suppressReadyShow = false;
         window.show();
         window.focus();
-      } else if (!this.suppressReadyShow) {
-        window.show();
+        return;
       }
+      window.show();
     });
     window.on("move", () => this.scheduleBoundsPersistence());
     window.on("resize", () => this.scheduleBoundsPersistence());
-    window.on("focus", () => this.cancelAcknowledgement());
     window.on("close", (event) => {
       if (this.quitting) return;
       event.preventDefault();
@@ -162,7 +178,6 @@ export class WindowManager implements SecurityWindowRegistry {
       if (this.mainWindow === window) {
         this.mainWindow = undefined;
         this.mainWindowReady = false;
-        this.suppressReadyShow = false;
         this.explicitOpenPending = false;
       }
     });
@@ -188,7 +203,7 @@ export class WindowManager implements SecurityWindowRegistry {
     });
     this.editorWindows.set(noteId, window);
     this.notifyWindowCreated(window);
-    this.loadRenderer(window, `editor=${encodeURIComponent(noteId)}`);
+    loadRenderer(window, this.rendererUrl, `editor=${encodeURIComponent(noteId)}`);
     window.once("ready-to-show", () => window.show());
     window.once("closed", () => {
       if (this.editorWindows.get(noteId) === window) {
@@ -199,6 +214,13 @@ export class WindowManager implements SecurityWindowRegistry {
   }
 
   getWindows(): BrowserWindow[] {
+    const windows = this.getContentWindows();
+    const captureHudWindow = this.captureHud.getWindow();
+    if (captureHudWindow !== undefined) windows.push(captureHudWindow);
+    return windows;
+  }
+
+  getContentWindows(): BrowserWindow[] {
     const windows = [...this.editorWindows.values()];
     if (this.mainWindow !== undefined) windows.unshift(this.mainWindow);
     return windows.filter((window) => !window.isDestroyed());
@@ -211,8 +233,6 @@ export class WindowManager implements SecurityWindowRegistry {
 
   show(): void {
     const window = this.createMainWindow();
-    this.cancelAcknowledgement();
-    this.suppressReadyShow = false;
     if (!this.mainWindowReady) {
       this.explicitOpenPending = true;
       return;
@@ -222,7 +242,6 @@ export class WindowManager implements SecurityWindowRegistry {
   }
 
   hide(): void {
-    this.cancelAcknowledgement();
     void this.flushBounds().catch(() => {
       // Hiding remains reliable when bounds persistence fails.
     });
@@ -239,22 +258,8 @@ export class WindowManager implements SecurityWindowRegistry {
     return this.mainWindow?.isVisible() ?? false;
   }
 
-  acknowledgeCapture(): void {
-    const window = this.createMainWindow();
-    if (window.isVisible()) return;
-    if (!this.mainWindowReady) this.suppressReadyShow = true;
-    window.showInactive();
-    this.cancelAcknowledgement();
-    this.acknowledgementTimer = setTimeout(() => {
-      this.acknowledgementTimer = undefined;
-      if (!window.isDestroyed() && !window.isFocused()) {
-        void this.flushBounds().catch(() => {
-          // Auto-hide remains reliable when bounds persistence fails.
-        });
-        window.hide();
-      }
-    }, ACKNOWLEDGEMENT_MS);
-    this.acknowledgementTimer.unref?.();
+  showCaptureOutcome(outcome: CaptureOutcome): void {
+    this.captureHud.show(outcome);
   }
 
   setPinned(pinned: boolean): void {
@@ -310,7 +315,7 @@ export class WindowManager implements SecurityWindowRegistry {
 
   beginQuit(): void {
     this.quitting = true;
-    this.cancelAcknowledgement();
+    this.captureHud.dispose();
   }
 
   flushBounds(): Promise<void> {
@@ -336,35 +341,12 @@ export class WindowManager implements SecurityWindowRegistry {
 
   dispose(): void {
     this.quitting = true;
-    this.cancelAcknowledgement();
+    this.captureHud.dispose();
     if (this.boundsTimer !== undefined) clearTimeout(this.boundsTimer);
     this.boundsTimer = undefined;
     this.pendingBounds = undefined;
     this.tray?.destroy();
     this.tray = undefined;
-  }
-
-  private loadRenderer(window: BrowserWindow, hash?: string): void {
-    if (this.rendererUrl.protocol === "file:") {
-      let rendererPath: string;
-      try {
-        rendererPath = fileURLToPath(this.rendererUrl);
-      } catch {
-        rendererPath = join(__dirname, "../renderer/index.html");
-      }
-      void window.loadFile(
-        rendererPath,
-        hash === undefined ? undefined : { hash },
-      );
-      return;
-    }
-    const developmentUrl = URL.parse(this.rendererUrl.toString());
-    if (developmentUrl === null) {
-      void window.loadFile(join(__dirname, "../renderer/index.html"));
-      return;
-    }
-    if (hash !== undefined) developmentUrl.hash = hash;
-    void window.loadURL(developmentUrl.toString());
   }
 
   private notifyWindowCreated(window: BrowserWindow): void {
@@ -409,10 +391,4 @@ export class WindowManager implements SecurityWindowRegistry {
     this.boundsTimer.unref?.();
   }
 
-  private cancelAcknowledgement(): void {
-    if (this.acknowledgementTimer !== undefined) {
-      clearTimeout(this.acknowledgementTimer);
-      this.acknowledgementTimer = undefined;
-    }
-  }
 }

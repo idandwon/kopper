@@ -91,8 +91,10 @@ void app.whenReady().then(async () => {
     publishDocument(BrowserWindow.getAllWindows(), document);
   };
   const publishCapture = (outcome: CaptureOutcome) => {
-    publishCaptureOutcome(BrowserWindow.getAllWindows(), outcome);
-    if (outcome.status === "captured") windowManager?.acknowledgeCapture();
+    const contentWindows =
+      windowManager?.getContentWindows() ?? BrowserWindow.getAllWindows();
+    publishCaptureOutcome(contentWindows, outcome);
+    windowManager?.showCaptureOutcome(outcome);
   };
 
   const operationCoordinator = new MainOperationCoordinator();

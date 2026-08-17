@@ -201,6 +201,17 @@
   }
 }
 
+@keyframes captured-note-settle {
+  from {
+    opacity: 0.72;
+    transform: translateY(0.4rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @keyframes capture-toast {
   from {
     opacity: 0;

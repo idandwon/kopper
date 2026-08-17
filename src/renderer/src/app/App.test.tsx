@@ -126,6 +126,7 @@ const mockedUseKopperDocument = vi.mocked(useKopperDocument);
 const execute = vi.fn<KopperDocumentContextValue["execute"]>();
 const undo = vi.fn<KopperDocumentContextValue["undo"]>();
 const retryLastAction = vi.fn<KopperDocumentContextValue["retryLastAction"]>();
+const scrollIntoView = vi.fn();
 
 function contextValue(
   overrides: Partial<KopperDocumentContextValue> = {},
@@ -149,6 +150,8 @@ beforeEach(() => {
   onboardingMock.mounts = 0;
   HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
   HTMLElement.prototype.releasePointerCapture = vi.fn();
+  HTMLElement.prototype.scrollIntoView = scrollIntoView;
+  scrollIntoView.mockReset();
   execute.mockReset().mockResolvedValue(true);
   undo.mockReset().mockResolvedValue(true);
   retryLastAction.mockReset().mockResolvedValue(true);
@@ -263,7 +266,8 @@ describe("Oxide Ledger App", () => {
     expect(
       screen.getByRole("option", { name: "Note: Captured note" }),
     ).toHaveAttribute("data-capture-highlighted", "true");
-    expect(screen.getByRole("status")).toHaveTextContent("Captured");
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
 
     act(() => vi.advanceTimersByTime(1800));
     expect(

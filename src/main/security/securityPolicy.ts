@@ -28,7 +28,8 @@ function samePackagedDocument(requested: URL, rendererUrl: URL): boolean {
   if (requested.protocol !== "file:" || rendererUrl.protocol !== "file:") {
     return false;
   }
-  const expected = new URL(rendererUrl);
+  const expected = URL.parse(rendererUrl.href);
+  if (expected === null) return false;
   expected.hash = "";
   requested.hash = "";
   return requested.href === expected.href;
@@ -68,7 +69,8 @@ function developmentNetworkOrigins(rendererUrl: URL): ReadonlySet<string> {
   if (app.isPackaged || !["http:", "https:"].includes(rendererUrl.protocol)) {
     return new Set();
   }
-  const websocket = new URL(rendererUrl.origin);
+  const websocket = URL.parse(rendererUrl.origin);
+  if (websocket === null) return new Set();
   websocket.protocol = rendererUrl.protocol === "https:" ? "wss:" : "ws:";
   return new Set([rendererUrl.origin, websocket.origin]);
 }
