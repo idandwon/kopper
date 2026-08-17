@@ -86,11 +86,15 @@ Expected for each: output includes both `arm64` and `x86_64`.
 
 ## 4. First launch and Accessibility onboarding
 
-1. In Finder, launch `/Applications/Kopper.app`. Confirm it opens normally without a Gatekeeper bypass, quarantine removal, or right-click override.
-2. Confirm the first-run screen explains that Accessibility is used to notice configured shortcuts and copy only explicitly captured text.
-3. Select **Enable Capture**. If macOS does not grant access, select **Open System Settings**, enable Kopper under **Privacy & Security > Accessibility**, return to Kopper, and select **Check again**.
-4. Confirm the UI reaches the notes panel only after the grant is detected. Record whether a relaunch was required.
-5. Confirm Kopper appears in the Dock while running, has the expected app icon/name, and has no menu-bar status item unless the product UI explicitly documents one. Confirm no unexpected login-item prompt appears.
+| ID | Required onboarding/first-launch observation |
+| --- | --- |
+| ONBOARD-01 | In Finder, launch `/Applications/Kopper.app`. Confirm it opens normally without a Gatekeeper bypass, quarantine removal, or right-click override. |
+| ONBOARD-02 | Confirm the first-run screen explains that Accessibility is used to notice configured shortcuts and copy only explicitly captured text. |
+| ONBOARD-03 | Select **Enable Capture**. If macOS does not grant access, select **Open System Settings**, enable Kopper under **Privacy & Security > Accessibility**, return to Kopper, and select **Check again**. |
+| ONBOARD-04 | Confirm the UI reaches the notes panel only after the grant is detected. |
+| ONBOARD-05 | Record whether the Accessibility grant required relaunching Kopper: **Yes** or **No**. |
+| ONBOARD-06 | Confirm Kopper appears in the Dock while running, has the expected app icon/name, and has no menu-bar status item unless the product UI explicitly documents one. |
+| ONBOARD-07 | Record whether any unexpected login-item prompt appeared: **Yes** or **No**. The expected result is **No**. |
 
 Do not use **Continue without capture** for the capture matrices.
 
