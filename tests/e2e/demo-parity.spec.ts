@@ -174,6 +174,8 @@ test("matches the keyboard-first prompt, copy, complete, and restore loop", asyn
 }) => {
   const page = await kopper.launchKopper();
   await continueWithoutCaptureIfNeeded(page);
+  // Keep host keystrokes out while Playwright drives the renderer keyboard.
+  await kopper.electronApp.evaluate(({ app }) => app.hide());
   const composer = page.getByRole("textbox", { name: "Add a note or prompt" });
 
   await composer.fill("How should configuration migrations work?");
