@@ -664,6 +664,7 @@ function inspectApplicationSource(
   const webPreferencePaths = new Set();
   const webPreferenceObjects = new Set();
   const preferenceAliasEdges = [];
+  const preferencePathAliasEdges = [];
   const baseIdentities = new Map();
 
   const expressionProperty = (expression) => {
@@ -783,6 +784,9 @@ function inspectApplicationSource(
     };
   };
 
+  const preferencePathKey = (path) =>
+    `${path.base}:${JSON.stringify(path.properties)}`;
+
   const preferencePath = (expression) => {
     const path =
       ts.isIdentifier(expression) ||
@@ -791,9 +795,58 @@ function inspectApplicationSource(
       ts.isComputedPropertyName(expression)
         ? propertyDeclarationPath(expression)
         : staticExpressionPath(expression);
-    return path === undefined
-      ? undefined
-      : `${path.base}:${JSON.stringify(path.properties)}`;
+    return path === undefined ? undefined : preferencePathKey(path);
+  };
+
+  const collectCalledMethodThisAliases = (call) => {
+    const callee = expressionProperty(call.expression);
+    if (callee?.name === undefined) return;
+    const receiverPath = staticExpressionPath(callee.receiver);
+    if (receiverPath === undefined) return;
+
+    const member = ts.isPropertyAccessExpression(call.expression)
+      ? call.expression.name
+      : ts.isElementAccessExpression(call.expression)
+        ? call.expression.argumentExpression
+        : undefined;
+    if (member === undefined) return;
+    const symbol = checker.getSymbolAtLocation(member);
+    if (symbol === undefined) return;
+
+    for (const handle of symbol.declarations) {
+      const declaration = handle.resolve();
+      if (!declaration || !ts.isMethodDeclaration(declaration)) continue;
+      const containingClass = declaration.parent;
+      if (
+        !ts.isClassDeclaration(containingClass) &&
+        !ts.isClassExpression(containingClass)
+      ) {
+        continue;
+      }
+      const thisBase = baseIdentity(containingClass);
+      const collectAssignedThisPaths = (node) => {
+        if (
+          ts.isBinaryExpression(node) &&
+          isAssignmentOperator(node.operatorToken.kind)
+        ) {
+          const assignedPath = staticExpressionPath(node.left);
+          if (assignedPath?.base === thisBase) {
+            preferencePathAliasEdges.push([
+              preferencePathKey(assignedPath),
+              preferencePathKey({
+                base: receiverPath.base,
+                properties: [
+                  ...receiverPath.properties,
+                  ...assignedPath.properties,
+                ],
+              }),
+            ]);
+          }
+        }
+        node.forEachChild(collectAssignedThisPaths);
+      };
+      declaration.forEachChild(collectAssignedThisPaths);
+    }
   };
 
   const collectPreferenceExpression = (expression, seenSymbols = new Set()) => {
@@ -869,6 +922,10 @@ function inspectApplicationSource(
   };
 
   const collectWebPreferenceContexts = (node) => {
+    if (ts.isCallExpression(node)) {
+      collectCalledMethodThisAliases(node);
+    }
+
     if (
       (ts.isPropertyAssignment(node) ||
         ts.isShorthandPropertyAssignment(node)) &&
@@ -925,6 +982,22 @@ function inspectApplicationSource(
         } else {
           changed = collectPreferenceExpression(left) || changed;
         }
+      }
+    }
+    for (const [methodPath, instancePath] of preferencePathAliasEdges) {
+      if (
+        webPreferencePaths.has(methodPath) &&
+        !webPreferencePaths.has(instancePath)
+      ) {
+        webPreferencePaths.add(instancePath);
+        changed = true;
+      }
+      if (
+        webPreferencePaths.has(instancePath) &&
+        !webPreferencePaths.has(methodPath)
+      ) {
+        webPreferencePaths.add(methodPath);
+        changed = true;
       }
     }
   } while (changed);

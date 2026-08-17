@@ -679,6 +679,39 @@ describe("source security auditor", () => {
     });
   });
 
+  it("tracks a method this-property ingress to the exact named instance", async () => {
+    const root = await createSourceFixture({
+      "src/main/unsafe.ts": [
+        "const key = chooseKey(); const options = { webPreferences: {} };",
+        "class Holder { preferences: Record<string, unknown> = {}; attach(candidate: { webPreferences: Record<string, unknown> }) { this.preferences = candidate.webPreferences; } }",
+        "const securityHolder = new Holder(); securityHolder.attach(options); securityHolder.preferences[key] = value;",
+      ].join("\n"),
+    });
+
+    const result = await verifySource(root);
+
+    expect(result.failures).toContainEqual({
+      file: "src/main/unsafe.ts",
+      rule: "insecure_web_preference",
+    });
+  });
+
+  it("keeps this-property provenance isolated between disconnected classes", async () => {
+    const root = await createSourceFixture({
+      "src/main/safe.ts": [
+        "const key = chooseKey();",
+        "class SecurityHolder { preferences: Record<string, unknown> = {}; attach(candidate: { webPreferences: Record<string, unknown> }) { this.preferences = candidate.webPreferences; } }",
+        "class ThemeHolder { preferences: Record<string, unknown> = {}; write() { this.preferences[key] = value; } }",
+        "void SecurityHolder; void ThemeHolder;",
+      ].join("\n"),
+    });
+
+    await expect(verifySource(root)).resolves.toMatchObject({
+      ok: true,
+      failures: [],
+    });
+  });
+
   it("allows literal-safe web preference objects, assignments, and proven spreads", async () => {
     const root = await createSourceFixture({
       "src/main/safe.ts": [
