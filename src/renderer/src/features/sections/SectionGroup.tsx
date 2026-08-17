@@ -2,6 +2,7 @@ import type { Dispatch } from "react";
 
 import { cn } from "../../lib/utils";
 import { NoteCard } from "../notes/NoteCard";
+import { useNotePresentation } from "../notes/NotePresentation";
 import type {
   SelectionAction,
   SelectionState,
@@ -36,6 +37,7 @@ export function SectionGroup({
   onEdit,
   onEditNewWindow,
 }: SectionGroupProps) {
+  const { entries: presentationEntries } = useNotePresentation();
   const {
     activateSection,
     changeEditing,
@@ -92,6 +94,9 @@ export function SectionGroup({
               focused={selection.focusedId === note.id}
               selected={selected}
               captureHighlighted={captureHighlightedNoteId === note.id}
+              presentation={presentationEntries.find(
+                ({ note: presentedNote }) => presentedNote.id === note.id,
+              )}
               tabbable={
                 selection.focusedId === note.id ||
                 (selection.focusedId === null && displayedIds[0] === note.id)

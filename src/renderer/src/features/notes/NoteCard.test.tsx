@@ -82,6 +82,35 @@ describe("NoteCard", () => {
     expect(screen.getByText("Fifth line remains available")).toBeInTheDocument();
   });
 
+  it("disables interaction during pending and acknowledged lifecycle presentation", () => {
+    const view = render(
+      <NoteCard
+        {...props({
+          presentation: { note, kind: "complete", phase: "pending" },
+        })}
+      />,
+    );
+    const card = screen.getByRole("option");
+    const statusButton = screen.getByRole("button", {
+      name: "Mark First body as done",
+    });
+    expect(card).toHaveAttribute("aria-busy", "true");
+    expect(statusButton).toBeDisabled();
+
+    view.rerender(
+      <NoteCard
+        {...props({
+          presentation: { note, kind: "complete", phase: "exiting" },
+        })}
+      />,
+    );
+    expect(card.closest("[data-note-owner-id]")).toHaveAttribute(
+      "data-presentation-phase",
+      "exiting",
+    );
+    expect(statusButton).toBeDisabled();
+  });
+
   it("reports click modifiers without conflating focus and selection", async () => {
     const onSelect = vi.fn<NoteCardProps["onSelect"]>();
     render(<NoteCard {...props({ onSelect })} />);

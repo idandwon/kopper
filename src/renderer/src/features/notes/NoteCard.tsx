@@ -5,6 +5,7 @@ import type { NoteProjectionView } from "../search/projectNotes";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { cn } from "../../lib/utils";
 import { NoteContextMenu, type NoteMenuAction } from "./NoteContextMenu";
+import type { NotePresentationEntry } from "./notePresentationReducer";
 import { resolveNoteKeyboardIntent } from "./noteKeyboardIntent";
 
 export interface NoteSelectIntent {
@@ -19,6 +20,7 @@ export interface NoteCardProps {
   focused: boolean;
   selected: boolean;
   captureHighlighted?: boolean;
+  presentation?: NotePresentationEntry;
   tabbable?: boolean;
   actionNoteIds: string[];
   actionNotes: Note[];
@@ -52,6 +54,7 @@ export function NoteCard({
   focused,
   selected,
   captureHighlighted = false,
+  presentation,
   tabbable = focused,
   actionNoteIds,
   actionNotes,
@@ -65,6 +68,12 @@ export function NoteCard({
   onMoveFocus,
   onAction,
 }: NoteCardProps) {
+  const interactionDisabled = disabled || presentation !== undefined;
+  const completing =
+    presentation?.kind === "complete" && presentation.phase === "exiting";
+  const restoring =
+    presentation?.kind === "restore" && presentation.phase === "exiting";
+  const completedMarker = (view === "completed" && !restoring) || completing;
   const effectiveNoteIds = selected ? actionNoteIds : [note.id];
   const effectiveNotes = selected ? actionNotes : [note];
   const statusAction = view === "completed" ? "restore" : "complete";
@@ -72,7 +81,7 @@ export function NoteCard({
     view === "completed" ? `Restore ${note.body}` : `Mark ${note.body} as done`;
 
   const handleClick = (event: MouseEvent<HTMLElement>) => {
-    if (disabled) return;
+    if (interactionDisabled) return;
     onSelect({
       id: note.id,
       additive: event.metaKey || event.ctrlKey,
@@ -81,7 +90,7 @@ export function NoteCard({
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (disabled || isApplicationShortcutTarget(event.target)) return;
+    if (interactionDisabled || isApplicationShortcutTarget(event.target)) return;
     const intent = resolveNoteKeyboardIntent(
       {
         key: event.key,
@@ -107,17 +116,24 @@ export function NoteCard({
       onAction={onAction}
     >
       <div
-        className="relative"
+        className={cn(
+          "relative overflow-hidden",
+          presentation?.phase === "exiting" &&
+            "motion-safe:animate-[note-lifecycle-exit_220ms_ease-in_forwards]",
+        )}
         data-note-owner-id={note.id}
+        data-presentation-kind={presentation?.kind}
+        data-presentation-phase={presentation?.phase}
         onContextMenu={() => {
-          if (!disabled) onContextSelect(note.id);
+          if (!interactionDisabled) onContextSelect(note.id);
         }}
       >
         <article
           role="option"
           aria-label={`Note: ${note.body}`}
           aria-selected={selected}
-          aria-disabled={disabled || undefined}
+          aria-disabled={interactionDisabled || undefined}
+          aria-busy={presentation?.phase === "pending" || undefined}
           data-note-id={note.id}
           data-focused={focused}
           data-selected={selected}
@@ -132,7 +148,7 @@ export function NoteCard({
             selected && focused && "pr-20",
             captureHighlighted &&
               "border-[var(--capture)] ring-2 ring-[var(--capture)]/35 motion-safe:animate-[captured-note-settle_180ms_ease-out]",
-            disabled && "opacity-60",
+            interactionDisabled && "opacity-60",
           )}
           onClick={handleClick}
           onKeyDown={handleKeyDown}
@@ -149,7 +165,7 @@ export function NoteCard({
             noteId={note.id}
             body={note.body}
             editing={editing}
-            disabled={disabled}
+            disabled={interactionDisabled}
             autoFocus
             onEditingChange={onEditingChange ?? ignoreEditingChange}
             onSave={onSave ?? rejectSave}
@@ -158,10 +174,10 @@ export function NoteCard({
         <button
           type="button"
           aria-label={statusLabel}
-          disabled={disabled}
+          disabled={interactionDisabled}
           className={cn(
             "absolute top-4 left-4 size-3.5 rounded-full border-2 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none",
-            view === "completed"
+            completedMarker
               ? "border-[var(--completed)] bg-[var(--completed)]"
               : "border-[var(--capture)] hover:bg-[var(--capture)]",
           )}

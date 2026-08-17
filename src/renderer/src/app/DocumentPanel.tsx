@@ -6,6 +6,7 @@ import { Button } from "../components/ui/button";
 import { CaptureToast } from "../features/capture/CaptureToast";
 import { PanelFeedbackProvider } from "../features/feedback/PanelFeedback";
 import { NoteCollection } from "../features/notes/NoteCollection";
+import { NotePresentationProvider } from "../features/notes/NotePresentation";
 import { NoteComposer } from "../features/notes/NoteComposer";
 import type { AccessibilityPermissionPanelControls } from "../features/onboarding/AccessibilityPermissionGate";
 import { PanelHeader } from "../features/panel/PanelHeader";
@@ -124,42 +125,44 @@ export function DocumentPanel({
 
   return (
     <PanelFeedbackProvider>
-      <div className="contents">
-        <PanelShell>
-        <PanelHeader
-          query={query}
-          view={view}
-          captureUnavailable={captureUnavailable}
-          changeQuery={setQuery}
-          changeView={setView}
-        />
+      <NotePresentationProvider>
+        <div className="contents">
+          <PanelShell>
+            <PanelHeader
+              query={query}
+              view={view}
+              captureUnavailable={captureUnavailable}
+              changeQuery={setQuery}
+              changeView={setView}
+            />
 
-        {captureUnavailable ? (
-          <CaptureAccessPanel controls={permissionControls} />
-        ) : null}
+            {captureUnavailable ? (
+              <CaptureAccessPanel controls={permissionControls} />
+            ) : null}
 
-        {error === null ? null : (
-          <DocumentError
-            error={error}
-            retry={retryLastAction}
-            disabled={busy}
+            {error === null ? null : (
+              <DocumentError
+                error={error}
+                retry={retryLastAction}
+                disabled={busy}
+              />
+            )}
+
+            <NoteCollection
+              document={document}
+              query={query}
+              view={view}
+              captureHighlightedNoteId={captureHighlightedNoteId}
+            />
+
+            {view === "active" ? <NoteComposer /> : null}
+          </PanelShell>
+          <CaptureToast
+            displayNotice={false}
+            onHighlightedNoteChange={setCaptureHighlightedNoteId}
           />
-        )}
-
-        <NoteCollection
-          document={document}
-          query={query}
-          view={view}
-          captureHighlightedNoteId={captureHighlightedNoteId}
-        />
-
-          {view === "active" ? <NoteComposer /> : null}
-        </PanelShell>
-        <CaptureToast
-          displayNotice={false}
-          onHighlightedNoteChange={setCaptureHighlightedNoteId}
-        />
-      </div>
+        </div>
+      </NotePresentationProvider>
     </PanelFeedbackProvider>
   );
 }

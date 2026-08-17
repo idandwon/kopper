@@ -3,6 +3,8 @@ import { useEffect, useMemo, useReducer, useRef, type Dispatch } from "react";
 import type { KopperDocument } from "../../../../shared/domain/document";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { CompletedView } from "../completed/CompletedView";
+import { presentNoteProjections } from "./notePresentationReducer";
+import { useNotePresentation } from "./NotePresentation";
 import {
   initialSelectionState,
   selectionReducer,
@@ -81,9 +83,14 @@ export function NoteCollection({
     selectionReducer,
     initialSelectionState,
   );
-  const projections = useMemo(
+  const { entries } = useNotePresentation();
+  const authoritativeProjections = useMemo(
     () => projectNotes(document, query, view),
     [document, query, view],
+  );
+  const projections = useMemo(
+    () => presentNoteProjections(authoritativeProjections, entries, view),
+    [authoritativeProjections, entries, view],
   );
   const displayedIds = useMemo(
     () => projections.flatMap(({ notes }) => notes.map(({ id }) => id)),

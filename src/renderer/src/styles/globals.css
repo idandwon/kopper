@@ -201,6 +201,19 @@
   }
 }
 
+@keyframes note-lifecycle-exit {
+  from {
+    max-height: 20rem;
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    max-height: 0;
+    opacity: 0;
+    transform: scale(0.985);
+  }
+}
+
 @keyframes captured-note-settle {
   from {
     opacity: 0.72;

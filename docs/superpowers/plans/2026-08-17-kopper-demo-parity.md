@@ -213,11 +213,11 @@
 - Consumes: authoritative projections and acknowledged completion/restore outcomes.
 - Produces: immutable presentation states for pending, acknowledged exit, failed persistence, and reduced motion; document state remains outside the interface.
 
-- [ ] Test reducer transitions without timers or React internals.
-- [ ] Show neutral pending state while persistence is unresolved.
-- [ ] Retain an acknowledged presentation snapshot for copper-to-verdigris completion and collapse.
-- [ ] Restore unchanged presentation and Retry on failure.
-- [ ] Run focused tests, completion E2E, typecheck, and commit.
+- [x] Test reducer transitions without timers or React internals.
+- [x] Show neutral pending state while persistence is unresolved.
+- [x] Retain an acknowledged presentation snapshot for copper-to-verdigris completion and collapse.
+- [x] Restore unchanged presentation and Retry on failure.
+- [x] Run focused tests, completion E2E, typecheck, and commit.
 
 ### Task 10: Secondary-State Polish
 

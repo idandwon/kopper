@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useKopperDocument } from "../../app/DocumentProvider";
 import { usePanelFeedback } from "../feedback/PanelFeedback";
 import type { NoteMenuAction } from "../notes/NoteContextMenu";
+import { useNotePresentation } from "../notes/NotePresentation";
 
 interface SectionNoteActionOptions {
   onExpand?(noteId: string): void;
@@ -18,6 +19,7 @@ export function useSectionNoteActions({
   const { document, execute, pendingAction } = useKopperDocument();
   const { reportClipboardResult, reportClipboardUnavailable } =
     usePanelFeedback();
+  const { beginLifecycle, finishLifecycle } = useNotePresentation();
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
 
   const copyNotes = async (action: Extract<NoteMenuAction, { type: "copy" }>) => {
@@ -29,16 +31,31 @@ export function useSectionNoteActions({
     }
   };
 
+  const transitionLifecycle = async (
+    action: Extract<NoteMenuAction, { type: "complete" | "restore" }>,
+  ) => {
+    const selectedIds = new Set(action.noteIds);
+    const selectedNotes = document.notes.filter(({ id }) => selectedIds.has(id));
+    beginLifecycle(action.type, selectedNotes);
+    try {
+      const acknowledged = await execute({
+        type: action.type === "complete" ? "note.complete" : "note.restore",
+        noteIds: action.noteIds,
+      });
+      finishLifecycle(action.noteIds, acknowledged);
+    } catch {
+      finishLifecycle(action.noteIds, false);
+    }
+  };
+
   const handleAction = (action: NoteMenuAction) => {
     switch (action.type) {
       case "copy":
         void copyNotes(action);
         return;
       case "complete":
-        void execute({ type: "note.complete", noteIds: action.noteIds });
-        return;
       case "restore":
-        void execute({ type: "note.restore", noteIds: action.noteIds });
+        void transitionLifecycle(action);
         return;
       case "merge":
         void execute({ type: "note.merge", noteIds: action.noteIds });

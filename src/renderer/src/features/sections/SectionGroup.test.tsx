@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +12,7 @@ import {
   type KopperDocumentContextValue,
 } from "../../app/DocumentProvider";
 import { PanelFeedbackProvider } from "../feedback/PanelFeedback";
+import { NotePresentationProvider } from "../notes/NotePresentation";
 import { SectionGroup } from "./SectionGroup";
 
 vi.mock("../../app/DocumentProvider", () => ({ useKopperDocument: vi.fn() }));
@@ -91,11 +92,16 @@ beforeEach(() => {
     clearError: vi.fn(),
   });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.useRealTimers();
+});
 
 function renderWithPanelFeedback(children: ReactNode) {
   return render(
-    <PanelFeedbackProvider>{children}</PanelFeedbackProvider>,
+    <PanelFeedbackProvider>
+      <NotePresentationProvider>{children}</NotePresentationProvider>
+    </PanelFeedbackProvider>,
   );
 }
 
@@ -167,6 +173,60 @@ describe("SectionGroup", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "The selected notes could not be copied.",
     );
+  });
+
+  it("keeps completion pending until persistence acknowledges, then exits", async () => {
+    vi.useFakeTimers();
+    let resolveCompletion: ((acknowledged: boolean) => void) | undefined;
+    execute.mockImplementationOnce(
+      () =>
+        new Promise<boolean>((resolve) => {
+          resolveCompletion = resolve;
+        }),
+    );
+    renderWithPanelFeedback(
+      <SectionGroup
+        projection={{ section: document.sections[0], notes: document.notes }}
+        view="active"
+        displayedIds={["one", "two"]}
+        selection={{ focusedId: "one", anchorId: "one", selectedIds: ["one"] }}
+        dispatchSelection={vi.fn()}
+      />,
+    );
+    const card = screen.getByRole("option", { name: "Note: First" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark First as done" }));
+    expect(card).toHaveAttribute("aria-busy", "true");
+
+    await act(async () => resolveCompletion?.(true));
+    expect(card.closest("[data-note-owner-id]")).toHaveAttribute(
+      "data-presentation-phase",
+      "exiting",
+    );
+
+    act(() => vi.advanceTimersByTime(220));
+    expect(card.closest("[data-note-owner-id]")).not.toHaveAttribute(
+      "data-presentation-phase",
+    );
+  });
+
+  it("removes pending presentation when completion persistence fails", async () => {
+    execute.mockResolvedValueOnce(false);
+    renderWithPanelFeedback(
+      <SectionGroup
+        projection={{ section: document.sections[0], notes: document.notes }}
+        view="active"
+        displayedIds={["one", "two"]}
+        selection={{ focusedId: "one", anchorId: "one", selectedIds: ["one"] }}
+        dispatchSelection={vi.fn()}
+      />,
+    );
+    const card = screen.getByRole("option", { name: "Note: First" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Mark First as done" }));
+    expect(card).toHaveAttribute("aria-busy", "true");
+    await act(async () => undefined);
+    expect(card).not.toHaveAttribute("aria-busy");
   });
 
   it("activates a section from its heading", async () => {

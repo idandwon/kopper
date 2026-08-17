@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KopperDocument } from "../../../../shared/domain/document";
 import { useKopperDocument, type KopperDocumentContextValue } from "../../app/DocumentProvider";
+import { PanelFeedbackProvider } from "../feedback/PanelFeedback";
+import { NotePresentationProvider } from "../notes/NotePresentation";
 import { initialSelectionState } from "../notes/selectionReducer";
 import { projectNotes } from "../search/projectNotes";
 import { CompletedView } from "./CompletedView";
@@ -50,13 +52,17 @@ describe("CompletedView", () => {
     const user = userEvent.setup();
     const projections = projectNotes(document, "", "completed");
     render(
-      <CompletedView
-        projections={projections}
-        displayedIds={["new", "old"]}
-        selection={initialSelectionState}
-        dispatchSelection={vi.fn()}
-        onOpenEditor={vi.fn()}
-      />,
+      <PanelFeedbackProvider>
+        <NotePresentationProvider>
+          <CompletedView
+            projections={projections}
+            displayedIds={["new", "old"]}
+            selection={initialSelectionState}
+            dispatchSelection={vi.fn()}
+            onOpenEditor={vi.fn()}
+          />
+        </NotePresentationProvider>
+      </PanelFeedbackProvider>,
     );
 
     const cards = screen.getAllByRole("option");
