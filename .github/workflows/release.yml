@@ -1,0 +1,80 @@
+---
+name: Release
+
+"on":
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Sign, notarize, and publish
+    runs-on: macos-14
+    environment: release
+    env:
+      APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+      APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      CSC_LINK: ${{ secrets.CSC_LINK }}
+      CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+
+    steps:
+      - name: Check out tagged revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies from lockfile
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare Apple API key
+        env:
+          APPLE_API_KEY_P8: ${{ secrets.APPLE_API_KEY_P8 }}
+        run: |
+          key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+          umask 077
+          printf '%s' "$APPLE_API_KEY_P8" > "$key_path"
+          chmod 600 "$key_path"
+          printf 'APPLE_API_KEY=%s\n' "$key_path" >> "$GITHUB_ENV"
+
+      - name: Build signed and notarized release
+        run: pnpm package:release
+
+      - name: Generate exact DMG checksum
+        id: checksum
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          dmg_name="Kopper-${version}-universal.dmg"
+          test -f "release/$dmg_name"
+          (cd release && shasum -a 256 "$dmg_name" > "$dmg_name.sha256")
+          checksum_name="${dmg_name}.sha256"
+          output="$GITHUB_OUTPUT"
+          printf 'dmg_path=release/%s\n' "$dmg_name" >> "$output"
+          printf 'checksum_path=release/%s\n' "$checksum_name" >> "$output"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DMG_PATH: ${{ steps.checksum.outputs.dmg_path }}
+          CHECKSUM_PATH: ${{ steps.checksum.outputs.checksum_path }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            "$DMG_PATH" \
+            "$CHECKSUM_PATH" \
+            --verify-tag \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes
+
+      - name: Remove temporary Apple API key
+        if: always()
+        run: rm -f -- "$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"

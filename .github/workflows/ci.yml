@@ -1,0 +1,75 @@
+---
+name: CI
+
+"on":
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify macOS application
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies from lockfile
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests
+        run: pnpm test
+
+      - name: Run type checking
+        run: pnpm typecheck
+
+      - name: Build application
+        run: pnpm build
+
+      - name: Run Electron end-to-end tests
+        id: e2e
+        run: pnpm test:e2e
+
+      - name: Audit production dependencies
+        run: pnpm audit:deps
+
+      - name: Audit application source
+        run: pnpm audit:source
+
+      - name: Package unsigned application
+        id: package_unsigned
+        run: pnpm package:unsigned
+
+      - name: Upload failure Playwright traces
+        if: failure() && steps.e2e.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-${{ github.run_id }}
+          path: test-results/**/trace.zip
+          if-no-files-found: ignore
+          include-hidden-files: false
+          retention-days: 3
+
+      - name: Upload failed unsigned application
+        if: failure() && steps.package_unsigned.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-application-${{ github.run_id }}
+          path: release/mac-universal/Kopper.app
+          if-no-files-found: ignore
+          include-hidden-files: false
+          retention-days: 3
