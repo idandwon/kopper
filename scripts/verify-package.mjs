@@ -845,7 +845,11 @@ function inspectApplicationSource(
   const thisBelongsToClassInstance = (node) => {
     let child = node;
     let current = node.parent;
+    let insideDecorator = false;
     while (current !== undefined) {
+      if (ts.isDecorator(current)) {
+        insideDecorator = true;
+      }
       if (ts.isArrowFunction(current)) {
         child = current;
         current = current.parent;
@@ -863,25 +867,54 @@ function inspectApplicationSource(
         ts.isGetAccessorDeclaration(current) ||
         ts.isSetAccessorDeclaration(current)
       ) {
-        return (
-          (ts.isClassDeclaration(current.parent) ||
-            ts.isClassExpression(current.parent)) &&
-          !hasStaticModifier(current)
-        );
+        const enclosingClass = current.parent;
+        const isClassMember =
+          ts.isClassDeclaration(enclosingClass) ||
+          ts.isClassExpression(enclosingClass);
+        const isInstancePath =
+          !insideDecorator &&
+          (current.body === child || current.parameters.includes(child));
+        if (isInstancePath) {
+          return isClassMember && !hasStaticModifier(current);
+        }
+        const isComputedNamePath =
+          current.name === child && ts.isComputedPropertyName(child);
+        if (isClassMember && (isComputedNamePath || insideDecorator)) {
+          child = enclosingClass;
+          current = enclosingClass.parent;
+          insideDecorator = false;
+          continue;
+        }
+        return false;
       }
       if (ts.isPropertyDeclaration(current)) {
-        return (
-          current.initializer === child &&
-          (ts.isClassDeclaration(current.parent) ||
-            ts.isClassExpression(current.parent)) &&
-          !hasStaticModifier(current)
-        );
+        const enclosingClass = current.parent;
+        const isClassMember =
+          ts.isClassDeclaration(enclosingClass) ||
+          ts.isClassExpression(enclosingClass);
+        if (current.initializer === child && !insideDecorator) {
+          return isClassMember && !hasStaticModifier(current);
+        }
+        const isComputedNamePath =
+          current.name === child && ts.isComputedPropertyName(child);
+        if (isClassMember && (isComputedNamePath || insideDecorator)) {
+          child = enclosingClass;
+          current = enclosingClass.parent;
+          insideDecorator = false;
+          continue;
+        }
+        return false;
       }
-      if (
-        ts.isClassStaticBlockDeclaration(current) ||
-        ts.isClassDeclaration(current) ||
-        ts.isClassExpression(current)
-      ) {
+      if (ts.isClassStaticBlockDeclaration(current)) {
+        return false;
+      }
+      if (ts.isClassDeclaration(current) || ts.isClassExpression(current)) {
+        if (insideDecorator) {
+          child = current;
+          current = current.parent;
+          insideDecorator = false;
+          continue;
+        }
         return false;
       }
       child = current;

@@ -712,6 +712,10 @@ describe("source security auditor", () => {
       "a nested arrow in a method",
       "class Holder { preferences: Record<string, unknown> = {}; attach(options: { webPreferences: Record<string, unknown> }) { const copy = () => { this.preferences = options.webPreferences; }; void copy; } } void Holder;",
     ],
+    [
+      "a method parameter default",
+      "class Holder { preferences: Record<string, unknown> = {}; attach(webPreferences: Record<string, unknown>, copy = (this.preferences = webPreferences)) { void copy; } } void Holder;",
+    ],
   ])(
     "rejects class this-property ingress from %s without invocation or a later sink",
     async (_name, source) => {
@@ -742,6 +746,26 @@ describe("source security auditor", () => {
     [
       "a static block whose this is the class constructor",
       "const preferences = {}; const options = { webPreferences: preferences }; class Holder { static preferences: Record<string, unknown> = {}; static { this.preferences = preferences; } } void options; void Holder;",
+    ],
+    [
+      "a computed method name to use an enclosing regular function this",
+      "function define(this: { preferences: Record<string, unknown> }, webPreferences: Record<string, unknown>) { class Holder { [this.preferences = webPreferences]() {} } return Holder; } void define;",
+    ],
+    [
+      "a computed getter name to use an enclosing regular function this",
+      "function define(this: { preferences: Record<string, unknown> }, webPreferences: Record<string, unknown>) { class Holder { get [this.preferences = webPreferences]() { return undefined; } } return Holder; } void define;",
+    ],
+    [
+      "a computed setter name to use an enclosing regular function this",
+      "function define(this: { preferences: Record<string, unknown> }, webPreferences: Record<string, unknown>) { class Holder { set [this.preferences = webPreferences](value: unknown) { void value; } } return Holder; } void define;",
+    ],
+    [
+      "a computed property name to use an enclosing regular function this",
+      "function define(this: { preferences: Record<string, unknown> }, webPreferences: Record<string, unknown>) { class Holder { [this.preferences = webPreferences] = undefined; } return Holder; } void define;",
+    ],
+    [
+      "a method decorator to use an enclosing regular function this",
+      "function define(this: { preferences: Record<string, unknown> }, webPreferences: Record<string, unknown>) { class Holder { @(this.preferences = webPreferences) attach() {} } return Holder; } void define;",
     ],
   ])("allows %s", async (_name, source) => {
     const root = await createSourceFixture({ "src/main/safe.ts": source });
