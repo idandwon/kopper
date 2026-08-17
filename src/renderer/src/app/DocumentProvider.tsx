@@ -14,7 +14,7 @@ import {
   createEmptyDocument,
   type KopperDocument,
 } from "../../../shared/domain/document";
-import type { KopperError } from "../../../shared/domain/errors";
+import type { KopperError, Result } from "../../../shared/domain/errors";
 
 export interface KopperDocumentContextValue {
   document: KopperDocument;
@@ -44,6 +44,16 @@ const commandFailure = (): KopperError => ({
   retryable: true,
   recoveryAction: "retry",
 });
+
+async function invokeDocumentMutation(
+  operation: () => Promise<Result<KopperDocument, KopperError>>,
+): Promise<Result<KopperDocument, KopperError>> {
+  try {
+    return await operation();
+  } catch {
+    return { ok: false, error: commandFailure() };
+  }
+}
 
 type RetryIntent =
   | { kind: "command"; command: DocumentCommand }
@@ -117,12 +127,9 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
       if (mountedRef.current) setPendingAction(command.type);
 
       try {
-        let result;
-        try {
-          result = await window.kopper.execute(command);
-        } catch {
-          result = { ok: false as const, error: commandFailure() };
-        }
+        const result = await invokeDocumentMutation(() =>
+          window.kopper.execute(command),
+        );
 
         if (!mountedRef.current) return false;
         if (result.ok) {
@@ -157,12 +164,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     if (mountedRef.current) setPendingAction("undo");
 
     try {
-      let result;
-      try {
-        result = await window.kopper.undo();
-      } catch {
-        result = { ok: false as const, error: commandFailure() };
-      }
+      const result = await invokeDocumentMutation(() => window.kopper.undo());
 
       if (!mountedRef.current) return false;
       if (result.ok) {

@@ -52,7 +52,11 @@ export function useNoteDraft() {
   ]);
 
   useEffect(() => {
-    if (awaitingDraftClear === null || document.draft !== null) return;
+    const draftClearAcknowledged =
+      awaitingDraftClear !== null &&
+      document.draft === null &&
+      pendingAction === null;
+    if (!draftClearAcknowledged) return;
 
     persistence.acknowledge({
       sectionId: awaitingDraftClear.sectionId,
@@ -63,7 +67,7 @@ export function useNoteDraft() {
     }
     submittingRef.current = false;
     setAwaitingDraftClear(null);
-  }, [awaitingDraftClear, document.draft, persistence]);
+  }, [awaitingDraftClear, document.draft, pendingAction, persistence]);
 
   const submit = async () => {
     const latest = persistence.getLatest();

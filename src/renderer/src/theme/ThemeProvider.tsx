@@ -57,33 +57,35 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [preview, setPreview] = useState<ThemePreview | null>(null);
 
   useEffect(() => {
-    let mounted = true;
-    let receivedEvent = false;
+    const lifecycle = { mounted: true, receivedEvent: false };
     const unsubscribe = window.kopper.onNativeAppearanceChanged(
       (useDarkColors) => {
-        if (!mounted) return;
-        receivedEvent = true;
+        if (!lifecycle.mounted) return;
+        lifecycle.receivedEvent = true;
         setNativeDark(useDarkColors);
       },
     );
 
     void window.kopper.getNativeAppearance().then(
       (result) => {
-        if (!mounted || receivedEvent || !result.ok) return;
+        const canApplyInitialAppearance =
+          lifecycle.mounted && !lifecycle.receivedEvent && result.ok;
+        if (!canApplyInitialAppearance) return;
         setNativeDark(result.value);
       },
       () => undefined,
     );
 
     return () => {
-      mounted = false;
+      lifecycle.mounted = false;
       unsubscribe();
     };
   }, []);
 
   const appearanceMode = ready ? kopperDocument.appearance.mode : "system";
   const persistedResolvedMode = resolveMode(appearanceMode, nativeDark);
-  const resolvedMode = preview?.modeOverride ?? persistedResolvedMode;
+  const previewMode = preview === null ? undefined : preview.modeOverride;
+  const resolvedMode = previewMode ?? persistedResolvedMode;
   const persistedTheme = useMemo(
     () =>
       ready
@@ -94,9 +96,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         : OXIDE_LEDGER_THEME,
     [kopperDocument, ready],
   );
-  const activeTheme = ready
-    ? (preview?.theme ?? persistedTheme)
-    : OXIDE_LEDGER_THEME;
+  const activeTheme =
+    !ready || preview === null ? persistedTheme : preview.theme;
 
   useLayoutEffect(() => {
     const root = globalThis.document.documentElement;
