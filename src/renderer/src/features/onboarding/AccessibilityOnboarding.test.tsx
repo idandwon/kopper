@@ -72,6 +72,24 @@ describe("AccessibilityOnboarding", () => {
     ).toHaveAttribute("aria-hidden", "true");
   });
 
+  it("stacks narrow secondary actions outside one onboarding scroll owner", () => {
+    const { container } = render(onboarding());
+
+    const owners = container.querySelectorAll(
+      '[data-scroll-owner="onboarding"]',
+    );
+    expect(owners).toHaveLength(1);
+    const owner = owners[0];
+    const secondaryActions = container.querySelector(
+      "[data-onboarding-secondary-actions]",
+    );
+    expect(secondaryActions).toHaveClass("grid-cols-1");
+    expect(secondaryActions).toHaveClass("min-[380px]:grid-cols-2");
+    expect(owner).not.toContainElement(
+      screen.getByRole("button", { name: "Continue without capture" }),
+    );
+  });
+
   it("uses prompt only for Enable Capture and announces denial", async () => {
     const view = render(onboarding({ permission: "denied" }));
     expect(screen.getByRole("alert")).toHaveTextContent(

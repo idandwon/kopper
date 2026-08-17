@@ -120,8 +120,9 @@ export function MarkdownEditor({
   }
 
   return (
-    <div className="grid gap-2" data-note-editor={noteId}>
+    <div className="grid min-w-0 gap-2" data-note-editor={noteId}>
       <Textarea
+        className="min-w-0"
         aria-label="Edit note"
         autoFocus={autoFocus}
         disabled={disabled || saving}
@@ -138,7 +139,7 @@ export function MarkdownEditor({
           {validationMessage}
         </p>
       )}
-      <div className="flex justify-end gap-2">
+      <div className="flex min-w-0 flex-wrap justify-end gap-2">
         <Button
           type="button"
           size="xs"

@@ -196,8 +196,9 @@ export function DocumentPanel({
         <div className="contents">
           <PanelShell>
             <div
+              data-panel-surface="notes"
               hidden={route.page !== "notes"}
-              className="min-h-0 flex flex-1 flex-col"
+              className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
             >
               <PanelHeader
                 query={query}

@@ -130,6 +130,14 @@ const retryLastAction = vi.fn<KopperDocumentContextValue["retryLastAction"]>();
 const setPinned = vi.fn();
 const scrollIntoView = vi.fn();
 
+function visiblePrimaryScrollOwners(): HTMLElement[] {
+  return Array.from(
+    globalThis.document.querySelectorAll<HTMLElement>(
+      '[data-scroll-owner="notes"], [data-scroll-owner="settings"], [data-scroll-owner="editor"], [data-scroll-owner="onboarding"], [data-scroll-owner="recovery"]',
+    ),
+  ).filter((owner) => owner.closest("[hidden]") === null);
+}
+
 function contextValue(
   overrides: Partial<KopperDocumentContextValue> = {},
 ): KopperDocumentContextValue {
@@ -247,6 +255,14 @@ describe("Oxide Ledger App", () => {
       screen.queryByRole("heading", { name: "Accessibility onboarding" }),
     ).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Edit note" })).toBeVisible();
+    const header = screen.getByRole("banner");
+    const editorOwner = globalThis.document.querySelector(
+      '[data-scroll-owner="editor"]',
+    );
+    expect(header).toHaveClass("flex-wrap");
+    expect(editorOwner).toBeVisible();
+    expect(editorOwner).not.toContainElement(header);
+    expect(visiblePrimaryScrollOwners()).toEqual([editorOwner]);
     expect(onboardingMock.mounts).toBe(0);
   });
 
@@ -318,6 +334,11 @@ describe("Oxide Ledger App", () => {
   it("replaces notes with Appearance settings and restores menu focus on Back", async () => {
     const user = userEvent.setup();
     render(<App />);
+    expect(visiblePrimaryScrollOwners()).toHaveLength(1);
+    expect(visiblePrimaryScrollOwners()[0]).toHaveAttribute(
+      "data-scroll-owner",
+      "notes",
+    );
     const trigger = screen.getByRole("button", { name: "Panel menu" });
     await user.click(trigger);
     await user.click(screen.getByRole("menuitem", { name: "Settings…" }));
@@ -330,6 +351,11 @@ describe("Oxide Ledger App", () => {
     expect(
       screen.queryByRole("searchbox", { name: "Search notes" }),
     ).not.toBeInTheDocument();
+    expect(visiblePrimaryScrollOwners()).toHaveLength(1);
+    expect(visiblePrimaryScrollOwners()[0]).toHaveAttribute(
+      "data-scroll-owner",
+      "settings",
+    );
 
     await user.click(screen.getByRole("button", { name: "Back to notes" }));
     expect(
@@ -769,6 +795,7 @@ describe("Oxide Ledger App", () => {
 
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("The ledger could not be written.");
+    expect(alert.closest('[data-panel-shell="true"]')).toBeInTheDocument();
     await user.click(within(alert).getByRole("button", { name: "Retry" }));
     expect(retryLastAction).toHaveBeenCalledOnce();
     expect(screen.getByText("Captured note")).toBeVisible();
@@ -794,8 +821,10 @@ describe("Oxide Ledger App", () => {
       contextValue({ pendingAction: "load" }),
     );
     render(<App />);
-    expect(
-      screen.getByRole("progressbar", { name: "Loading notes" }),
-    ).toBeVisible();
+    const progress = screen.getByRole("progressbar", {
+      name: "Loading notes",
+    });
+    expect(progress).toBeVisible();
+    expect(progress.closest('[data-panel-shell="true"]')).toBeInTheDocument();
   });
 });

@@ -13,6 +13,7 @@ import {
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
 import { Button } from "../../components/ui/button";
+import { ScrollArea } from "../../components/ui/scroll-area";
 import { PanelShell } from "../panel/PanelShell";
 
 export type RecoveryApi = Pick<
@@ -44,59 +45,69 @@ function RecoveryOverview({
   exportDamaged,
 }: RecoveryOverviewProps) {
   return (
-    <div className="flex min-h-0 flex-1 items-center overflow-y-auto p-5 pl-6">
-      <section className="grid w-full gap-4 rounded-xl border border-destructive bg-card p-5">
-        <div>
-          <h1 className="m-0 text-lg font-semibold">
-            Kopper data needs recovery
-          </h1>
-          <p role="alert" className="mt-2 mb-0 text-sm">
-            {error.message}
-          </p>
-        </div>
-        <div className="grid gap-1 text-sm">
-          <span className="font-medium">Active data path</span>
-          <code className="break-all rounded bg-muted p-2 text-xs">
-            {activePath}
-          </code>
-          <p className="m-0 text-xs text-muted-foreground">
-            Kopper will not overwrite this damaged file automatically. Export it
-            unchanged before replacing it if you may need the original bytes.
-          </p>
-        </div>
-        <div className="grid gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={busy}
-            onClick={chooseImport}
-          >
-            Choose another file
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={busy}
-            onClick={exportDamaged}
-          >
-            Export damaged content
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            disabled={busy}
-            onClick={createStore}
-          >
-            Create new store
-          </Button>
-        </div>
-        {message === null ? null : (
-          <p role="status" className="m-0 text-sm">
-            {message}
-          </p>
-        )}
-      </section>
-    </div>
+    <ScrollArea
+      data-scroll-owner="recovery"
+      className="min-h-0 min-w-0 flex-1"
+      aria-label="Recovery options"
+    >
+      <div className="flex min-h-full min-w-0 items-center p-5 pl-6">
+        <section className="grid w-full min-w-0 gap-4 rounded-xl border border-destructive bg-card p-5">
+          <div>
+            <h1 className="m-0 text-lg font-semibold">
+              Kopper data needs recovery
+            </h1>
+            <p role="alert" className="mt-2 mb-0 text-sm">
+              {error.message}
+            </p>
+          </div>
+          <div className="grid min-w-0 gap-1 text-sm">
+            <span className="font-medium">Active data path</span>
+            <code className="min-w-0 break-all rounded bg-muted p-2 text-xs">
+              {activePath}
+            </code>
+            <p className="m-0 text-xs text-muted-foreground">
+              Kopper will not overwrite this damaged file automatically. Export
+              it unchanged before replacing it if you may need the original
+              bytes.
+            </p>
+          </div>
+          <div className="grid min-w-0 gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="h-auto min-w-0 whitespace-normal"
+              disabled={busy}
+              onClick={chooseImport}
+            >
+              Choose another file
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-auto min-w-0 whitespace-normal"
+              disabled={busy}
+              onClick={exportDamaged}
+            >
+              Export damaged content
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              className="h-auto min-w-0 whitespace-normal"
+              disabled={busy}
+              onClick={createStore}
+            >
+              Create new store
+            </Button>
+          </div>
+          {message === null ? null : (
+            <p role="status" className="m-0 text-sm">
+              {message}
+            </p>
+          )}
+        </section>
+      </div>
+    </ScrollArea>
   );
 }
 
@@ -225,8 +236,9 @@ export function RecoveryScreen({
           <AlertDialogHeader>
             <AlertDialogTitle>Create a new empty store?</AlertDialogTitle>
             <AlertDialogDescription>
-              This explicitly replaces the damaged file at {activePath}. This
-              action is not automatic.
+              This explicitly replaces the damaged file at{" "}
+              <span className="break-all">{activePath}</span>. This action is
+              not automatic.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

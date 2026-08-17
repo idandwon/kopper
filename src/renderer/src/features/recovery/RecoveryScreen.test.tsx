@@ -22,13 +22,24 @@ const error = {
 };
 
 beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   api.getDataPath.mockReset().mockResolvedValue({ ok: true, value: "/Users/me/Kopper/kopper.json" });
   api.chooseDataImport.mockReset().mockResolvedValue({ ok: true, value: null });
   api.confirmDataImport.mockReset();
   api.exportRecoveryBytes.mockReset().mockResolvedValue({ ok: true, value: { cancelled: true } });
   api.createNewStore.mockReset().mockResolvedValue({ ok: true, value: createEmptyDocument(new Date("2026-08-16T12:00:00.000Z")) });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe("RecoveryScreen", () => {
   it("shows the active path and never overwrites without explicit confirmation", async () => {
@@ -44,6 +55,20 @@ describe("RecoveryScreen", () => {
     expect(api.createNewStore).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Confirm create new store" }));
     expect(api.createNewStore).toHaveBeenCalledOnce();
+  });
+
+  it("keeps one recovery scroll owner and the complete long active path", async () => {
+    const longPath = `/Users/me/${"nested-directory/".repeat(18)}kopper-damaged.json`;
+    api.getDataPath.mockResolvedValueOnce({ ok: true, value: longPath });
+    const { container } = render(<RecoveryScreen error={error} api={api} />);
+
+    const path = await screen.findByText(longPath);
+    expect(path).toBeVisible();
+    expect(path).toHaveTextContent(longPath);
+    expect(path).toHaveClass("break-all");
+    expect(
+      container.querySelectorAll('[data-scroll-owner="recovery"]'),
+    ).toHaveLength(1);
   });
 
   it("offers import and unchanged damaged-byte export", async () => {
