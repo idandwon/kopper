@@ -30,6 +30,9 @@ const document: KopperDocument = {
 const execute = vi.fn<KopperDocumentContextValue["execute"]>();
 
 beforeEach(() => {
+  HTMLElement.prototype.scrollIntoView = vi.fn();
+  HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
+  HTMLElement.prototype.releasePointerCapture = vi.fn();
   execute.mockReset().mockResolvedValue(true);
   vi.mocked(useKopperDocument).mockReturnValue({ document, ready: true, pendingAction: null, error: null, execute, undo: vi.fn(), retryLastAction: vi.fn(), clearError: vi.fn() });
 });
@@ -57,6 +60,10 @@ describe("section management", () => {
     const user = userEvent.setup();
     render(<AddSectionDialog />);
     await user.click(screen.getByRole("button", { name: "Add section" }));
+    expect(screen.getByText("Section name", { selector: "label" })).toHaveAttribute(
+      "data-slot",
+      "label",
+    );
     await user.type(screen.getByRole("textbox", { name: "Section name" }), "  Ideas  ");
     await user.click(screen.getByRole("button", { name: "Create section" }));
     expect(execute).toHaveBeenCalledWith({ type: "section.add", title: "Ideas" });
@@ -66,6 +73,10 @@ describe("section management", () => {
     await user.click(screen.getByRole("button", { name: "Manage Inbox" }));
     await user.click(screen.getByRole("menuitem", { name: "Rename" }));
     const rename = screen.getByRole("textbox", { name: "Section name" });
+    expect(screen.getByText("Section name", { selector: "label" })).toHaveAttribute(
+      "data-slot",
+      "label",
+    );
     await user.clear(rename);
     await user.type(rename, "  Capture  ");
     await user.click(screen.getByRole("button", { name: "Save name" }));
@@ -101,8 +112,17 @@ describe("section management", () => {
     await user.click(screen.getByRole("menuitem", { name: "Delete" }));
 
     const confirm = screen.getByRole("button", { name: "Delete section" });
+    const destination = screen.getByRole("combobox", {
+      name: "Move notes to",
+    });
     expect(confirm).toBeDisabled();
-    await user.selectOptions(screen.getByRole("combobox", { name: "Move notes to" }), "later");
+    expect(destination.tagName).toBe("BUTTON");
+    expect(screen.getByText("Move notes to", { selector: "label" })).toHaveAttribute(
+      "data-slot",
+      "label",
+    );
+    destination.focus();
+    await user.keyboard("{ArrowDown}{Enter}");
     expect(confirm).toBeEnabled();
     await user.click(confirm);
     expect(execute).toHaveBeenCalledWith({ type: "section.delete", sectionId: "inbox", destinationSectionId: "later" });

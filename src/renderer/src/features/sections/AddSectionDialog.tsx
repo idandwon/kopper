@@ -12,6 +12,7 @@ import {
   DialogTrigger,
 } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
 
 type AddSectionDialogProps =
   | { mode?: "trigger" }
@@ -55,14 +56,15 @@ export function AddSectionDialog(props: AddSectionDialogProps = {}) {
               Create another place for active notes.
             </DialogDescription>
           </DialogHeader>
-          <label className="grid gap-1.5 text-sm">
-            <span>Section name</span>
+          <div className="grid gap-1.5">
+            <Label htmlFor="new-section-name">Section name</Label>
             <Input
+              id="new-section-name"
               autoFocus
               value={title}
               onChange={(event) => setTitle(event.currentTarget.value)}
             />
-          </label>
+          </div>
           <DialogFooter>
             <Button
               type="submit"

@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Note, Section } from "../../../../shared/domain/document";
@@ -54,9 +55,12 @@ describe("NoteCard", () => {
     expect(card).toHaveAttribute("aria-selected", "true");
     expect(card).toHaveAttribute("data-focused", "true");
     expect(card).toHaveAttribute("data-selected", "true");
-    expect(
-      screen.getByRole("button", { name: "Mark First body as done" }),
-    ).toBeVisible();
+    const lifecycle = screen.getByRole("button", {
+      name: "Mark First body as done",
+    });
+    expect(lifecycle).toBeVisible();
+    expect(lifecycle).toHaveAttribute("data-slot", "button");
+    expect(lifecycle).toHaveClass("rounded-full");
     expect(screen.getByText("⌘C Copy")).toBeVisible();
 
     rerender(<NoteCard {...props({ focused: true, selected: false })} />);
@@ -155,6 +159,23 @@ describe("NoteCard", () => {
       { type: "merge", noteIds: ["one", "two"] },
     ]);
     expect(onMoveFocus).toHaveBeenCalledWith("one", 1, true);
+  });
+
+  it("keeps the circular lifecycle action keyboard operable", async () => {
+    const user = userEvent.setup();
+    const onAction = vi.fn<NoteCardProps["onAction"]>();
+    render(<NoteCard {...props({ onAction })} />);
+    const lifecycle = screen.getByRole("button", {
+      name: "Mark First body as done",
+    });
+
+    lifecycle.focus();
+    await user.keyboard("{Enter}");
+
+    expect(onAction).toHaveBeenCalledWith({
+      type: "complete",
+      noteIds: ["one", "two"],
+    });
   });
 
   it("uses only the focused note for actions when it is not selected", () => {

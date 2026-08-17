@@ -10,6 +10,12 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../../components/ui/tooltip";
 import { AddSectionDialog } from "../sections/AddSectionDialog";
 import type { SettingsTab } from "../settings/settingsRoute";
 import { PanelMenuIcon } from "./PanelMenuIcon";
@@ -69,18 +75,25 @@ export function PanelMenu({
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button
-            ref={triggerRef}
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="size-10 rounded-lg border border-border bg-card"
-            aria-label="Panel menu"
-          >
-            <PanelMenuIcon className="size-4" />
-          </Button>
-        </DropdownMenuTrigger>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  ref={triggerRef}
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="size-10 rounded-lg border border-border bg-card"
+                  aria-label="Panel menu"
+                >
+                  <PanelMenuIcon className="size-4" />
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>Panel menu</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <DropdownMenuContent align="end">
           <DropdownMenuItem onSelect={openSectionDialog}>
             Add section

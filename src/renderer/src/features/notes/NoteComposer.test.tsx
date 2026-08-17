@@ -82,6 +82,7 @@ describe("NoteComposer", () => {
       "placeholder",
       "Add a note or prompt (Inbox)",
     );
+    expect(composer).toHaveAttribute("data-slot", "textarea");
     expect(composer.closest("[data-composer-surface]")).toBeInTheDocument();
     expect(screen.queryByText("Inbox")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add note" })).toBeVisible();
@@ -128,6 +129,7 @@ describe("NoteComposer", () => {
       name: "Add a note or prompt",
     });
     fireEvent.change(composer, { target: { value: "New note" } });
+    composer.focus();
 
     fireEvent.keyDown(composer, { key: "Enter", metaKey: true });
     expect(execute).toHaveBeenCalledWith({
@@ -141,6 +143,7 @@ describe("NoteComposer", () => {
     await act(async () => resolveAdd?.(true));
     expect(execute).toHaveBeenNthCalledWith(2, { type: "draft.clear" });
     expect(composer).toHaveValue("");
+    expect(composer).toHaveFocus();
   });
 
   it("retains the draft when adding fails", async () => {

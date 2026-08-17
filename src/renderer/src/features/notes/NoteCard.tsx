@@ -1,6 +1,13 @@
 import type { KeyboardEvent, MouseEvent } from "react";
 
 import type { Note, Section } from "../../../../shared/domain/document";
+import { Button } from "../../components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../../components/ui/tooltip";
 import type { NoteProjectionView } from "../search/projectNotes";
 import { MarkdownEditor } from "../editor/MarkdownEditor";
 import { cn } from "../../lib/utils";
@@ -171,20 +178,29 @@ export function NoteCard({
             onSave={onSave ?? rejectSave}
           />
         </article>
-        <button
-          type="button"
-          aria-label={statusLabel}
-          disabled={interactionDisabled}
-          className={cn(
-            "absolute top-4 left-4 size-3.5 rounded-full border-2 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none",
-            completedMarker
-              ? "border-[var(--completed)] bg-[var(--completed)]"
-              : "border-[var(--capture)] hover:bg-[var(--capture)]",
-          )}
-          onClick={() =>
-            onAction({ type: statusAction, noteIds: effectiveNoteIds })
-          }
-        />
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label={statusLabel}
+                disabled={interactionDisabled}
+                className={cn(
+                  "absolute top-4 left-4 size-3.5 rounded-full border-2 p-0",
+                  completedMarker
+                    ? "border-[var(--completed)] bg-[var(--completed)]"
+                    : "border-[var(--capture)] hover:bg-[var(--capture)]",
+                )}
+                onClick={() =>
+                  onAction({ type: statusAction, noteIds: effectiveNoteIds })
+                }
+              />
+            </TooltipTrigger>
+            <TooltipContent>{statusLabel}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
     </NoteContextMenu>
   );

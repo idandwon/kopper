@@ -117,7 +117,14 @@ describe("SectionGroup", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "Inbox" })).toBeVisible();
+    const heading = screen.getByRole("heading", { name: "Inbox" });
+    expect(heading).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Inbox" }),
+    ).toHaveAttribute("data-slot", "button");
+    expect(
+      screen.getByRole("button", { name: "Manage Inbox" }),
+    ).toHaveAttribute("data-slot", "button");
     expect(screen.getByLabelText("2 notes")).toHaveTextContent("02");
     expect(screen.getByText("First")).toBeVisible();
   });

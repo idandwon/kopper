@@ -1,6 +1,8 @@
 import type { KeyboardEvent } from "react";
 
 import { Button } from "../../components/ui/button";
+import { Label } from "../../components/ui/label";
+import { Textarea } from "../../components/ui/textarea";
 import { useNoteDraft } from "./useNoteDraft";
 
 export function NoteComposer() {
@@ -27,17 +29,17 @@ export function NoteComposer() {
         aria-hidden="true"
         className="mb-3 ml-1 size-3.5 self-start rounded-full border-2 border-[var(--capture)]"
       />
-      <label htmlFor="note-composer" className="sr-only">
+      <Label htmlFor="note-composer" className="sr-only">
         Add a note or prompt
-      </label>
-      <textarea
+      </Label>
+      <Textarea
         id="note-composer"
         value={body}
         onChange={(event) => changeBody(event.currentTarget.value)}
         onKeyDown={handleKeyDown}
         placeholder={`Add a note or prompt (${sectionTitle})`}
         rows={2}
-        className="max-h-36 min-h-12 w-full resize-none border-0 bg-transparent px-1 py-2 text-sm text-card-foreground outline-none placeholder:text-muted-foreground"
+        className="max-h-36 min-h-12 resize-none rounded-none border-0 bg-transparent px-1 py-2 text-card-foreground focus-visible:border-transparent focus-visible:ring-0"
       />
       <Button
         type="button"

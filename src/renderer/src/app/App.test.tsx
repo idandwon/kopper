@@ -250,9 +250,20 @@ describe("Oxide Ledger App", () => {
     expect(
       screen.getByRole("searchbox", { name: "Search notes" }),
     ).toBeVisible();
-    expect(
-      screen.getByRole("button", { name: "Active notes" }),
-    ).toHaveAttribute("aria-pressed", "true");
+    const lifecycleGroup = screen.getByRole("group", {
+      name: "Note lifecycle view",
+    });
+    const activeView = screen.getByRole("button", { name: "Active notes" });
+    const completedView = screen.getByRole("button", {
+      name: "Completed notes",
+    });
+    expect(lifecycleGroup).toHaveAttribute("data-slot", "toggle-group");
+    expect(activeView).toHaveAttribute("data-slot", "toggle-group-item");
+    expect(activeView).toHaveAttribute("aria-pressed", "true");
+    expect(completedView).toHaveAttribute("aria-pressed", "false");
+    fireEvent.click(activeView);
+    expect(activeView).toHaveAttribute("aria-pressed", "true");
+    expect(completedView).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByRole("heading", { name: "Inbox" })).toBeVisible();
     expect(screen.getByText("Captured note")).toBeVisible();
     expect(screen.queryByText("Completed note")).not.toBeInTheDocument();

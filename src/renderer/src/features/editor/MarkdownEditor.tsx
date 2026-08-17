@@ -7,7 +7,18 @@ import {
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "../../components/ui/alert-dialog";
 import { Button } from "../../components/ui/button";
+import { Textarea } from "../../components/ui/textarea";
 
 function InertMarkdownLink({ children }: ComponentProps<"a">) {
   return <span>{children}</span>;
@@ -40,11 +51,13 @@ export function MarkdownEditor({
   const [draft, setDraft] = useState(body);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
 
   useEffect(() => {
     if (!editing) {
       setDraft(body);
       setValidationMessage(null);
+      setDiscardOpen(false);
     }
   }, [body, editing]);
 
@@ -62,13 +75,25 @@ export function MarkdownEditor({
     }
   };
 
-  const discard = () => {
-    if (draft !== body && !globalThis.confirm("Discard your unsaved changes?")) {
-      return;
-    }
+  const closeEditor = () => {
     setDraft(body);
     setValidationMessage(null);
+    setDiscardOpen(false);
     onEditingChange(false);
+  };
+
+  const requestDiscard = () => {
+    if (saving) return;
+    if (draft === body) {
+      closeEditor();
+      return;
+    }
+    setDiscardOpen(true);
+  };
+
+  const discard = () => {
+    if (saving) return;
+    closeEditor();
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -77,7 +102,7 @@ export function MarkdownEditor({
       void save();
     } else if (event.key === "Escape") {
       event.preventDefault();
-      discard();
+      requestDiscard();
     }
   };
 
@@ -96,15 +121,14 @@ export function MarkdownEditor({
 
   return (
     <div className="grid gap-2" data-note-editor={noteId}>
-      <textarea
+      <Textarea
         aria-label="Edit note"
         autoFocus={autoFocus}
         disabled={disabled || saving}
         value={draft}
         rows={6}
-        className="w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
         onChange={(event) => {
-          setDraft(event.target.value);
+          setDraft(event.currentTarget.value);
           setValidationMessage(null);
         }}
         onKeyDown={handleKeyDown}
@@ -115,13 +139,51 @@ export function MarkdownEditor({
         </p>
       )}
       <div className="flex justify-end gap-2">
-        <Button type="button" size="xs" variant="ghost" disabled={saving} onClick={discard}>
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          disabled={saving}
+          onClick={requestDiscard}
+        >
           Cancel
         </Button>
-        <Button type="button" size="xs" disabled={disabled || saving || draft.trim().length === 0} onClick={() => void save()}>
+        <Button
+          type="button"
+          size="xs"
+          disabled={disabled || saving || draft.trim().length === 0}
+          onClick={() => void save()}
+        >
           Save
         </Button>
       </div>
+      <AlertDialog
+        open={discardOpen}
+        onOpenChange={(open) => {
+          if (!saving) setDiscardOpen(open);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard your unsaved changes?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Your edits will be lost if you discard them.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel type="button" disabled={saving}>
+              Keep editing
+            </AlertDialogCancel>
+            <AlertDialogAction
+              type="button"
+              disabled={saving}
+              onClick={discard}
+            >
+              Discard changes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

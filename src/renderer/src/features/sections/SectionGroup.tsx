@@ -1,5 +1,6 @@
 import type { Dispatch } from "react";
 
+import { Button } from "../../components/ui/button";
 import { cn } from "../../lib/utils";
 import { NoteCard } from "../notes/NoteCard";
 import { useNotePresentation } from "../notes/NotePresentation";
@@ -59,10 +60,12 @@ export function SectionGroup({
     <section aria-labelledby={`section-${section.id}`}>
       <div className="mb-2 flex items-center gap-2 font-mono text-[10px] tracking-[0.13em] text-muted-foreground uppercase">
         <h2 id={`section-${section.id}`} className="m-0 text-inherit">
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="xs"
             className={cn(
-              "rounded-sm text-left outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 motion-reduce:transition-none",
+              "h-auto rounded-sm p-0 text-left text-inherit hover:bg-transparent hover:text-foreground",
               active && "text-foreground",
             )}
             aria-current={active ? "true" : undefined}
@@ -70,7 +73,7 @@ export function SectionGroup({
             onClick={() => activateSection(section.id)}
           >
             {section.title}
-          </button>
+          </Button>
         </h2>
         <span className="h-px flex-1 bg-border" aria-hidden="true" />
         <span aria-label={`${notes.length} notes`} className="tracking-normal">

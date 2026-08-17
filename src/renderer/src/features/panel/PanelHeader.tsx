@@ -1,39 +1,13 @@
 import type { Ref } from "react";
 
-import { Button } from "../../components/ui/button";
+import {
+  ToggleGroup,
+  ToggleGroupItem,
+} from "../../components/ui/toggle-group";
 import type { SettingsTab } from "../settings/settingsRoute";
 import { SearchField } from "../search/SearchField";
 import type { NoteProjectionView } from "../search/projectNotes";
 import { PanelMenu } from "./PanelMenu";
-
-interface LifecycleViewButtonProps {
-  view: NoteProjectionView;
-  currentView: NoteProjectionView;
-  selectView(view: NoteProjectionView): void;
-}
-
-function LifecycleViewButton({
-  view,
-  currentView,
-  selectView,
-}: LifecycleViewButtonProps) {
-  const active = view === currentView;
-  const label = view === "active" ? "Active notes" : "Completed notes";
-  const visibleLabel = view === "active" ? "Active" : "Completed";
-
-  return (
-    <Button
-      type="button"
-      size="xs"
-      variant={active ? "secondary" : "ghost"}
-      aria-label={label}
-      aria-pressed={active}
-      onClick={() => selectView(view)}
-    >
-      {visibleLabel}
-    </Button>
-  );
-}
 
 interface PanelHeaderProps {
   query: string;
@@ -70,22 +44,32 @@ export function PanelHeader({
           triggerRef={menuTriggerRef}
         />
       </div>
-      <div
-        role="group"
-        className="flex w-fit rounded-lg bg-card/60 p-0.5"
+      <ToggleGroup
+        type="single"
+        value={view}
         aria-label="Note lifecycle view"
+        className="rounded-lg border-0 bg-card/60"
+        onValueChange={(nextView) => {
+          if (nextView === "active" || nextView === "completed") {
+            changeView(nextView);
+          }
+        }}
       >
-        <LifecycleViewButton
-          view="active"
-          currentView={view}
-          selectView={changeView}
-        />
-        <LifecycleViewButton
-          view="completed"
-          currentView={view}
-          selectView={changeView}
-        />
-      </div>
+        <ToggleGroupItem
+          value="active"
+          aria-label="Active notes"
+          className="h-6 px-2 text-xs"
+        >
+          Active
+        </ToggleGroupItem>
+        <ToggleGroupItem
+          value="completed"
+          aria-label="Completed notes"
+          className="h-6 px-2 text-xs"
+        >
+          Completed
+        </ToggleGroupItem>
+      </ToggleGroup>
     </header>
   );
 }

@@ -28,6 +28,20 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "../../components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../../components/ui/tooltip";
 import { useKopperDocument } from "../../app/DocumentProvider";
 
 function orderedSections(sections: Section[]): Section[] {
@@ -87,9 +101,23 @@ export function SectionManager({ section }: SectionManagerProps) {
   return (
     <>
       <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button type="button" variant="ghost" size="icon-xs" aria-label={`Manage ${section.title}`}>•••</Button>
-        </DropdownMenuTrigger>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-xs"
+                  aria-label={`Manage ${section.title}`}
+                >
+                  •••
+                </Button>
+              </DropdownMenuTrigger>
+            </TooltipTrigger>
+            <TooltipContent>Manage {section.title}</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <DropdownMenuContent align="end">
           <DropdownMenuItem
             onSelect={() => {
@@ -141,12 +169,24 @@ export function SectionManager({ section }: SectionManagerProps) {
               <DialogTitle>Rename section</DialogTitle>
               <DialogDescription>Change the section heading.</DialogDescription>
             </DialogHeader>
-            <label className="grid gap-1.5 text-sm">
-              <span>Section name</span>
-              <Input autoFocus value={title} onChange={(event) => setTitle(event.currentTarget.value)} />
-            </label>
+            <div className="grid gap-1.5">
+              <Label htmlFor={`rename-section-${section.id}`}>
+                Section name
+              </Label>
+              <Input
+                id={`rename-section-${section.id}`}
+                autoFocus
+                value={title}
+                onChange={(event) => setTitle(event.currentTarget.value)}
+              />
+            </div>
             <DialogFooter>
-              <Button type="submit" disabled={trimmedTitle.length === 0 || pendingAction !== null}>Save name</Button>
+              <Button
+                type="submit"
+                disabled={trimmedTitle.length === 0 || pendingAction !== null}
+              >
+                Save name
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -170,25 +210,35 @@ export function SectionManager({ section }: SectionManagerProps) {
               </AlertDialogDescription>
             </AlertDialogHeader>
             {referenced && (
-              <label className="grid gap-1.5 text-sm">
-                <span>Move notes to</span>
-                <select
+              <div className="grid gap-1.5">
+                <Label htmlFor={`delete-destination-${section.id}`}>
+                  Move notes to
+                </Label>
+                <Select
                   value={destinationId}
-                  onChange={(event) => setDestinationId(event.currentTarget.value)}
-                  className="h-9 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+                  onValueChange={setDestinationId}
                 >
-                  <option value="">Select a section</option>
-                  {destinations.map((destination) => (
-                    <option key={destination.id} value={destination.id}>{destination.title}</option>
-                  ))}
-                </select>
-              </label>
+                  <SelectTrigger id={`delete-destination-${section.id}`}>
+                    <SelectValue placeholder="Select a section" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {destinations.map((destination) => (
+                      <SelectItem key={destination.id} value={destination.id}>
+                        {destination.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             )}
             <AlertDialogFooter>
               <AlertDialogCancel type="button">Cancel</AlertDialogCancel>
               <AlertDialogAction
                 type="submit"
-                disabled={(referenced && destinationId.length === 0) || pendingAction !== null}
+                disabled={
+                  (referenced && destinationId.length === 0) ||
+                  pendingAction !== null
+                }
                 onClick={(event) => {
                   event.preventDefault();
                   void remove();
