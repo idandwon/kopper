@@ -177,11 +177,13 @@ describe("SectionGroup", () => {
 
   it("keeps completion pending until persistence acknowledges, then exits", async () => {
     vi.useFakeTimers();
-    let resolveCompletion: ((acknowledged: boolean) => void) | undefined;
+    const completion: {
+      resolve?: (acknowledged: boolean) => void;
+    } = {};
     execute.mockImplementationOnce(
       () =>
         new Promise<boolean>((resolve) => {
-          resolveCompletion = resolve;
+          completion.resolve = resolve;
         }),
     );
     renderWithPanelFeedback(
@@ -198,7 +200,7 @@ describe("SectionGroup", () => {
     fireEvent.click(screen.getByRole("button", { name: "Mark First as done" }));
     expect(card).toHaveAttribute("aria-busy", "true");
 
-    await act(async () => resolveCompletion?.(true));
+    await act(async () => completion.resolve?.(true));
     expect(card.closest("[data-note-owner-id]")).toHaveAttribute(
       "data-presentation-phase",
       "exiting",
