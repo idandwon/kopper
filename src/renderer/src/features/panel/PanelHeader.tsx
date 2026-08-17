@@ -40,6 +40,7 @@ interface PanelHeaderProps {
   view: NoteProjectionView;
   searchInputRef: Ref<HTMLInputElement>;
   menuTriggerRef: Ref<HTMLButtonElement>;
+  notesVisible: boolean;
   changeQuery(query: string): void;
   changeView(view: NoteProjectionView): void;
   openSettings(tab: SettingsTab): void;
@@ -50,6 +51,7 @@ export function PanelHeader({
   view,
   searchInputRef,
   menuTriggerRef,
+  notesVisible,
   changeQuery,
   changeView,
   openSettings,
@@ -63,6 +65,7 @@ export function PanelHeader({
           onQueryChange={changeQuery}
         />
         <PanelMenu
+          notesVisible={notesVisible}
           openSettings={openSettings}
           triggerRef={menuTriggerRef}
         />

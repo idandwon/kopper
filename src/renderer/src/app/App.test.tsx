@@ -314,6 +314,37 @@ describe("Oxide Ledger App", () => {
     expect(trigger).toHaveFocus();
   });
 
+  it("closes Add Section before native Shortcuts Settings and restores Search focus", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Panel menu" }));
+    await user.click(screen.getByRole("menuitem", { name: "Add section" }));
+    expect(screen.getByRole("dialog", { name: "Add section" })).toBeVisible();
+
+    act(() => openSettingsListener?.());
+
+    expect(
+      screen.queryByRole("dialog", { name: "Add section" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Shortcuts" })).toHaveAttribute(
+      "data-state",
+      "active",
+    );
+    expect(
+      screen.queryByRole("searchbox", { name: "Search notes" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Back to notes" }));
+    expect(
+      screen.getByRole("searchbox", { name: "Search notes" }),
+    ).toHaveFocus();
+    expect(
+      screen.queryByRole("dialog", { name: "Add section" }),
+    ).not.toBeInTheDocument();
+  });
+
   it("opens native Settings on Shortcuts and restores Search focus with Escape", async () => {
     render(<App />);
 

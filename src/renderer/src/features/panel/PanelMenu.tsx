@@ -1,4 +1,4 @@
-import { useState, type Ref } from "react";
+import { useEffect, useState, type Ref } from "react";
 
 import { useKopperDocument } from "../../app/DocumentProvider";
 import { Button } from "../../components/ui/button";
@@ -15,15 +15,24 @@ import type { SettingsTab } from "../settings/settingsRoute";
 import { PanelMenuIcon } from "./PanelMenuIcon";
 
 interface PanelMenuProps {
+  notesVisible: boolean;
   openSettings(tab: SettingsTab): void;
   triggerRef: Ref<HTMLButtonElement>;
 }
 
-export function PanelMenu({ openSettings, triggerRef }: PanelMenuProps) {
+export function PanelMenu({
+  notesVisible,
+  openSettings,
+  triggerRef,
+}: PanelMenuProps) {
   const { document, pendingAction, undo } = useKopperDocument();
   const [sectionDialogOpen, setSectionDialogOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
   const busy = pendingAction !== null;
+
+  useEffect(() => {
+    if (!notesVisible) setSectionDialogOpen(false);
+  }, [notesVisible]);
 
   const openAppearanceSettings = () => {
     openSettings("appearance");
@@ -96,7 +105,7 @@ export function PanelMenu({ openSettings, triggerRef }: PanelMenuProps) {
 
       <AddSectionDialog
         mode="controlled"
-        open={sectionDialogOpen}
+        open={notesVisible && sectionDialogOpen}
         onOpenChange={setSectionDialogOpen}
       />
 

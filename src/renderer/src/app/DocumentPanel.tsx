@@ -204,6 +204,7 @@ export function DocumentPanel({
                 view={view}
                 searchInputRef={searchInputRef}
                 menuTriggerRef={menuTriggerRef}
+                notesVisible={route.page === "notes"}
                 changeQuery={setQuery}
                 changeView={setView}
                 openSettings={openSettingsFromMenu}
