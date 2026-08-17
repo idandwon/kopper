@@ -36,6 +36,7 @@ describe("RecoveryScreen", () => {
     render(<RecoveryScreen error={error} api={api} />);
 
     expect(await screen.findByText("/Users/me/Kopper/kopper.json")).toBeVisible();
+    expect(screen.getByText("Lifecycle: captured to completed")).toBeVisible();
     expect(screen.getByText(/will not overwrite this damaged file automatically/i)).toBeVisible();
     expect(api.createNewStore).not.toHaveBeenCalled();
 

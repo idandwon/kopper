@@ -505,7 +505,24 @@ describe("Oxide Ledger App", () => {
     expect(
       screen.queryByRole("heading", { name: "Inbox" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText("No matching notes")).toBeVisible();
+    expect(screen.getByText("No notes match “missing”.")).toBeVisible();
+  });
+
+  it("directs active and completed empty states toward the next action", async () => {
+    const user = userEvent.setup();
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({ document: { ...document, notes: [] } }),
+    );
+    render(<App />);
+
+    expect(
+      screen.getByText(
+        "No active notes yet. Add a note below or capture text with your shortcut.",
+      ),
+    ).toBeVisible();
+
+    await user.click(screen.getByRole("button", { name: "Completed notes" }));
+    expect(screen.getByText("No completed notes yet.")).toBeVisible();
   });
 
   it("enters inline editing with Return and saves through note.edit", async () => {

@@ -232,10 +232,10 @@
 - Consumes: established panel surfaces and feedback patterns.
 - Produces: consistent secondary states at 380×640 and 340×480 without new domain behavior.
 
-- [ ] Add tests for active/completed/search empty states and minimum-size accessibility.
-- [ ] Align secondary surfaces without flattening their distinct error/recovery hierarchy.
-- [ ] Verify keyboard focus, VoiceOver labels, live regions, contrast, and reduced motion.
-- [ ] Run focused suites, typecheck, and commit.
+- [x] Add tests for active/completed/search empty states and minimum-size accessibility.
+- [x] Align secondary surfaces without flattening their distinct error/recovery hierarchy.
+- [x] Verify keyboard focus, VoiceOver labels, live regions, contrast, and reduced motion.
+- [x] Run focused suites, typecheck, and commit.
 
 ### Task 11: Demo and Visual Regression Gate
 

@@ -13,6 +13,7 @@ import {
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
 import { Button } from "../../components/ui/button";
+import { PanelShell } from "../panel/PanelShell";
 
 export type RecoveryApi = Pick<
   KopperApi,
@@ -22,6 +23,82 @@ export type RecoveryApi = Pick<
   | "exportRecoveryBytes"
   | "createNewStore"
 >;
+
+interface RecoveryOverviewProps {
+  activePath: string;
+  busy: boolean;
+  error: KopperError;
+  message: string | null;
+  chooseImport(): void;
+  createStore(): void;
+  exportDamaged(): void;
+}
+
+function RecoveryOverview({
+  activePath,
+  busy,
+  error,
+  message,
+  chooseImport,
+  createStore,
+  exportDamaged,
+}: RecoveryOverviewProps) {
+  return (
+    <div className="flex min-h-0 flex-1 items-center overflow-y-auto p-5 pl-6">
+      <section className="grid w-full gap-4 rounded-xl border border-destructive bg-card p-5">
+        <div>
+          <h1 className="m-0 text-lg font-semibold">
+            Kopper data needs recovery
+          </h1>
+          <p role="alert" className="mt-2 mb-0 text-sm">
+            {error.message}
+          </p>
+        </div>
+        <div className="grid gap-1 text-sm">
+          <span className="font-medium">Active data path</span>
+          <code className="break-all rounded bg-muted p-2 text-xs">
+            {activePath}
+          </code>
+          <p className="m-0 text-xs text-muted-foreground">
+            Kopper will not overwrite this damaged file automatically. Export it
+            unchanged before replacing it if you may need the original bytes.
+          </p>
+        </div>
+        <div className="grid gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            onClick={chooseImport}
+          >
+            Choose another file
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={busy}
+            onClick={exportDamaged}
+          >
+            Export damaged content
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={busy}
+            onClick={createStore}
+          >
+            Create new store
+          </Button>
+        </div>
+        {message === null ? null : (
+          <p role="status" className="m-0 text-sm">
+            {message}
+          </p>
+        )}
+      </section>
+    </div>
+  );
+}
 
 export function RecoveryScreen({
   error,
@@ -37,22 +114,27 @@ export function RecoveryScreen({
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    let active = true;
+    const lifecycle = new AbortController();
     void api.getDataPath().then((result) => {
-      if (active) setActivePath(result.ok ? result.value : "Active path unavailable");
+      if (lifecycle.signal.aborted) return;
+      setActivePath(result.ok ? result.value : "Active path unavailable");
     });
-    return () => {
-      active = false;
-    };
+    return () => lifecycle.abort();
   }, [api]);
 
   const chooseImport = async () => {
     setBusy(true);
     try {
       const result = await api.chooseDataImport();
-      if (!result.ok) setMessage(result.error.message);
-      else if (result.value === null) setMessage("Import cancelled.");
-      else setPreview(result.value);
+      if (!result.ok) {
+        setMessage(result.error.message);
+        return;
+      }
+      if (result.value === null) {
+        setMessage("Import cancelled.");
+        return;
+      }
+      setPreview(result.value);
     } finally {
       setBusy(false);
     }
@@ -75,12 +157,16 @@ export function RecoveryScreen({
     setBusy(true);
     try {
       const result = await api.exportRecoveryBytes();
+      if (!result.ok) {
+        setMessage(result.error.message);
+        return;
+      }
+      if (result.value.cancelled) {
+        setMessage("Damaged-content export cancelled.");
+        return;
+      }
       setMessage(
-        result.ok
-          ? result.value.cancelled
-            ? "Damaged-content export cancelled."
-            : `Exported ${result.value.fileName ?? "damaged content"} unchanged.`
-          : result.error.message,
+        `Exported ${result.value.fileName ?? "damaged content"} unchanged.`,
       );
     } finally {
       setBusy(false);
@@ -98,43 +184,32 @@ export function RecoveryScreen({
     }
   };
 
-  return (
-    <main className="mx-auto flex min-h-dvh w-full max-w-lg items-center p-6 text-foreground">
-      <section className="grid w-full gap-4 rounded-xl border border-destructive bg-card p-5">
-        <div>
-          <h1 className="m-0 text-lg font-semibold">Kopper data needs recovery</h1>
-          <p role="alert" className="mt-2 mb-0 text-sm">{error.message}</p>
-        </div>
-        <div className="grid gap-1 text-sm">
-          <span className="font-medium">Active data path</span>
-          <code className="break-all rounded bg-muted p-2 text-xs">{activePath}</code>
-          <p className="m-0 text-xs text-muted-foreground">
-            Kopper will not overwrite this damaged file automatically. Export it unchanged before replacing it if you may need the original bytes.
-          </p>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-3">
-          <Button type="button" variant="outline" disabled={busy} onClick={() => void chooseImport()}>
-            Choose another file
-          </Button>
-          <Button type="button" variant="outline" disabled={busy} onClick={() => void exportDamaged()}>
-            Export damaged content
-          </Button>
-          <Button type="button" variant="destructive" disabled={busy} onClick={() => setCreateOpen(true)}>
-            Create new store
-          </Button>
-        </div>
-        {message !== null && <p role="status" className="m-0 text-sm">{message}</p>}
-      </section>
+  const closeImportPreview = (open: boolean) => {
+    if (open) return;
+    setPreview(null);
+  };
+  const importDescription =
+    preview === null
+      ? "Review the selected recovery file."
+      : `${preview.fileName} contains ${preview.noteCount} notes and ${preview.sectionCount} sections. It will replace the active damaged store.`;
 
-      <AlertDialog open={preview !== null} onOpenChange={(open) => !open && setPreview(null)}>
+  return (
+    <PanelShell>
+      <RecoveryOverview
+        activePath={activePath}
+        busy={busy}
+        error={error}
+        message={message}
+        chooseImport={() => void chooseImport()}
+        createStore={() => setCreateOpen(true)}
+        exportDamaged={() => void exportDamaged()}
+      />
+
+      <AlertDialog open={preview !== null} onOpenChange={closeImportPreview}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Import this recovery file?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {preview === null
-                ? "Review the selected recovery file."
-                : `${preview.fileName} contains ${preview.noteCount} notes and ${preview.sectionCount} sections. It will replace the active damaged store.`}
-            </AlertDialogDescription>
+            <AlertDialogDescription>{importDescription}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -150,7 +225,8 @@ export function RecoveryScreen({
           <AlertDialogHeader>
             <AlertDialogTitle>Create a new empty store?</AlertDialogTitle>
             <AlertDialogDescription>
-              This explicitly replaces the damaged file at {activePath}. This action is not automatic.
+              This explicitly replaces the damaged file at {activePath}. This
+              action is not automatic.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -161,6 +237,6 @@ export function RecoveryScreen({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </main>
+    </PanelShell>
   );
 }

@@ -18,6 +18,28 @@ import {
   type SectionProjection,
 } from "../search/projectNotes";
 
+function EmptyNotesState({
+  query,
+  view,
+}: {
+  query: string;
+  view: NoteProjectionView;
+}) {
+  const normalizedQuery = query.trim();
+  const searching = normalizedQuery.length > 0;
+  const message = searching
+    ? `No notes match “${normalizedQuery}”.`
+    : view === "completed"
+      ? "No completed notes yet."
+      : "No active notes yet. Add a note below or capture text with your shortcut.";
+
+  return (
+    <p className="mx-auto max-w-64 py-8 text-center text-sm leading-6 text-muted-foreground">
+      {message}
+    </p>
+  );
+}
+
 interface ProjectedNotesProps {
   projections: SectionProjection[];
   displayedIds: string[];
@@ -137,6 +159,10 @@ export function NoteCollection({
     [displayedIds, fallbackFocusedId, selection],
   );
   const selectedCount = visibleSelection.selectedIds.length;
+  const visibleNoteCount = projections.reduce(
+    (count, projection) => count + projection.notes.length,
+    0,
+  );
 
   useEffect(() => {
     dispatchSelection({
@@ -183,10 +209,8 @@ export function NoteCollection({
           dispatchSelection={dispatchSelection}
           captureHighlightedNoteId={captureHighlightedNoteId}
         />
-        {projections.length === 0 ? (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            No matching notes
-          </p>
+        {visibleNoteCount === 0 ? (
+          <EmptyNotesState query={query} view={view} />
         ) : null}
       </div>
     </ScrollArea>

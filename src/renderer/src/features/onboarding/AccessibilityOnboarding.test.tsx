@@ -66,6 +66,10 @@ describe("AccessibilityOnboarding", () => {
     expect(
       screen.getByRole("button", { name: "Continue without capture" }),
     ).toBeVisible();
+    expect(screen.getByText("Lifecycle: captured to completed")).toBeVisible();
+    expect(
+      globalThis.document.querySelector("[data-panel-drag-region]"),
+    ).toHaveAttribute("aria-hidden", "true");
   });
 
   it("uses prompt only for Enable Capture and announces denial", async () => {

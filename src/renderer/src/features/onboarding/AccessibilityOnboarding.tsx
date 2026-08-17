@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import type { PermissionState } from "../../../../shared/permissions/permissionState";
 import { Button } from "../../components/ui/button";
+import { PanelShell } from "../panel/PanelShell";
 
 export interface AccessibilityOnboardingProps {
   permission: PermissionState | null;
@@ -67,11 +68,7 @@ export function AccessibilityOnboarding({
   const busy = pendingAction !== null;
 
   return (
-    <main className="relative mx-auto flex h-dvh w-full max-w-[380px] flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-background text-foreground">
-      <div
-        className="absolute inset-y-0 left-0 w-1 bg-[linear-gradient(to_bottom,var(--capture),var(--completed))]"
-        aria-hidden="true"
-      />
+    <PanelShell>
       <section
         className="flex flex-1 flex-col justify-center gap-5 px-6 py-8 pl-7"
         aria-labelledby="accessibility-heading"
@@ -172,6 +169,6 @@ export function AccessibilityOnboarding({
           </Button>
         </div>
       </section>
-    </main>
+    </PanelShell>
   );
 }
