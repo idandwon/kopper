@@ -80,6 +80,8 @@
 - Task 9: composer failure root cause confirmed as host keyboard leakage into the visible, intentionally focused real Electron textarea; temporary boundary instrumentation showed native input events absent from Playwright actions and correctly persisted as new draft text. Production behavior was correct.
 - Task 9: test isolation correction `2828fa4` hides the Electron app while Playwright drives renderer keyboard/DOM focus; exact journey passed 50/50, full unit/typecheck/15 E2E Pass, cleanup Pass; fresh scoped review approved with no findings.
 - Task 9: fresh exact-source gate complete at test/source commit `2828fa40f69478a11e5e99f61afe0fd046deeb7d` (tree `2fb3f0279134cc1ced9dadd27f62558435b23a01`); tested commit time `2026-08-17T18:12:33+03:00`.
+- Task 9: fix round 1/5 (2 evidence-record findings addressed, 0 open — current leading status plus complete post-commit verification; no source/tracked diff); scoped re-review clean.
+- Task 9: complete (source/test commit 2828fa4; evidence commit 2c9158a; milestone commit 972acd1; 69 files / 758 tests, 15 E2E, complete unsigned universal gate Pass; release Incomplete/Blocked).
 
 ## Final commit inventory
 
