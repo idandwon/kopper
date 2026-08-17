@@ -3,11 +3,19 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogTitle,
+} from "./alert-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./dialog";
 import { Label } from "./label";
 import { RadioGroup, RadioGroupItem } from "./radio-group";
-import { ScrollArea } from "./scroll-area";
+import { ScrollArea, ScrollBar } from "./scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./select";
 import { Separator } from "./separator";
 import { Textarea } from "./textarea";
 import { Toast, ToastDescription, ToastProvider, ToastTitle, ToastViewport } from "./toast";
@@ -31,7 +39,10 @@ function ToggleHarness() {
   );
 }
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe("shared UI primitives", () => {
   it("exposes a single selected lifecycle value", async () => {
@@ -168,5 +179,85 @@ describe("shared UI primitives", () => {
     expect(
       container.querySelector('[data-orientation="horizontal"]'),
     ).not.toBeInTheDocument();
+  });
+
+  it("keeps bounded dialog surfaces vertically scrollable", () => {
+    const dialogRender = render(
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>Theme preview</DialogTitle>
+          <DialogDescription>Preview both theme modes.</DialogDescription>
+        </DialogContent>
+      </Dialog>,
+    );
+
+    expect(screen.getByRole("dialog", { name: "Theme preview" })).toHaveClass(
+      "overflow-y-auto",
+      "overflow-x-hidden",
+    );
+    dialogRender.unmount();
+
+    render(
+      <AlertDialog open>
+        <AlertDialogContent>
+          <AlertDialogTitle>Delete note</AlertDialogTitle>
+          <AlertDialogDescription>This cannot be undone.</AlertDialogDescription>
+        </AlertDialogContent>
+      </AlertDialog>,
+    );
+
+    expect(screen.getByRole("alertdialog", { name: "Delete note" })).toHaveClass(
+      "overflow-y-auto",
+      "overflow-x-hidden",
+    );
+  });
+
+  it("allows select content width to clamp below a wide trigger", () => {
+    render(
+      <Select open defaultValue="compact">
+        <SelectTrigger aria-label="Density">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="compact">Compact</SelectItem>
+        </SelectContent>
+      </Select>,
+    );
+
+    expect(screen.getByRole("listbox")).toHaveClass(
+      "w-[var(--radix-select-trigger-width)]",
+      "min-w-0",
+      "max-w-[calc(100vw-2rem)]",
+    );
+  });
+
+  it("does not duplicate an explicitly supplied vertical scroll bar", () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+
+    const { container } = render(
+      <ScrollArea type="always" className="h-20 w-20">
+        <div>Scrollable content</div>
+        <ScrollBar />
+        <ScrollBar orientation="horizontal" />
+      </ScrollArea>,
+    );
+
+    expect(
+      container.querySelectorAll(
+        '[data-slot="scroll-area-scrollbar"][data-orientation="vertical"]',
+      ),
+    ).toHaveLength(1);
+    expect(
+      container.querySelectorAll(
+        '[data-slot="scroll-area-scrollbar"][data-orientation="horizontal"]',
+      ),
+    ).toHaveLength(1);
   });
 });

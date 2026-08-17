@@ -10,10 +10,17 @@ function ScrollArea({
 }: React.ComponentProps<typeof ScrollAreaPrimitive.Root>) {
   const contentChildren: React.ReactNode[] = []
   const explicitScrollBars: React.ReactNode[] = []
+  let hasExplicitVerticalScrollBar = false
 
   React.Children.forEach(children, (child) => {
-    if (React.isValidElement(child) && child.type === ScrollBar) {
+    if (
+      React.isValidElement<React.ComponentProps<typeof ScrollBar>>(child) &&
+      child.type === ScrollBar
+    ) {
       explicitScrollBars.push(child)
+      if (child.props.orientation !== "horizontal") {
+        hasExplicitVerticalScrollBar = true
+      }
     } else {
       contentChildren.push(child)
     }
@@ -31,7 +38,7 @@ function ScrollArea({
       >
         {contentChildren}
       </ScrollAreaPrimitive.Viewport>
-      <ScrollBar />
+      {!hasExplicitVerticalScrollBar && <ScrollBar />}
       {explicitScrollBars}
       <ScrollAreaPrimitive.Corner />
     </ScrollAreaPrimitive.Root>

@@ -17,7 +17,7 @@ function SelectTrigger({ className, children, ...props }: React.ComponentProps<t
 function SelectContent({ className, children, position = "popper", collisionPadding = 16, ...props }: React.ComponentProps<typeof SelectPrimitive.Content>) {
   return (
     <SelectPrimitive.Portal>
-      <SelectPrimitive.Content position={position} collisionPadding={collisionPadding} className={cn("z-[70] max-h-[calc(100dvh-2rem)] min-w-[var(--radix-select-trigger-width)] max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-md", className)} {...props}>
+      <SelectPrimitive.Content position={position} collisionPadding={collisionPadding} className={cn("z-[70] max-h-[calc(100dvh-2rem)] w-[var(--radix-select-trigger-width)] min-w-0 max-w-[calc(100vw-2rem)] overflow-hidden rounded-md border border-border bg-popover text-popover-foreground shadow-md", className)} {...props}>
         <SelectPrimitive.Viewport className="p-1">{children}</SelectPrimitive.Viewport>
       </SelectPrimitive.Content>
     </SelectPrimitive.Portal>
