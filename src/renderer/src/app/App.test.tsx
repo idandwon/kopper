@@ -244,7 +244,8 @@ describe("Oxide Ledger App", () => {
     expect(onboardingMock.mounts).toBe(0);
   });
 
-  it("renders the interactive active panel and lifecycle rail", () => {
+  it("renders the interactive active panel and lifecycle rail", async () => {
+    const user = userEvent.setup();
     render(<App />);
 
     expect(
@@ -261,7 +262,7 @@ describe("Oxide Ledger App", () => {
     expect(activeView).toHaveAttribute("data-slot", "toggle-group-item");
     expect(activeView).toHaveAttribute("aria-pressed", "true");
     expect(completedView).toHaveAttribute("aria-pressed", "false");
-    fireEvent.click(activeView);
+    await user.click(activeView);
     expect(activeView).toHaveAttribute("aria-pressed", "true");
     expect(completedView).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByRole("heading", { name: "Inbox" })).toBeVisible();
@@ -270,6 +271,12 @@ describe("Oxide Ledger App", () => {
     expect(
       screen.getByRole("textbox", { name: "Add a note or prompt" }),
     ).toBeEnabled();
+
+    await user.click(completedView);
+    expect(activeView).toHaveAttribute("aria-pressed", "false");
+    expect(completedView).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByText("Captured note")).not.toBeInTheDocument();
+    expect(screen.getByText("Completed note")).toBeVisible();
     expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Add section" }),

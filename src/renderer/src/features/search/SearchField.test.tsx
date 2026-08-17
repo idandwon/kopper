@@ -15,6 +15,14 @@ function ControlledSearch() {
 }
 
 describe("SearchField", () => {
+  it("allows its outer seam to shrink beside adjacent panel controls", () => {
+    render(<SearchField query="" onQueryChange={vi.fn()} />);
+
+    expect(
+      screen.getByRole("searchbox", { name: "Search notes" }).parentElement,
+    ).toHaveClass("min-w-0", "w-full");
+  });
+
   it("clears a non-empty query on Escape before dismissing focus", async () => {
     const user = userEvent.setup();
     render(<ControlledSearch />);
