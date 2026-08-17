@@ -1,7 +1,7 @@
 /// <reference types="node" />
 
 import { Buffer } from "node:buffer";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -243,6 +243,31 @@ describe("source security auditor", () => {
       "unrestricted_external_open",
     ],
     [
+      "destructuring assignment from Electron shell",
+      'import { shell } from "electron"; let open; ({ openExternal: open } = shell); open(target);',
+      "unrestricted_external_open",
+    ],
+    [
+      "computed destructuring assignment from Electron shell",
+      'import { shell } from "electron"; let open; ({ ["openExternal"]: open } = shell); open(target);',
+      "unrestricted_external_open",
+    ],
+    [
+      "concatenated destructuring assignment from Electron shell",
+      'import { shell } from "electron"; let open; ({ ["open" + "External"]: open } = shell); open(target);',
+      "unrestricted_external_open",
+    ],
+    [
+      "unknown computed destructuring assignment from Electron shell",
+      'import { shell } from "electron"; const method = chooseMethod(); let open; ({ [method]: open } = shell); open(target);',
+      "unrestricted_external_open",
+    ],
+    [
+      "destructuring assignment from an Electron shell alias",
+      'import { shell } from "electron"; const electronShell = shell; let open; ({ openExternal: open } = electronShell); open(target);',
+      "unrestricted_external_open",
+    ],
+    [
       "aliased external open",
       'import { shell } from "electron"; const open = shell.openExternal; open(target);',
       "unrestricted_external_open",
@@ -284,6 +309,10 @@ describe("source security auditor", () => {
     [
       "unknown unrelated computed access",
       "const method = chooseMethod(); theme[method](value);",
+    ],
+    [
+      "unrelated object destructuring assignment",
+      "const theme = loadTheme(); let open; ({ openExternal: open } = theme); open(target);",
     ],
   ])("allows %s that are not executable findings", async (_name, source) => {
     const root = await createSourceFixture({ "src/main/safe.ts": source });
@@ -454,6 +483,39 @@ describe("source security auditor", () => {
     });
   });
 
+  it("rejects a symlinked permission declaration outside the canonical source root", async () => {
+    const root = await createSourceFixture({
+      "src/main/index.ts": [
+        'import { shell } from "electron";',
+        'import { ACCESSIBILITY_SETTINGS_URL } from "./permissions/permissionManager";',
+        "shell.openExternal(ACCESSIBILITY_SETTINGS_URL);",
+      ].join("\n"),
+    });
+    const externalRoot = await mkdtemp(
+      join(tmpdir(), "kopper-source-audit-external-"),
+    );
+    temporaryDirectories.push(externalRoot);
+    const externalPermissionModule = join(externalRoot, "permissionManager.ts");
+    await writeFile(
+      externalPermissionModule,
+      'export const ACCESSIBILITY_SETTINGS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";',
+      "utf8",
+    );
+    const permissionDirectory = join(root, "src/main/permissions");
+    await mkdir(permissionDirectory, { recursive: true });
+    await symlink(
+      externalPermissionModule,
+      join(permissionDirectory, "permissionManager.ts"),
+    );
+
+    const result = await verifySource(root);
+
+    expect(result.failures).toContainEqual({
+      file: "src/main/index.ts",
+      rule: "unrestricted_external_open",
+    });
+  });
+
   it("rejects a local alias of the reviewed imported constant", async () => {
     const root = await createSourceFixture({
       "src/main/index.ts": [
@@ -534,6 +596,34 @@ describe("source security auditor", () => {
       "dynamic spread in a webPreferences object",
       "const dynamic = loadPreferences(); const options = { webPreferences: { ...dynamic } };",
     ],
+    [
+      "unknown key in shorthand webPreferences",
+      "const key = chooseKey(); const webPreferences = { [key]: false }; const options = { webPreferences }; void options;",
+    ],
+    [
+      "dynamic spread in shorthand webPreferences",
+      "const dynamic = loadPreferences(); const webPreferences = { ...dynamic }; const options = { webPreferences }; void options;",
+    ],
+    [
+      "unknown nested property receiver key",
+      "const key = chooseKey(); const options = { webPreferences: {} }; options.webPreferences[key] = false;",
+    ],
+    [
+      "unknown nested element receiver key",
+      'const key = chooseKey(); const options = { webPreferences: {} }; options["webPreferences"][key] = false;',
+    ],
+    [
+      "unknown key after webPreferences assignment",
+      "const key = chooseKey(); const preferences = {}; const options = {}; options.webPreferences = preferences; preferences[key] = false;",
+    ],
+    [
+      "unknown key through a resolved webPreferences alias chain",
+      "const key = chooseKey(); const preferences = {}; const first = preferences; const second = first; const options = { webPreferences: second }; preferences[key] = false; void options;",
+    ],
+    [
+      "unknown key through a resolved webPreferences property-name alias",
+      'const key = chooseKey(); const preferenceName = "web" + "Preferences"; const preferences = {}; const options = { [preferenceName]: preferences }; preferences[key] = false; void options;',
+    ],
   ])("rejects %s", async (_name, source) => {
     const root = await createSourceFixture({ "src/main/unsafe.ts": source });
 
@@ -552,7 +642,9 @@ describe("source security auditor", () => {
         'const two = { ["nodeIntegration"]: false, [`contextIsolation`]: true };',
         "const preferences = {}; preferences.nodeIntegration = false; preferences.contextIsolation = true; preferences.webSecurity = true;",
         "const defaults = { nodeIntegration: false }; const options = { webPreferences: { ...defaults, contextIsolation: true } };",
-        "void one; void two; void options;",
+        "const webPreferences = { nodeIntegration: false, contextIsolation: true, webSecurity: true }; const shorthand = { webPreferences };",
+        'options.webPreferences["nodeIntegration"] = false; options["webPreferences"].contextIsolation = true;',
+        "void one; void two; void options; void shorthand;",
       ].join("\n"),
     });
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { execFile as execFileCallback } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { access, readdir } from "node:fs/promises";
 import { basename, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
@@ -467,6 +468,14 @@ function isExportedConstVariable(declaration) {
   );
 }
 
+function canonicalPath(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
 function reviewedAccessibilityBinding(symbol, checker, absoluteRoot) {
   if (
     !importedBinding(
@@ -490,7 +499,7 @@ function reviewedAccessibilityBinding(symbol, checker, absoluteRoot) {
     !isExportedConstVariable(declaration) ||
     !ts.isIdentifier(declaration.name) ||
     declaration.name.text !== "ACCESSIBILITY_SETTINGS_URL" ||
-    resolve(declaration.getSourceFile().fileName) !==
+    canonicalPath(declaration.getSourceFile().fileName) !==
       join(absoluteRoot, ACCESSIBILITY_SETTINGS_MODULE)
   ) {
     return false;
@@ -551,6 +560,20 @@ function moduleReference(node, checker) {
   return staticString(node.arguments[0], checker);
 }
 
+function expressionSymbol(expression, checker) {
+  if (
+    ts.isIdentifier(expression) &&
+    ts.isShorthandPropertyAssignment(expression.parent) &&
+    expression.parent.name === expression
+  ) {
+    return (
+      checker.getShorthandAssignmentValueSymbol(expression.parent) ??
+      checker.getSymbolAtLocation(expression)
+    );
+  }
+  return checker.getSymbolAtLocation(expression);
+}
+
 function resolveObjectLiteral(expression, checker, seenSymbols = new Set()) {
   if (ts.isObjectLiteralExpression(expression)) return expression;
   const unwrapped = typeOnlyWrappedExpression(expression);
@@ -558,7 +581,7 @@ function resolveObjectLiteral(expression, checker, seenSymbols = new Set()) {
     return resolveObjectLiteral(unwrapped, checker, seenSymbols);
   }
   if (!ts.isIdentifier(expression)) return undefined;
-  const symbol = checker.getSymbolAtLocation(expression);
+  const symbol = expressionSymbol(expression, checker);
   if (symbol === undefined || seenSymbols.has(symbol.id)) return undefined;
   const initializer = constVariableInitializer(symbol);
   if (initializer === undefined) return undefined;
@@ -638,41 +661,38 @@ function inspectApplicationSource(
 ) {
   const rules = new Set();
   const webPreferenceSymbols = new Set();
+  const webPreferenceObjects = new Set();
+  const preferenceAliasEdges = [];
+
+  const expressionProperty = (expression) => {
+    const unwrapped = typeOnlyWrappedExpression(expression);
+    if (unwrapped !== undefined) return expressionProperty(unwrapped);
+    return assignedProperty(expression, checker);
+  };
 
   const collectPreferenceExpression = (expression, seenSymbols = new Set()) => {
     const unwrapped = typeOnlyWrappedExpression(expression);
     if (unwrapped !== undefined) {
-      collectPreferenceExpression(unwrapped, seenSymbols);
-      return;
+      return collectPreferenceExpression(unwrapped, seenSymbols);
     }
-    if (!ts.isIdentifier(expression)) return;
-    const symbol = checker.getSymbolAtLocation(expression);
-    if (symbol === undefined || seenSymbols.has(symbol.id)) return;
+    if (ts.isObjectLiteralExpression(expression)) {
+      const size = webPreferenceObjects.size;
+      webPreferenceObjects.add(expression);
+      return webPreferenceObjects.size !== size;
+    }
+    if (!ts.isIdentifier(expression)) return false;
+    const symbol = expressionSymbol(expression, checker);
+    if (symbol === undefined || seenSymbols.has(symbol.id)) return false;
+    const size = webPreferenceSymbols.size;
     webPreferenceSymbols.add(symbol.id);
     const initializer = constVariableInitializer(symbol);
-    if (initializer === undefined) return;
-    const nextSeen = new Set(seenSymbols);
-    nextSeen.add(symbol.id);
-    collectPreferenceExpression(initializer, nextSeen);
-  };
-
-  const collectWebPreferenceContexts = (node) => {
-    if (ts.isPropertyAssignment(node)) {
-      if (propertyNameText(node.name, checker) === "webPreferences") {
-        collectPreferenceExpression(node.initializer);
-      }
-    } else if (
-      ts.isBinaryExpression(node) &&
-      isAssignmentOperator(node.operatorToken.kind)
-    ) {
-      const assignment = assignedProperty(node.left, checker);
-      if (assignment?.name === "webPreferences") {
-        collectPreferenceExpression(node.right);
-      }
+    if (initializer !== undefined) {
+      const nextSeen = new Set(seenSymbols);
+      nextSeen.add(symbol.id);
+      collectPreferenceExpression(initializer, nextSeen);
     }
-    node.forEachChild(collectWebPreferenceContexts);
+    return webPreferenceSymbols.size !== size;
   };
-  collectWebPreferenceContexts(sourceFile);
 
   const isKnownWebPreferenceReceiver = (
     expression,
@@ -682,8 +702,13 @@ function inspectApplicationSource(
     if (unwrapped !== undefined) {
       return isKnownWebPreferenceReceiver(unwrapped, seenSymbols);
     }
+    if (ts.isObjectLiteralExpression(expression)) {
+      return webPreferenceObjects.has(expression);
+    }
+    const property = expressionProperty(expression);
+    if (property?.name === "webPreferences") return true;
     if (!ts.isIdentifier(expression)) return false;
-    const symbol = checker.getSymbolAtLocation(expression);
+    const symbol = expressionSymbol(expression, checker);
     if (symbol === undefined) return false;
     if (webPreferenceSymbols.has(symbol.id)) return true;
     if (seenSymbols.has(symbol.id)) return false;
@@ -693,6 +718,46 @@ function inspectApplicationSource(
     nextSeen.add(symbol.id);
     return isKnownWebPreferenceReceiver(initializer, nextSeen);
   };
+
+  const collectWebPreferenceContexts = (node) => {
+    if (
+      (ts.isPropertyAssignment(node) ||
+        ts.isShorthandPropertyAssignment(node)) &&
+      propertyNameText(node.name, checker) === "webPreferences"
+    ) {
+      collectPreferenceExpression(
+        ts.isPropertyAssignment(node) ? node.initializer : node.name,
+      );
+    }
+
+    if (ts.isVariableDeclaration(node) && node.initializer) {
+      preferenceAliasEdges.push([node.name, node.initializer]);
+    } else if (
+      ts.isBinaryExpression(node) &&
+      node.operatorToken.kind === ts.SyntaxKind.EqualsToken
+    ) {
+      const assignment = assignedProperty(node.left, checker);
+      if (assignment?.name === "webPreferences") {
+        collectPreferenceExpression(node.right);
+      }
+      preferenceAliasEdges.push([node.left, node.right]);
+    }
+    node.forEachChild(collectWebPreferenceContexts);
+  };
+  collectWebPreferenceContexts(sourceFile);
+
+  let changed;
+  do {
+    changed = false;
+    for (const [left, right] of preferenceAliasEdges) {
+      if (isKnownWebPreferenceReceiver(left)) {
+        changed = collectPreferenceExpression(right) || changed;
+      }
+      if (isKnownWebPreferenceReceiver(right)) {
+        changed = collectPreferenceExpression(left) || changed;
+      }
+    }
+  } while (changed);
 
   const visit = (node) => {
     const importedModule = moduleReference(node, checker);
@@ -706,25 +771,53 @@ function inspectApplicationSource(
 
     if (
       ts.isObjectLiteralExpression(node) &&
-      hasUnsafeWebPreference(node, checker, false)
+      hasUnsafeWebPreference(
+        node,
+        checker,
+        webPreferenceObjects.has(node),
+      )
     ) {
       rules.add("insecure_web_preference");
     }
 
-    if (ts.isPropertyAssignment(node)) {
-      if (propertyNameText(node.name, checker) === "webPreferences") {
-        const preferences = resolveObjectLiteral(node.initializer, checker);
-        if (
-          preferences === undefined ||
-          hasUnsafeWebPreference(preferences, checker, true)
-        ) {
-          rules.add("insecure_web_preference");
-        }
+    if (
+      (ts.isPropertyAssignment(node) ||
+        ts.isShorthandPropertyAssignment(node)) &&
+      propertyNameText(node.name, checker) === "webPreferences"
+    ) {
+      const expression = ts.isPropertyAssignment(node)
+        ? node.initializer
+        : node.name;
+      const preferences = resolveObjectLiteral(expression, checker);
+      if (
+        preferences === undefined ||
+        hasUnsafeWebPreference(preferences, checker, true)
+      ) {
+        rules.add("insecure_web_preference");
       }
     } else if (
       ts.isBinaryExpression(node) &&
       isAssignmentOperator(node.operatorToken.kind)
     ) {
+      if (
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isObjectLiteralExpression(node.left) &&
+        expressionResolvesToImportedBinding(
+          node.right,
+          checker,
+          "shell",
+          "electron",
+        )
+      ) {
+        for (const property of node.left.properties) {
+          if (!property.name) continue;
+          const name = propertyNameText(property.name, checker);
+          if (name === undefined || name === "openExternal") {
+            rules.add("unrestricted_external_open");
+          }
+        }
+      }
+
       const assignment = assignedProperty(node.left, checker);
       if (assignment !== undefined) {
         const expected = SECURE_WEB_PREFERENCES.get(assignment.name);
@@ -815,7 +908,7 @@ function applicationSourcePath(path) {
 }
 
 export async function verifySource(root = process.cwd()) {
-  const absoluteRoot = resolve(root);
+  const absoluteRoot = canonicalPath(root);
   const sourceRoot = join(absoluteRoot, "src");
   const files = await findFiles(sourceRoot, (_name, path) =>
     applicationSourcePath(path),
