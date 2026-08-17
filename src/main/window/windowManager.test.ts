@@ -236,6 +236,24 @@ describe("WindowManager", () => {
     expect(quittingPreventDefault).not.toHaveBeenCalled();
   });
 
+  it("centers the fixed capture HUD in the active work area without a main window", () => {
+    const manager = new WindowManager();
+
+    manager.showCaptureOutcome({ status: "empty" });
+
+    const hudWindow = electron.FakeWindow.instances[0];
+    expect(hudWindow).toBeDefined();
+    if (hudWindow === undefined) return;
+    expect(hudWindow.options).toMatchObject({
+      x: 550,
+      y: 780,
+      width: 340,
+      height: 72,
+    });
+    expect(hudWindow.options.x + hudWindow.options.width / 2).toBe(1440 / 2);
+    expect(900 - (hudWindow.options.y + hudWindow.options.height)).toBe(48);
+  });
+
   it("anchors a scrollbar-free capture HUD to the hidden panel bounds", () => {
     const manager = new WindowManager();
     manager.createMainWindow();

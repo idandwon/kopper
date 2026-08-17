@@ -65,7 +65,7 @@ export function CaptureToast({
       role="status"
       aria-live="polite"
       aria-atomic="true"
-      className="pointer-events-none fixed right-4 bottom-5 z-50 rounded-full border border-foreground bg-foreground px-3 py-2 text-sm font-medium text-background shadow-lg motion-safe:animate-[capture-toast_180ms_ease-out] motion-reduce:animate-[capture-toast-reduced_180ms_ease-out]"
+      className="pointer-events-none fixed right-4 bottom-2 z-50 box-border max-h-[calc(100%-1rem)] max-w-[calc(100%-2rem)] overflow-hidden rounded-full border border-foreground bg-foreground px-3 py-2 text-center text-sm leading-tight font-medium whitespace-normal break-words text-background shadow-lg motion-safe:animate-[capture-toast_180ms_ease-out] motion-reduce:animate-[capture-toast-reduced_180ms_ease-out]"
     >
       {copyFor(outcome)}
     </div>

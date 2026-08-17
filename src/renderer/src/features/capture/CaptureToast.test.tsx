@@ -60,6 +60,49 @@ describe("CaptureToast", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("contains long failure copy inside the detached HUD without focus or interaction", () => {
+    render(
+      <>
+        <button type="button">Existing focus</button>
+        <CaptureToast />
+      </>,
+    );
+    const existingFocus = screen.getByRole("button", {
+      name: "Existing focus",
+    });
+    existingFocus.focus();
+
+    outcome({
+      status: "failed",
+      error: {
+        code: "capture_failed",
+        message: "ignored",
+        retryable: true,
+      },
+    });
+
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Kopper could not capture the selection.");
+    expect(status).toHaveClass(
+      "pointer-events-none",
+      "fixed",
+      "bottom-2",
+      "box-border",
+      "max-h-[calc(100%-1rem)]",
+      "max-w-[calc(100%-2rem)]",
+      "overflow-hidden",
+      "whitespace-normal",
+      "break-words",
+      "text-center",
+      "leading-tight",
+    );
+    expect(status).not.toHaveAttribute("tabindex");
+    expect(status.querySelectorAll("button, a, input, [tabindex]")).toHaveLength(
+      0,
+    );
+    expect(existingFocus).toHaveFocus();
+  });
+
   it("dismisses after exactly 1800ms and new outcomes replace/reset the one timer", () => {
     render(<CaptureToast />);
     outcome({ status: "empty" });

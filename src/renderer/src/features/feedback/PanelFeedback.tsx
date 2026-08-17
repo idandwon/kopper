@@ -20,6 +20,7 @@ import {
 const FEEDBACK_DURATION_MS = 1_800;
 
 interface FeedbackNotice {
+  id: number;
   message: string;
   tone: "status" | "error";
 }
@@ -42,6 +43,7 @@ export function usePanelFeedback(): PanelFeedbackValue {
 
 export function PanelFeedbackProvider({ children }: { children: ReactNode }) {
   const [notice, setNotice] = useState<FeedbackNotice | null>(null);
+  const noticeIdRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearNoticeTimer = useCallback(() => {
@@ -53,7 +55,8 @@ export function PanelFeedbackProvider({ children }: { children: ReactNode }) {
   const reportNotice = useCallback(
     (message: string, tone: "status" | "error" = "status") => {
       clearNoticeTimer();
-      setNotice({ message, tone });
+      noticeIdRef.current += 1;
+      setNotice({ id: noticeIdRef.current, message, tone });
       timerRef.current = setTimeout(() => {
         timerRef.current = null;
         setNotice(null);
@@ -106,11 +109,12 @@ export function PanelFeedbackProvider({ children }: { children: ReactNode }) {
         {children}
         {notice === null ? null : (
           <Toast
+            key={notice.id}
             open
             duration={Infinity}
             type={errorNotice ? "foreground" : "background"}
             role={errorNotice ? "alert" : "status"}
-            aria-live={errorNotice ? "assertive" : "polite"}
+            aria-live="off"
             aria-atomic="true"
             className={errorNotice ? "border-destructive" : undefined}
             onOpenChange={(open) => {

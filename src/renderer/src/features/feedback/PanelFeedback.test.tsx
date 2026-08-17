@@ -1,6 +1,13 @@
 import "@testing-library/jest-dom/vitest";
 
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PanelFeedbackProvider, usePanelFeedback } from "./PanelFeedback";
@@ -63,8 +70,29 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+function activeLiveRegions(): HTMLElement[] {
+  return Array.from(
+    document.querySelectorAll<HTMLElement>(
+      '[aria-live]:not([aria-live="off"]), [role="status"]:not([aria-live="off"]), [role="alert"]:not([aria-live="off"])',
+    ),
+  );
+}
+
+async function expectOneRadixAnnouncement(
+  message: string,
+  urgency: "polite" | "assertive",
+): Promise<void> {
+  await waitFor(() => {
+    const regions = activeLiveRegions();
+    expect(regions).toHaveLength(1);
+    expect(regions[0]).toHaveAttribute("role", "status");
+    expect(regions[0]).toHaveAttribute("aria-live", urgency);
+    expect(regions[0]).toHaveTextContent(message);
+  });
+}
+
 describe("panel feedback", () => {
-  it("shows clipboard success in one polite visible toast", () => {
+  it("shows clipboard success visibly while Radix owns one polite announcement", async () => {
     render(
       <PanelFeedbackProvider>
         <FeedbackHarness />
@@ -77,12 +105,13 @@ describe("panel feedback", () => {
     const singularStatus = document.querySelector('[data-slot="toast"]');
     expect(singularStatus).toHaveTextContent("Copied note.");
     expect(singularStatus).toHaveAttribute("role", "status");
-    expect(singularStatus).toHaveAttribute("aria-live", "polite");
+    expect(singularStatus).toHaveAttribute("aria-live", "off");
     expect(singularStatus).toBeVisible();
     expect(document.querySelectorAll('[data-slot="toast"]')).toHaveLength(1);
     expect(
       document.querySelectorAll('[data-slot="toast-viewport"]'),
     ).toHaveLength(1);
+    await expectOneRadixAnnouncement("Copied note.", "polite");
 
     fireEvent.click(
       screen.getByRole("button", { name: "Report plural success" }),
@@ -91,6 +120,7 @@ describe("panel feedback", () => {
       "Copied 2 notes.",
     );
     expect(document.querySelectorAll('[data-slot="toast"]')).toHaveLength(1);
+    await expectOneRadixAnnouncement("Copied 2 notes.", "polite");
   });
 
   it("replaces a notice and resets the one 1800ms timer", () => {
@@ -128,7 +158,7 @@ describe("panel feedback", () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it("shows structured and unexpected clipboard failures as alerts", () => {
+  it("shows failures visibly while Radix owns one assertive announcement", async () => {
     const view = render(
       <PanelFeedbackProvider>
         <FeedbackHarness />
@@ -138,14 +168,19 @@ describe("panel feedback", () => {
     fireEvent.click(screen.getByRole("button", { name: "Report failure" }));
     const alert = screen.getByRole("alert");
     expect(alert).toHaveTextContent("Clipboard is unavailable.");
-    expect(alert).toHaveAttribute("aria-live", "assertive");
+    expect(alert).toHaveAttribute("aria-live", "off");
     expect(alert).toBeVisible();
+    await expectOneRadixAnnouncement("Clipboard is unavailable.", "assertive");
 
     fireEvent.click(
       screen.getByRole("button", { name: "Report unavailable bridge" }),
     );
     expect(screen.getByRole("alert")).toHaveTextContent(
       "The selected notes could not be copied.",
+    );
+    await expectOneRadixAnnouncement(
+      "The selected notes could not be copied.",
+      "assertive",
     );
     view.unmount();
   });
