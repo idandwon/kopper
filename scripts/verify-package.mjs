@@ -837,18 +837,54 @@ function inspectApplicationSource(
     }
   };
 
-  const isInsideClassMethod = (node) => {
+  const hasStaticModifier = (node) =>
+    node.modifiers?.some(
+      (modifier) => modifier.kind === ts.SyntaxKind.StaticKeyword,
+    ) === true;
+
+  const thisBelongsToClassInstance = (node) => {
+    let child = node;
     let current = node.parent;
     while (current !== undefined) {
-      if (ts.isMethodDeclaration(current)) {
-        return (
-          ts.isClassDeclaration(current.parent) ||
-          ts.isClassExpression(current.parent)
-        );
+      if (ts.isArrowFunction(current)) {
+        child = current;
+        current = current.parent;
+        continue;
       }
-      if (ts.isClassDeclaration(current) || ts.isClassExpression(current)) {
+      if (
+        ts.isFunctionDeclaration(current) ||
+        ts.isFunctionExpression(current)
+      ) {
         return false;
       }
+      if (
+        ts.isMethodDeclaration(current) ||
+        ts.isConstructorDeclaration(current) ||
+        ts.isGetAccessorDeclaration(current) ||
+        ts.isSetAccessorDeclaration(current)
+      ) {
+        return (
+          (ts.isClassDeclaration(current.parent) ||
+            ts.isClassExpression(current.parent)) &&
+          !hasStaticModifier(current)
+        );
+      }
+      if (ts.isPropertyDeclaration(current)) {
+        return (
+          current.initializer === child &&
+          (ts.isClassDeclaration(current.parent) ||
+            ts.isClassExpression(current.parent)) &&
+          !hasStaticModifier(current)
+        );
+      }
+      if (
+        ts.isClassStaticBlockDeclaration(current) ||
+        ts.isClassDeclaration(current) ||
+        ts.isClassExpression(current)
+      ) {
+        return false;
+      }
+      child = current;
       current = current.parent;
     }
     return false;
@@ -1026,7 +1062,7 @@ function inspectApplicationSource(
     ) {
       if (
         expressionIsThisProperty(node.left) &&
-        isInsideClassMethod(node) &&
+        thisBelongsToClassInstance(node) &&
         isKnownWebPreferenceReceiver(node.right)
       ) {
         rules.add("insecure_web_preference");

@@ -681,16 +681,36 @@ describe("source security auditor", () => {
 
   it.each([
     [
-      "a wrapped property alias",
+      "a wrapped property alias in an ordinary method",
       "class Holder { preferences: Record<string, unknown> = {}; attach(options: { webPreferences: Record<string, unknown> }) { const candidate = (options.webPreferences as Record<string, unknown>); this.preferences = (candidate); } } void Holder;",
     ],
     [
-      "a webPreferences parameter alias",
+      "a webPreferences parameter alias in an ordinary method",
       "class Holder { preferences: Record<string, unknown> = {}; attach(webPreferences: Record<string, unknown>) { const candidate = webPreferences; this.preferences = (candidate satisfies Record<string, unknown>); } } void Holder;",
     ],
     [
-      "known preference provenance",
+      "known preference provenance in an ordinary method",
       "const preferences = {}; const options = { webPreferences: preferences }; class Holder { preferences: Record<string, unknown> = {}; attach() { this.preferences = preferences; } } void options; void Holder;",
+    ],
+    [
+      "a constructor",
+      "class Holder { preferences: Record<string, unknown> = {}; constructor(options: { webPreferences: Record<string, unknown> }) { this.preferences = options.webPreferences; } } void Holder;",
+    ],
+    [
+      "a getter",
+      "const preferences = {}; const options = { webPreferences: preferences }; class Holder { preferences: Record<string, unknown> = {}; get stored() { this.preferences = preferences; return this.preferences; } } void options; void Holder;",
+    ],
+    [
+      "a setter",
+      "class Holder { preferences: Record<string, unknown> = {}; set stored(webPreferences: Record<string, unknown>) { this.preferences = webPreferences; } } void Holder;",
+    ],
+    [
+      "a class-field arrow",
+      "class Holder { preferences: Record<string, unknown> = {}; attach = (options: { webPreferences: Record<string, unknown> }) => { this.preferences = options.webPreferences; }; } void Holder;",
+    ],
+    [
+      "a nested arrow in a method",
+      "class Holder { preferences: Record<string, unknown> = {}; attach(options: { webPreferences: Record<string, unknown> }) { const copy = () => { this.preferences = options.webPreferences; }; void copy; } } void Holder;",
     ],
   ])(
     "rejects class this-property ingress from %s without invocation or a later sink",
@@ -705,6 +725,32 @@ describe("source security auditor", () => {
       });
     },
   );
+
+  it.each([
+    [
+      "a nested regular function with its own this inside a class method",
+      "class Holder { preferences: Record<string, unknown> = {}; attach() { function copy(this: { preferences: Record<string, unknown> }, webPreferences: Record<string, unknown>) { this.preferences = webPreferences; } void copy; } } void Holder;",
+    ],
+    [
+      "a static method whose this is the class constructor",
+      "class Holder { static preferences: Record<string, unknown> = {}; static attach(webPreferences: Record<string, unknown>) { this.preferences = webPreferences; } } void Holder;",
+    ],
+    [
+      "a static field arrow whose this is the class constructor",
+      "class Holder { static preferences: Record<string, unknown> = {}; static attach = (webPreferences: Record<string, unknown>) => { this.preferences = webPreferences; }; } void Holder;",
+    ],
+    [
+      "a static block whose this is the class constructor",
+      "const preferences = {}; const options = { webPreferences: preferences }; class Holder { static preferences: Record<string, unknown> = {}; static { this.preferences = preferences; } } void options; void Holder;",
+    ],
+  ])("allows %s", async (_name, source) => {
+    const root = await createSourceFixture({ "src/main/safe.ts": source });
+
+    await expect(verifySource(root)).resolves.toMatchObject({
+      ok: true,
+      failures: [],
+    });
+  });
 
   it("keeps this-properties in disconnected classes benign without preference ingress", async () => {
     const root = await createSourceFixture({
