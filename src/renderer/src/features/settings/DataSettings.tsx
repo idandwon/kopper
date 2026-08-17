@@ -12,6 +12,7 @@ import {
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
 import { Button } from "../../components/ui/button";
+import { Separator } from "../../components/ui/separator";
 
 export function DataSettings({
   api = window.kopper,
@@ -68,16 +69,20 @@ export function DataSettings({
   };
 
   return (
-    <section className="grid gap-3" aria-labelledby="data-settings-title">
+    <section
+      className="grid min-w-0 gap-5"
+      aria-labelledby="data-settings-title"
+    >
       <div>
         <h2 id="data-settings-title" className="m-0 text-sm font-semibold">
           Data files
         </h2>
-        <p className="m-0 text-xs text-muted-foreground">
+        <p className="m-0 break-words text-xs text-muted-foreground">
           Export a snapshot or replace this store from a validated Kopper file.
         </p>
       </div>
-      <div className="flex gap-2">
+      <Separator />
+      <div className="flex min-w-0 flex-wrap gap-2">
         <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void exportData()}>
           Export data
         </Button>
@@ -85,19 +90,23 @@ export function DataSettings({
           Import data
         </Button>
       </div>
-      {message !== null && <p role="status" className="m-0 text-xs">{message}</p>}
+      {message !== null && (
+        <p role="status" className="m-0 break-words text-xs">
+          {message}
+        </p>
+      )}
 
       <AlertDialog open={preview !== null} onOpenChange={(open) => !open && setPreview(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Replace current data?</AlertDialogTitle>
-            <AlertDialogDescription>
+            <AlertDialogDescription className="break-words">
               {preview === null
                 ? "Review the selected file."
                 : `${preview.fileName} contains ${preview.noteCount} notes and ${preview.sectionCount} sections. This replaces the current store.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter>
+          <AlertDialogFooter className="flex-wrap">
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={() => void confirmImport()}>
               Replace current data

@@ -63,10 +63,10 @@ export function SettingsPage({
     <Tabs
       value={activeTab}
       onValueChange={selectTab}
-      className="flex min-h-0 flex-1 flex-col"
+      className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
-      <header className="shrink-0 border-b border-border px-4 pt-4 pl-5">
-        <div className="mb-3 flex items-center gap-3">
+      <header className="min-w-0 shrink-0 border-b border-border px-4 pt-4 pl-5">
+        <div className="mb-3 flex min-w-0 items-center gap-3">
           <Button
             type="button"
             size="sm"
@@ -78,9 +78,9 @@ export function SettingsPage({
             <span aria-hidden="true">←</span>
             Back
           </Button>
-          <div>
+          <div className="min-w-0">
             <h1 className="m-0 text-base font-semibold">Settings</h1>
-            <p className="m-0 text-xs text-muted-foreground">
+            <p className="m-0 break-words text-xs text-muted-foreground">
               Shortcuts, appearance, and local data controls.
             </p>
           </div>
@@ -97,14 +97,14 @@ export function SettingsPage({
         className="min-h-0 flex-1"
         aria-label="Settings content"
       >
-        <div className="px-4 py-4 pl-5">
-          <TabsContent value="shortcuts" className="mt-0">
+        <div className="min-w-0 px-4 py-4 pl-5">
+          <TabsContent value="shortcuts" className="mt-0 min-w-0">
             <ShortcutSettings captureUnavailable={captureUnavailable} />
           </TabsContent>
-          <TabsContent value="appearance" className="mt-0">
+          <TabsContent value="appearance" className="mt-0 min-w-0">
             <AppearanceSettings />
           </TabsContent>
-          <TabsContent value="data" className="mt-0">
+          <TabsContent value="data" className="mt-0 min-w-0">
             <DataSettings />
           </TabsContent>
         </div>

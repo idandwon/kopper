@@ -4,9 +4,20 @@ import type { KopperError } from "../../../../shared/domain/errors";
 import type { KopperApi, ThemeImportPreview } from "../../../../shared/ipc/contract";
 import { measureThemeContrast } from "../../../../shared/theme/deriveTheme";
 import { THEME_FILE_SCHEMA_URL } from "../../../../shared/theme/themeSchema";
+import type { ThemeToken } from "../../../../shared/theme/tokens";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
+import { Separator } from "../../components/ui/separator";
 import { useTheme } from "../../theme/ThemeProvider";
+
+const PREVIEW_TOKENS: readonly ThemeToken[] = [
+  "background",
+  "foreground",
+  "primary",
+  "accent",
+  "capture",
+  "completed",
+];
 
 function ModePreview({ mode, preview }: { mode: "light" | "dark"; preview: ThemeImportPreview }) {
   const tokens = preview.theme[mode];
@@ -19,24 +30,28 @@ function ModePreview({ mode, preview }: { mode: "light" | "dark"; preview: Theme
     dark: preview.theme.dark,
   }).measurements.filter((measurement) => measurement.mode === mode);
   return (
-    <section className="grid gap-2 border-t border-border py-3" aria-labelledby={`import-${mode}`}>
+    <section className="grid min-w-0 gap-2 py-3" aria-labelledby={`import-${mode}`}>
+      <Separator />
       <h3 id={`import-${mode}`} className="m-0 font-mono text-xs font-semibold capitalize">{mode}</h3>
       <ul className="m-0 grid list-none gap-1 p-0 text-[11px] text-muted-foreground" aria-label={`${mode} contrast measurements`}>
         {measured.map(({ backgroundToken, foregroundToken, ratio, meetsMinimum }) => (
-          <li key={`${backgroundToken}:${foregroundToken}`}>
+          <li
+            key={`${backgroundToken}:${foregroundToken}`}
+            className="break-words"
+          >
             {backgroundToken} / {foregroundToken}: {ratio}:1 contrast · {meetsMinimum ? "Pass" : "Fail"}
           </li>
         ))}
       </ul>
-      <ul className="m-0 grid list-none grid-cols-2 gap-1.5 p-0" aria-label={`${mode} theme swatches`}>
-        {(["background", "foreground", "primary", "accent", "capture", "completed"] as const).map((token) => (
+      <ul className="m-0 grid min-w-0 list-none grid-cols-2 gap-1.5 p-0" aria-label={`${mode} theme swatches`}>
+        {PREVIEW_TOKENS.map((token) => (
           <li key={token} className="flex min-w-0 items-center gap-1.5 font-mono text-[10px]">
             <span aria-hidden="true" className="h-5 w-5 shrink-0 border border-border" style={{ backgroundColor: tokens[token] }} />
             <span className="truncate">{token}: {tokens[token]}</span>
           </li>
         ))}
       </ul>
-      <p className="m-0 text-[11px] text-muted-foreground">Derived lifecycle tokens: {derived.length === 0 ? "None" : derived.join(", ")}</p>
+      <p className="m-0 break-words text-[11px] text-muted-foreground">Derived lifecycle tokens: {derived.length === 0 ? "None" : derived.join(", ")}</p>
     </section>
   );
 }
@@ -111,7 +126,7 @@ export function ThemeImportDialog({ api = window.kopper }: { api?: Pick<KopperAp
     <>
       <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void chooseImport()}>Import theme</Button>
       {message !== null && preview === null && (
-        <div role={error ? "alert" : "status"} className="m-0 text-[11px] text-muted-foreground">
+        <div role={error ? "alert" : "status"} className="m-0 min-w-0 break-words text-[11px] text-muted-foreground">
           <p className="m-0">{message}</p>
           {importError?.failures !== undefined && importError.failures.length > 0 && (
             <ul className="m-0 list-disc pl-5">
@@ -134,13 +149,13 @@ export function ThemeImportDialog({ api = window.kopper }: { api?: Pick<KopperAp
           onPointerDownOutside={(event) => { if (busy) event.preventDefault(); }}
           onInteractOutside={(event) => { if (busy) event.preventDefault(); }}
         >
-          <DialogHeader>
-            <DialogTitle>{preview?.theme.name ?? "Imported theme"}</DialogTitle>
-            <DialogDescription>Validated preview only. Nothing is persisted until you save.</DialogDescription>
+          <DialogHeader className="min-w-0 pr-8">
+            <DialogTitle className="break-words">{preview?.theme.name ?? "Imported theme"}</DialogTitle>
+            <DialogDescription className="break-words">Validated preview only. Nothing is persisted until you save.</DialogDescription>
           </DialogHeader>
-          {message !== null && <p role={error ? "alert" : "status"} className="m-0 text-[11px] text-muted-foreground">{message}</p>}
-          {preview !== null && <div><ModePreview mode="light" preview={preview} /><ModePreview mode="dark" preview={preview} /></div>}
-          <DialogFooter>
+          {message !== null && <p role={error ? "alert" : "status"} className="m-0 break-words text-[11px] text-muted-foreground">{message}</p>}
+          {preview !== null && <div className="min-w-0"><ModePreview mode="light" preview={preview} /><ModePreview mode="dark" preview={preview} /></div>}
+          <DialogFooter className="flex-wrap">
             <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={close}>Cancel</Button>
             <Button type="button" size="sm" variant="outline" disabled={busy} onClick={applyPreview}>Preview</Button>
             <Button type="button" size="sm" disabled={busy} onClick={() => void save()}>Save imported theme</Button>

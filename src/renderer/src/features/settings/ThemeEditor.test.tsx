@@ -10,6 +10,10 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OXIDE_LEDGER_THEME } from "../../../../shared/theme/presets";
+import {
+  KOPPER_THEME_TOKENS,
+  SHADCN_THEME_TOKENS,
+} from "../../../../shared/theme/tokens";
 import { useTheme } from "../../theme/ThemeProvider";
 import { ThemeEditor } from "./ThemeEditor";
 
@@ -63,6 +67,36 @@ async function validate() {
 }
 
 describe("ThemeEditor", () => {
+  it("labels every token field and gives each color picker a token-specific name", () => {
+    renderEditor();
+    const tokens = [...SHADCN_THEME_TOKENS, ...KOPPER_THEME_TOKENS];
+
+    for (const token of tokens) {
+      expect(screen.getByLabelText(token)).toHaveAttribute(
+        "id",
+        `light-${token}`,
+      );
+      if (token !== "radius") {
+        expect(
+          screen.getByLabelText(`${token} color picker`),
+        ).toHaveAttribute("type", "color");
+      }
+    }
+    expect(globalThis.document.querySelectorAll('[data-slot="label"]')).toHaveLength(
+      tokens.length + 1,
+    );
+  });
+
+  it("uses one bounded token scroll viewport in an overflow-hidden dialog shell", () => {
+    renderEditor();
+    const dialog = screen.getByRole("dialog");
+
+    expect(dialog).toHaveClass("overflow-hidden");
+    expect(
+      dialog.querySelectorAll('[data-scroll-owner="theme-editor"]'),
+    ).toHaveLength(1);
+  });
+
   it("keeps invalid partial text editable, previews valid mode edits immediately, and validates at 150ms", async () => {
     renderEditor();
     const background = screen.getByLabelText("background");

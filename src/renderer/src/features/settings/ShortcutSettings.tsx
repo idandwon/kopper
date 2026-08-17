@@ -7,6 +7,12 @@ import {
 import { useKopperDocument } from "../../app/DocumentProvider";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import {
+  RadioGroup,
+  RadioGroupItem,
+} from "../../components/ui/radio-group";
+import { Separator } from "../../components/ui/separator";
 
 function acceleratorFromEvent(event: KeyboardEvent): string | null {
   if (["Meta", "Control", "Alt", "Shift"].includes(event.key)) return null;
@@ -52,6 +58,7 @@ export function ShortcutSettings({
     const onKeyDown = (event: KeyboardEvent) => {
       event.preventDefault();
       if (event.key === "Escape") {
+        event.stopImmediatePropagation();
         setRecording(false);
         setMessage("Shortcut recording cancelled.");
         return;
@@ -144,7 +151,10 @@ export function ShortcutSettings({
       : candidate.capture.accelerator;
 
   return (
-    <section className="grid gap-5" aria-labelledby="shortcut-settings-title">
+    <section
+      className="grid min-w-0 gap-5"
+      aria-labelledby="shortcut-settings-title"
+    >
       <div>
         <h2 id="shortcut-settings-title" className="m-0 text-sm font-semibold">
           Shortcuts & panel
@@ -154,63 +164,90 @@ export function ShortcutSettings({
         </p>
       </div>
 
-      <fieldset className="grid gap-2 border-y border-border py-3">
-        <legend className="font-mono text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+      <Separator />
+      <div className="grid min-w-0 gap-2">
+        <Label
+          id="capture-selection-label"
+          className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground"
+        >
           Capture selection
-        </legend>
-        <label className="flex items-center gap-2 text-xs">
-          <input
-            type="radio"
-            name="capture-shortcut"
-            checked={candidate.capture.kind === "double-modifier"}
-            disabled={busy}
-            onChange={() => {
+        </Label>
+        <RadioGroup
+          value={recording ? "accelerator" : candidate.capture.kind}
+          aria-labelledby="capture-selection-label"
+          disabled={busy}
+          onValueChange={(value) => {
+            if (value === "double-modifier") {
               setRecording(false);
               setCandidate((current) => ({
                 ...current,
                 capture: { kind: "double-modifier", modifier: "shift" },
               }));
               setMessage(null);
-            }}
-          />
-          Double Shift
-        </label>
-        <div className="flex items-center gap-2">
-          <Button
-            type="button"
-            size="xs"
-            variant={recording ? "secondary" : "outline"}
-            aria-pressed={recording}
-            disabled={busy}
-            onClick={() => {
+              return;
+            }
+            if (value === "accelerator") {
               setRecording(true);
               setMessage("Press a shortcut, or Escape to cancel.");
-            }}
-          >
-            {recording ? "Recording…" : "Record shortcut"}
-          </Button>
-          <span className="font-mono text-[11px]" aria-label="Capture shortcut candidate">
-            {captureLabel}
-          </span>
-        </div>
-      </fieldset>
+            }
+          }}
+        >
+          <div className="flex min-w-0 items-center gap-2">
+            <RadioGroupItem id="capture-double-shift" value="double-modifier" />
+            <Label htmlFor="capture-double-shift" className="text-xs">
+              Double Shift
+            </Label>
+          </div>
+          <div className="grid min-w-0 gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <RadioGroupItem id="capture-accelerator" value="accelerator" />
+              <Label htmlFor="capture-accelerator" className="text-xs">
+                Keyboard shortcut
+              </Label>
+            </div>
+            <div className="ml-6 flex min-w-0 flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                size="xs"
+                variant={recording ? "secondary" : "outline"}
+                aria-pressed={recording}
+                disabled={busy}
+                onClick={() => {
+                  setRecording(true);
+                  setMessage("Press a shortcut, or Escape to cancel.");
+                }}
+              >
+                {recording ? "Recording…" : "Record shortcut"}
+              </Button>
+              <span
+                className="min-w-0 break-all font-mono text-[11px]"
+                aria-label="Capture shortcut candidate"
+              >
+                {captureLabel}
+              </span>
+            </div>
+          </div>
+        </RadioGroup>
+      </div>
 
-      <div className="grid gap-1 border-b border-border pb-3">
-        <label htmlFor="toggle-panel-shortcut" className="text-xs font-medium">
+      <Separator />
+      <div className="grid min-w-0 gap-1">
+        <Label htmlFor="toggle-panel-shortcut" className="text-xs">
           Toggle panel
-        </label>
+        </Label>
         <Input
           id="toggle-panel-shortcut"
           value={candidate.togglePanel}
           disabled={busy}
-          onChange={(event) => changeToggle(event.target.value)}
+          onChange={(event) => changeToggle(event.currentTarget.value)}
         />
       </div>
 
-      <div className="grid grid-cols-[1fr_auto] items-center gap-3 border-b border-border pb-3">
-        <div>
+      <Separator />
+      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0 flex-1">
           <p className="m-0 text-xs font-medium">Keep panel on top</p>
-          <p className="m-0 text-[11px] text-muted-foreground">
+          <p className="m-0 break-words text-[11px] text-muted-foreground">
             Applied only after native and local persistence both succeed.
           </p>
         </div>

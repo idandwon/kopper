@@ -8,7 +8,10 @@ import type { KopperDocumentContextValue } from "../../app/DocumentProvider";
 import { useKopperDocument } from "../../app/DocumentProvider";
 import { useTheme } from "../../theme/ThemeProvider";
 import { OXIDE_LEDGER_THEME } from "../../../../shared/theme/presets";
-import { AppearanceSettings } from "./AppearanceSettings";
+import {
+  AppearanceSettings,
+  parseAppearanceMode,
+} from "./AppearanceSettings";
 
 vi.mock("../../app/DocumentProvider", () => ({ useKopperDocument: vi.fn() }));
 vi.mock("../../theme/ThemeProvider", () => ({ useTheme: vi.fn() }));
@@ -41,6 +44,11 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("AppearanceSettings", () => {
+  it("naturally narrows known modes and ignores unknown Select values", () => {
+    expect(parseAppearanceMode("dark")).toBe("dark");
+    expect(parseAppearanceMode("sepia")).toBeNull();
+  });
+
   it("announces selected and resolved mode and sends an acknowledged mode command", async () => {
     const user = userEvent.setup();
     render(<AppearanceSettings />);
@@ -64,8 +72,45 @@ describe("AppearanceSettings", () => {
     expect(row).not.toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Activate Night Workshop" }));
     expect(execute).toHaveBeenCalledWith({ type: "appearance.setActiveTheme", themeId: "builtin:night-workshop" });
-    expect(screen.getByRole("button", { name: "Customize Night Workshop" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Export Night Workshop" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Actions for Night Workshop" }),
+    );
+    expect(
+      screen.getByRole("menuitem", { name: "Customize" }),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("menuitem", { name: "Export" }));
     expect(window.kopper.exportTheme).toHaveBeenCalledWith("builtin:night-workshop");
+  });
+
+  it("keeps a long theme name in a shrinking column with one bounded action menu", () => {
+    const name = "A very long custom theme name that must wrap without widening settings";
+    const customTheme = {
+      ...structuredClone(OXIDE_LEDGER_THEME),
+      id: "custom:long-theme",
+      name,
+    };
+    vi.mocked(useKopperDocument).mockReturnValue({
+      document: { ...document, customThemes: [customTheme] },
+      ready: true,
+      pendingAction: null,
+      error: null,
+      execute,
+      undo: vi.fn(),
+      retryLastAction: vi.fn(),
+      clearError: vi.fn(),
+    });
+
+    render(<AppearanceSettings />);
+
+    expect(screen.getByText(name)).toHaveClass("break-words");
+    expect(
+      screen.getByRole("button", { name: `Actions for ${name}` }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: `Export ${name}` }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: `Delete ${name}` }),
+    ).not.toBeInTheDocument();
   });
 });

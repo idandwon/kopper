@@ -38,11 +38,13 @@ describe("ThemeImportDialog", () => {
     expect(previewTheme).not.toHaveBeenCalled();
     expect(cancelPreview).not.toHaveBeenCalled();
 
+    const validationMessage =
+      "Theme readability validation found 2 problems in this unusually long imported theme filename.";
     rendered.rerender(<ThemeImportDialog api={api({
       ok: false,
       error: {
         code: "validation_failed",
-        message: "Theme readability validation found 2 problems.",
+        message: validationMessage,
         retryable: false,
         failures: [{
           mode: "dark",
@@ -55,9 +57,10 @@ describe("ThemeImportDialog", () => {
     })} />);
     await user.click(screen.getByRole("button", { name: "Import theme" }));
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Theme readability validation found 2 problems.");
+    expect(alert).toHaveTextContent(validationMessage);
     expect(alert).toHaveTextContent("dark: primary / primary-foreground — 2.31:1; minimum 4.5:1");
     expect(alert).toHaveTextContent("light: background must be opaque.");
+    expect(alert).toHaveClass("break-words");
 
     rendered.rerender(<ThemeImportDialog api={api({
       ok: false,

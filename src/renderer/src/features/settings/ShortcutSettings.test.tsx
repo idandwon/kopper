@@ -63,6 +63,23 @@ afterEach(() => {
 });
 
 describe("ShortcutSettings", () => {
+  it("uses a named radio group and cancels shortcut recording with Escape", async () => {
+    render(<ShortcutSettings captureUnavailable={false} />);
+
+    expect(
+      screen.getByRole("radiogroup", { name: "Capture selection" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("radio", { name: "Keyboard shortcut" }),
+    ).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Record shortcut" }));
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Shortcut recording cancelled.",
+    );
+  });
+
   it("selects Double Shift or records an immutable accelerator candidate", async () => {
     const user = userEvent.setup();
     render(<ShortcutSettings captureUnavailable={false} />);

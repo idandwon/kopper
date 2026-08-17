@@ -21,6 +21,15 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("DataSettings", () => {
+  it("keeps both data action labels available in a wrapping action row", () => {
+    render(<DataSettings api={api} />);
+    const exportAction = screen.getByRole("button", { name: "Export data" });
+
+    expect(exportAction).toBeVisible();
+    expect(screen.getByRole("button", { name: "Import data" })).toBeVisible();
+    expect(exportAction.parentElement).toHaveClass("flex-wrap");
+  });
+
   it("reports cancellation as a successful outcome", async () => {
     const user = userEvent.setup();
     render(<DataSettings api={api} />);
@@ -28,13 +37,15 @@ describe("DataSettings", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Export cancelled");
   });
 
-  it("shows import counts and replaces only after explicit confirmation", async () => {
+  it("shows a complete long import filename and replaces only after explicit confirmation", async () => {
     const user = userEvent.setup();
+    const fileName =
+      "a-very-long-kopper-backup-filename-that-must-remain-complete-and-readable.json";
     api.chooseDataImport.mockResolvedValue({
       ok: true,
       value: {
         token: "0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5",
-        fileName: "chosen.json",
+        fileName,
         noteCount: 3,
         sectionCount: 2,
       },
@@ -47,7 +58,11 @@ describe("DataSettings", () => {
 
     await user.click(screen.getByRole("button", { name: "Import data" }));
     expect(api.confirmDataImport).not.toHaveBeenCalled();
-    expect(screen.getByText(/chosen\.json.*3 notes.*2 sections/i)).toBeVisible();
+    const description = screen.getByText(
+      new RegExp(`${fileName}.*3 notes.*2 sections`, "i"),
+    );
+    expect(description).toBeVisible();
+    expect(description).toHaveClass("break-words");
     await user.click(screen.getByRole("button", { name: "Replace current data" }));
     expect(api.confirmDataImport).toHaveBeenCalledWith("0c47968e-bf67-4c9c-a967-a3dcbe9fc5b5");
     expect(screen.getByRole("status")).toHaveTextContent("Import complete");

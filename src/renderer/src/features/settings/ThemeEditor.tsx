@@ -4,7 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ThemeDefinitionSchema, type ThemeDefinition } from "../../../../shared/domain/document";
 import { validateReadableTheme } from "../../../../shared/theme/deriveTheme";
 import { CompleteThemeModeSchema, THEME_FILE_SCHEMA_URL } from "../../../../shared/theme/themeSchema";
-import type { ThemeToken } from "../../../../shared/theme/tokens";
+import {
+  KOPPER_THEME_TOKENS,
+  SHADCN_THEME_TOKENS,
+  type ThemeToken,
+} from "../../../../shared/theme/tokens";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -18,6 +22,8 @@ import {
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Input } from "../../components/ui/input";
+import { Label } from "../../components/ui/label";
+import { ScrollArea } from "../../components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../../components/ui/tabs";
 import { useTheme } from "../../theme/ThemeProvider";
 
@@ -35,6 +41,18 @@ type RawModes = Record<EditorMode, Record<ThemeToken, string>>;
 type Validation = { valid: boolean; message: string; tokenMessages: Partial<Record<`${EditorMode}:${ThemeToken}`, string>> };
 
 const toRgb = converter("rgb");
+const THEME_TOKENS: readonly string[] = [
+  ...SHADCN_THEME_TOKENS,
+  ...KOPPER_THEME_TOKENS,
+];
+
+function isThemeToken(value: string): value is ThemeToken {
+  return THEME_TOKENS.includes(value);
+}
+
+function parseEditorMode(value: string): EditorMode | null {
+  return value === "light" || value === "dark" ? value : null;
+}
 
 function colorHex(value: string): string | null {
   const parsed = parseColor(value);
@@ -61,8 +79,12 @@ function validateDraft(id: string, name: string, raw: RawModes): Validation {
     const tokenMessages: Validation["tokenMessages"] = {};
     for (const issue of parsed.error.issues) {
       const [mode, token] = issue.path;
-      if ((mode === "light" || mode === "dark") && typeof token === "string") {
-        tokenMessages[`${mode}:${token as ThemeToken}`] = issue.message;
+      if (
+        (mode === "light" || mode === "dark") &&
+        typeof token === "string" &&
+        isThemeToken(token)
+      ) {
+        tokenMessages[`${mode}:${token}`] = issue.message;
       }
     }
     return { valid: false, message: "Fix invalid theme values before saving.", tokenMessages };
@@ -206,15 +228,54 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
           const value = raw[mode][token];
           const hex = token === "radius" ? null : colorHex(value);
           const problem = validation.tokenMessages[`${mode}:${token}`];
+          const fieldId = `${mode}-${token}`;
           return (
-            <div key={token} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-2 gap-y-1 px-1 py-2">
-              <label htmlFor={`${mode}-${token}`} className="self-center text-xs">{token}</label>
-              <div className="flex items-center gap-1.5">
-                {hex !== null && <input disabled={saving} aria-label={`${token} color picker`} type="color" value={hex} className="h-7 w-7 cursor-pointer border-0 bg-transparent p-0" onChange={(event) => updateToken(token, event.target.value)} />}
-                <Input disabled={saving} id={`${mode}-${token}`} aria-invalid={problem !== undefined} value={value} onChange={(event) => updateToken(token, event.target.value)} className="h-7 w-40 font-mono text-[11px]" />
-                <Button type="button" size="xs" variant="ghost" disabled={saving} onClick={() => resetToken(token)} aria-label={`Reset ${token}`}>Reset</Button>
+            <div key={token} className="grid min-w-0 gap-1.5 px-1 py-2">
+              <Label htmlFor={fieldId} className="text-xs">
+                {token}
+              </Label>
+              <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] gap-1.5">
+                {hex === null ? null : (
+                  <Input
+                    type="color"
+                    value={hex}
+                    aria-label={`${token} color picker`}
+                    disabled={saving}
+                    onChange={(event) =>
+                      updateToken(token, event.currentTarget.value)
+                    }
+                    className="size-8 p-1"
+                  />
+                )}
+                <Input
+                  id={fieldId}
+                  value={value}
+                  aria-invalid={problem !== undefined}
+                  disabled={saving}
+                  onChange={(event) =>
+                    updateToken(token, event.currentTarget.value)
+                  }
+                  className="col-start-2 h-8 min-w-0 font-mono text-[11px]"
+                />
+                <Button
+                  type="button"
+                  size="xs"
+                  variant="ghost"
+                  disabled={saving}
+                  onClick={() => resetToken(token)}
+                  aria-label={`Reset ${token}`}
+                >
+                  Reset
+                </Button>
               </div>
-              {problem !== undefined && <p role="alert" className="col-span-2 m-0 text-[11px] text-destructive">{problem}</p>}
+              {problem === undefined ? null : (
+                <p
+                  role="alert"
+                  className="m-0 break-words text-[11px] text-destructive"
+                >
+                  {problem}
+                </p>
+              )}
             </div>
           );
         })}
@@ -224,43 +285,148 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
 
   return (
     <>
-      <Dialog open={open} onOpenChange={(next) => !next && !saving && requestClose()}>
+      <Dialog
+        open={open}
+        onOpenChange={(next) => !next && !saving && requestClose()}
+      >
         <DialogContent
           closeDisabled={saving}
-          onEscapeKeyDown={(event) => { if (saving) event.preventDefault(); }}
-          onPointerDownOutside={(event) => { if (saving) event.preventDefault(); }}
-          onInteractOutside={(event) => { if (saving) event.preventDefault(); }}
-          className="flex max-h-[92vh] max-w-xl flex-col gap-3 p-4"
+          onEscapeKeyDown={(event) => {
+            if (saving) event.preventDefault();
+          }}
+          onPointerDownOutside={(event) => {
+            if (saving) event.preventDefault();
+          }}
+          onInteractOutside={(event) => {
+            if (saving) event.preventDefault();
+          }}
+          className="flex h-[92vh] max-h-[48rem] max-w-xl flex-col gap-3 overflow-hidden p-4"
         >
-          <DialogHeader>
-            <DialogTitle>{custom ? "Edit custom theme" : "Customize theme"}</DialogTitle>
-            <DialogDescription>Changes preview immediately after each value becomes valid.</DialogDescription>
+          <DialogHeader className="shrink-0 pr-8">
+            <DialogTitle>
+              {custom ? "Edit custom theme" : "Customize theme"}
+            </DialogTitle>
+            <DialogDescription className="break-words">
+              Changes preview immediately after each value becomes valid.
+            </DialogDescription>
           </DialogHeader>
-          <label className="grid gap-1 text-xs">Theme name<Input disabled={saving} value={name} onChange={(event) => { if (!saving) { setName(event.target.value); setMessage(null); } }} /></label>
-          <Tabs value={mode} onValueChange={(value) => {
-            if (saving) return;
-            const nextMode = value as EditorMode;
-            setMode(nextMode);
-            previewTheme(draft, nextMode);
-          }} className="min-h-0">
-            <TabsList aria-label="Theme mode"><TabsTrigger disabled={saving} value="light">Light</TabsTrigger><TabsTrigger disabled={saving} value="dark">Dark</TabsTrigger></TabsList>
-            <TabsContent value="light" className="max-h-[55vh] overflow-y-auto pr-1">{rows}</TabsContent>
-            <TabsContent value="dark" className="max-h-[55vh] overflow-y-auto pr-1">{rows}</TabsContent>
+          <div className="grid min-w-0 shrink-0 gap-1">
+            <Label htmlFor="theme-name" className="text-xs">
+              Theme name
+            </Label>
+            <Input
+              id="theme-name"
+              disabled={saving}
+              value={name}
+              onChange={(event) => {
+                if (!saving) {
+                  setName(event.currentTarget.value);
+                  setMessage(null);
+                }
+              }}
+            />
+          </div>
+          <Tabs
+            value={mode}
+            onValueChange={(value) => {
+              if (saving) return;
+              const nextMode = parseEditorMode(value);
+              if (nextMode === null) return;
+              setMode(nextMode);
+              previewTheme(draft, nextMode);
+            }}
+            className="flex min-h-0 min-w-0 flex-1 flex-col"
+          >
+            <TabsList aria-label="Theme mode" className="shrink-0">
+              <TabsTrigger disabled={saving} value="light">
+                Light
+              </TabsTrigger>
+              <TabsTrigger disabled={saving} value="dark">
+                Dark
+              </TabsTrigger>
+            </TabsList>
+            <ScrollArea
+              data-scroll-owner="theme-editor"
+              aria-label="Theme tokens"
+              className="min-h-0 min-w-0 flex-1 pr-1"
+            >
+              <TabsContent value="light" className="mt-0 min-w-0">
+                {rows}
+              </TabsContent>
+              <TabsContent value="dark" className="mt-0 min-w-0">
+                {rows}
+              </TabsContent>
+            </ScrollArea>
           </Tabs>
-          <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
-            <div><p role="status" aria-live="polite" className="m-0 text-[11px] text-muted-foreground">{validating ? "Validating…" : validation.message}</p>{message && <p role="alert" className="m-0 text-[11px] text-destructive">{message}</p>}</div>
-            <DialogFooter>
-              <Button type="button" size="sm" variant="ghost" disabled={saving} onClick={resetAll}>Reset all</Button>
-              <Button type="button" size="sm" variant="outline" disabled={saving} onClick={requestClose}>Cancel</Button>
-              <Button type="button" size="sm" disabled={saving || validating || !validation.valid} onClick={() => void save()}>Save theme</Button>
+          <div className="flex min-w-0 shrink-0 flex-wrap items-start justify-between gap-3 border-t border-border pt-3">
+            <div className="min-w-0 flex-1">
+              <p
+                role="status"
+                aria-live="polite"
+                className="m-0 break-words text-[11px] text-muted-foreground"
+              >
+                {validating ? "Validating…" : validation.message}
+              </p>
+              {message === null ? null : (
+                <p
+                  role="alert"
+                  className="m-0 break-words text-[11px] text-destructive"
+                >
+                  {message}
+                </p>
+              )}
+            </div>
+            <DialogFooter className="flex-wrap">
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                disabled={saving}
+                onClick={resetAll}
+              >
+                Reset all
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                disabled={saving}
+                onClick={requestClose}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                disabled={saving || validating || !validation.valid}
+                onClick={() => void save()}
+              >
+                Save theme
+              </Button>
             </DialogFooter>
           </div>
         </DialogContent>
       </Dialog>
-      <AlertDialog open={confirmClose} onOpenChange={(next) => { if (!saving) setConfirmClose(next); }}>
+      <AlertDialog
+        open={confirmClose}
+        onOpenChange={(next) => {
+          if (!saving) setConfirmClose(next);
+        }}
+      >
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Discard theme changes?</AlertDialogTitle><AlertDialogDescription>Your unsaved values will be lost and the persisted theme will be restored.</AlertDialogDescription></AlertDialogHeader>
-          <AlertDialogFooter><AlertDialogCancel disabled={saving}>Keep editing</AlertDialogCancel><AlertDialogAction disabled={saving} onClick={discardAndClose}>Discard changes</AlertDialogAction></AlertDialogFooter>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Discard theme changes?</AlertDialogTitle>
+            <AlertDialogDescription className="break-words">
+              Your unsaved values will be lost and the persisted theme will be
+              restored.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-wrap">
+            <AlertDialogCancel disabled={saving}>Keep editing</AlertDialogCancel>
+            <AlertDialogAction disabled={saving} onClick={discardAndClose}>
+              Discard changes
+            </AlertDialogAction>
+          </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
     </>
