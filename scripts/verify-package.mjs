@@ -496,7 +496,8 @@ function reviewedAccessibilityBinding(symbol, checker, absoluteRoot) {
     return false;
   }
   return (
-    staticString(declaration.initializer, checker) === ACCESSIBILITY_SETTINGS_URL
+    staticString(declaration.initializer, checker) ===
+    ACCESSIBILITY_SETTINGS_URL
   );
 }
 
@@ -610,7 +611,8 @@ function hasUnsafeWebPreference(
 
 function isAssignmentOperator(kind) {
   return (
-    kind >= ts.SyntaxKind.FirstAssignment && kind <= ts.SyntaxKind.LastAssignment
+    kind >= ts.SyntaxKind.FirstAssignment &&
+    kind <= ts.SyntaxKind.LastAssignment
   );
 }
 
@@ -672,7 +674,10 @@ function inspectApplicationSource(
   };
   collectWebPreferenceContexts(sourceFile);
 
-  const isKnownWebPreferenceReceiver = (expression, seenSymbols = new Set()) => {
+  const isKnownWebPreferenceReceiver = (
+    expression,
+    seenSymbols = new Set(),
+  ) => {
     const unwrapped = typeOnlyWrappedExpression(expression);
     if (unwrapped !== undefined) {
       return isKnownWebPreferenceReceiver(unwrapped, seenSymbols);
@@ -783,12 +788,11 @@ function inspectApplicationSource(
         )
       ) {
         const property = node.propertyName ?? node.name;
-        const name =
-          ts.isComputedPropertyName(property)
-            ? staticString(property.expression, checker)
-            : ts.isIdentifier(property) || ts.isStringLiteral(property)
-              ? property.text
-              : undefined;
+        const name = ts.isComputedPropertyName(property)
+          ? staticString(property.expression, checker)
+          : ts.isIdentifier(property) || ts.isStringLiteral(property)
+            ? property.text
+            : undefined;
         if (name === undefined || name === "openExternal") {
           rules.add("unrestricted_external_open");
         }
