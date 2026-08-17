@@ -85,11 +85,11 @@
 - Consumes: existing `WindowManager` public interface and secure BrowserWindow configuration.
 - Produces: a safely draggable, clipped, translucent Oxide Ledger panel that preserves native bounds, pinning, focus, and security behavior.
 
-- [ ] Add tests for any changed BrowserWindow material/options and preserve secure defaults.
-- [ ] Add one intentional drag surface and explicit no-drag interactive regions.
-- [ ] Refine clipping, shadow, backdrop, and minimum-size behavior without copying Copper’s palette.
-- [ ] Verify light/dark/system modes, bounds persistence, and reduced transparency fallback.
-- [ ] Run focused tests, typecheck, build, and commit.
+- [x] Add tests for any changed BrowserWindow material/options and preserve secure defaults.
+- [x] Add one intentional drag surface and explicit no-drag interactive regions.
+- [x] Refine clipping, shadow, backdrop, and minimum-size behavior without copying Copper’s palette.
+- [x] Verify light/dark/system modes, bounds persistence, and reduced transparency fallback.
+- [x] Run focused tests, typecheck, build, and commit.
 
 ### Task 4: Simplified Command Surface
 

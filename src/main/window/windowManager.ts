@@ -126,6 +126,9 @@ export class WindowManager implements SecurityWindowRegistry {
       frame: false,
       transparent: true,
       backgroundColor: "#00000000",
+      hasShadow: true,
+      vibrancy: "popover",
+      visualEffectState: "active",
       webPreferences: secureWebPreferences,
     });
     this.mainWindow = window;
@@ -355,9 +358,13 @@ export class WindowManager implements SecurityWindowRegistry {
       );
       return;
     }
-    const url = new URL(this.rendererUrl);
-    if (hash !== undefined) url.hash = hash;
-    void window.loadURL(url.toString());
+    const developmentUrl = URL.parse(this.rendererUrl.toString());
+    if (developmentUrl === null) {
+      void window.loadFile(join(__dirname, "../renderer/index.html"));
+      return;
+    }
+    if (hash !== undefined) developmentUrl.hash = hash;
+    void window.loadURL(developmentUrl.toString());
   }
 
   private notifyWindowCreated(window: BrowserWindow): void {

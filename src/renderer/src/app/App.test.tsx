@@ -247,6 +247,9 @@ describe("Oxide Ledger App", () => {
     expect(
       screen.getByText("Lifecycle: captured to completed"),
     ).toBeInTheDocument();
+    expect(
+      globalThis.document.querySelector("[data-panel-drag-region]"),
+    ).toHaveAttribute("aria-hidden", "true");
   });
 
   it("highlights only the matching visible active card for 1800ms", () => {

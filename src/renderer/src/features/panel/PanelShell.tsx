@@ -11,7 +11,12 @@ function LifecycleRail() {
 
 export function PanelShell({ children }: { children: ReactNode }) {
   return (
-    <main className="relative mx-auto flex h-dvh w-full max-w-[380px] flex-col overflow-hidden rounded-[var(--radius)] border border-border bg-background text-foreground">
+    <main className="kopper-panel-shell relative mx-auto flex h-dvh w-full max-w-[380px] flex-col overflow-hidden border border-border text-foreground">
+      <div
+        data-panel-drag-region="true"
+        aria-hidden="true"
+        className="kopper-panel-drag-region"
+      />
       <LifecycleRail />
       <span className="sr-only">Lifecycle: captured to completed</span>
       {children}

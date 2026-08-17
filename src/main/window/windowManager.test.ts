@@ -139,6 +139,10 @@ describe("WindowManager", () => {
       minHeight: 480,
       frame: false,
       transparent: true,
+      backgroundColor: "#00000000",
+      hasShadow: true,
+      vibrancy: "popover",
+      visualEffectState: "active",
       webPreferences: {
         contextIsolation: true,
         nodeIntegration: false,
