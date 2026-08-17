@@ -2,7 +2,7 @@
 
 **Purpose:** Map the storyboard’s `DEMO-*` criteria to repeatable evidence without treating automated renderer coverage as signing, notarization, or physical macOS acceptance.
 
-**Exact candidate SHA:** Recorded by Release-Evidence Refresh Task 12 after all implementation commits and full gates are complete.
+**Exact automated-gate source:** `1680b8ee49ebd6670c525a672057347e06f4c732` (tree `5c6bdc83f0b88f0289908ada6f1cd02804052917`). The later Task 12 evidence/traceability-only commit changes no application/package source and is not the tested source SHA.
 
 | ID | Automated evidence | Remaining manual evidence |
 | --- | --- | --- |

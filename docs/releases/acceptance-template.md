@@ -209,6 +209,26 @@ second line: []{} — END
 | SEC-05 | Imported malformed data/theme is validated and cannot silently replace active state. | Not run | Not run — physical invalid-import test required |
 | SEC-06 | Gatekeeper launch succeeds without disabling security controls, removing quarantine, or using an override. | Not run | Not run — protected app required |
 
+## Demo-parity and native panel matrix
+
+| ID | Required demo-parity observation | Status | Evidence/blocker |
+| --- | --- | --- | --- |
+| DEMO-01 | Confirm the panel reads as a narrow floating macOS utility with rounded clipping, desktop shadow, translucent Oxide Ledger material, and the lifecycle rail in Light and Dark modes. | Not run | Not run — protected installed app visual review required |
+| DEMO-02 | Confirm the resting command surface prioritizes Search and one overflow menu; lifecycle switching remains accessible while Add Section, Undo, pinning, and Settings stay out of the primary row. | Not run | Not run — protected installed app interaction review required |
+| DEMO-03 | Confirm uppercase section labels, divider rules, counts, distinct elevated cards, and compact long-note previews allow several notes to be scanned without horizontal overflow. | Not run | Not run — protected installed app at default/minimum sizes required |
+| DEMO-04 | Confirm a clamped long Markdown note retains complete content through Expand, Edit, Edit in New Window, keyboard access, and VoiceOver. | Not run | Not run — protected installed app and VoiceOver review required |
+| DEMO-05 | Capture from another app and confirm the source remains frontmost, its selection remains undisturbed where supported, and Kopper does not steal keyboard focus. | Not run | Not run — physical cross-app focus test required |
+| DEMO-06 | With Kopper visible and hidden, trigger success and safe failure/empty captures; confirm a detached nonactivating HUD appears for a bounded interval and a hidden main panel remains hidden. | Not run | Not run — physical HUD/nonactivation test required |
+| DEMO-07 | Confirm a captured note appears only after persistence acknowledgement, at the end of the active section, and the exact inserted card is revealed/highlighted without a presentation-only duplicate on failure. | Not run | Not run — physical capture and safe failure fixture required |
+| DEMO-08 | Repeat the same nonactivating capture experience across every required source application in APP-01 through APP-06. | Not run | Not run — physical source matrix required |
+| DEMO-09 | Add two consecutive prompts with `Cmd+Return`; after each acknowledged add, confirm the composer clears, retains focus, is immediately reusable, and keeps the new note reachable without pointer refocus. | Not run | Not run — protected installed app prompt workflow required |
+| DEMO-10 | Confirm resting, focused, multiline, and persisted-draft states remain one section-aware composer surface with both pointer Add and `Cmd+Return` paths at default and minimum panel sizes. | Not run | Not run — protected installed app at both panel sizes required |
+| DEMO-11 | Confirm keyboard focus, single selection, additive/range selection, capture highlight, pending completion, and completed state remain visually distinct without relying on color alone. | Not run | Not run — physical keyboard and accessibility review required |
+| DEMO-12 | Confirm note context menus expose only applicable actions and visibly label keyboard equivalents for Copy, Copy as list, Mark done/Restore, Edit, Edit in new window, Merge, and Delete. | Not run | Not run — protected installed app context-menu review required |
+| DEMO-13 | Select notes in displayed order and confirm Copy as list emits Kopper's intentional unordered Markdown representation (`- item`) in that same order. | Not run | Not run — physical cross-app paste observation required |
+| DEMO-14 | Paste copied notes into a second disposable application; confirm exact reusable content/order, accessible success feedback, and specific visible feedback for a safely induced clipboard failure if available. | Not run | Not run — physical paste and safe failure review required |
+| DEMO-15 | Confirm the installed UI retains original Oxide Ledger colors, lifecycle rail, surfaces, and iconography and does not display Copper branding, logo, marketing copy, or an exact copied palette. | Not run | Not run — independent protected-artifact originality review required |
+
 ## Quit, process, and uninstall matrix
 
 | ID | Workflow/command | Status | Evidence/blocker |

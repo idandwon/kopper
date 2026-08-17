@@ -7,7 +7,7 @@ const root = resolve(import.meta.dirname, "..");
 const procedurePath = resolve(root, "tests/manual/macos-capture.md");
 const templatePath = resolve(root, "docs/releases/acceptance-template.md");
 const rowIdPattern = /^[A-Z]+-\d{2}$/;
-const EXPECTED_CANONICAL_COUNT = 76;
+const EXPECTED_CANONICAL_COUNT = 91;
 const errors = [];
 
 function parseArguments(args) {

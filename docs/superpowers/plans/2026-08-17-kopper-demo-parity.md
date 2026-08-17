@@ -268,10 +268,10 @@
 
 **Interfaces:**
 
-- Consumes: final immutable candidate SHA, `DEMO-*` evidence, existing 76-row canonical release procedure, and unresolved promotion-workflow findings.
+- Consumes: final immutable candidate SHA, `DEMO-*` evidence, the prior 76-row canonical release procedure plus 15 appended demo rows, and unresolved promotion-workflow findings.
 - Produces: traceable new automated evidence and honest blocked protected/physical rows.
 
-- [ ] Add storyboard acceptance evidence without weakening or renumbering existing canonical release rows.
-- [ ] Re-run complete automated gates against the exact final SHA and record bounded output.
-- [ ] Keep signing, notarization, stapling, Gatekeeper, physical capture, and promotion `Not run` until observed.
-- [ ] Validate traceability, review evidence integrity independently, and commit documentation-only changes separately.
+- [x] Add storyboard acceptance evidence without weakening or renumbering existing canonical release rows.
+- [x] Re-run complete automated gates against the exact final SHA and record bounded output.
+- [x] Keep signing, notarization, stapling, Gatekeeper, physical capture, and promotion `Not run` until observed.
+- [x] Validate traceability, review evidence integrity independently, and commit evidence/traceability-only changes separately.

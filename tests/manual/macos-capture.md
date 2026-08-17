@@ -246,7 +246,29 @@ Use disposable content. Check both pointer and keyboard paths where listed and c
 | SEC-05 | Imported malformed data/theme is validated and cannot silently replace active state. |
 | SEC-06 | Gatekeeper launch succeeds without disabling security controls, removing quarantine, or using an override. |
 
-## 11. Process exit and uninstall
+## 11. Demo-parity and native panel acceptance
+
+Run these rows at both the default 380 × 640 panel size and the minimum 340 × 480 size where applicable. Automation and screenshot baselines are supporting evidence only; observe the protected installed app directly.
+
+| ID | Required demo-parity observation |
+| --- | --- |
+| DEMO-01 | Confirm the panel reads as a narrow floating macOS utility with rounded clipping, desktop shadow, translucent Oxide Ledger material, and the lifecycle rail in Light and Dark modes. |
+| DEMO-02 | Confirm the resting command surface prioritizes Search and one overflow menu; lifecycle switching remains accessible while Add Section, Undo, pinning, and Settings stay out of the primary row. |
+| DEMO-03 | Confirm uppercase section labels, divider rules, counts, distinct elevated cards, and compact long-note previews allow several notes to be scanned without horizontal overflow. |
+| DEMO-04 | Confirm a clamped long Markdown note retains complete content through Expand, Edit, Edit in New Window, keyboard access, and VoiceOver. |
+| DEMO-05 | Capture from another app and confirm the source remains frontmost, its selection remains undisturbed where supported, and Kopper does not steal keyboard focus. |
+| DEMO-06 | With Kopper visible and hidden, trigger success and safe failure/empty captures; confirm a detached nonactivating HUD appears for a bounded interval and a hidden main panel remains hidden. |
+| DEMO-07 | Confirm a captured note appears only after persistence acknowledgement, at the end of the active section, and the exact inserted card is revealed/highlighted without a presentation-only duplicate on failure. |
+| DEMO-08 | Repeat the same nonactivating capture experience across every required source application in APP-01 through APP-06. |
+| DEMO-09 | Add two consecutive prompts with `Cmd+Return`; after each acknowledged add, confirm the composer clears, retains focus, is immediately reusable, and keeps the new note reachable without pointer refocus. |
+| DEMO-10 | Confirm resting, focused, multiline, and persisted-draft states remain one section-aware composer surface with both pointer Add and `Cmd+Return` paths at default and minimum panel sizes. |
+| DEMO-11 | Confirm keyboard focus, single selection, additive/range selection, capture highlight, pending completion, and completed state remain visually distinct without relying on color alone. |
+| DEMO-12 | Confirm note context menus expose only applicable actions and visibly label keyboard equivalents for Copy, Copy as list, Mark done/Restore, Edit, Edit in new window, Merge, and Delete. |
+| DEMO-13 | Select notes in displayed order and confirm Copy as list emits Kopper's intentional unordered Markdown representation (`- item`) in that same order. |
+| DEMO-14 | Paste copied notes into a second disposable application; confirm exact reusable content/order, accessible success feedback, and specific visible feedback for a safely induced clipboard failure if available. |
+| DEMO-15 | Confirm the installed UI retains original Oxide Ledger colors, lifecycle rail, surfaces, and iconography and does not display Copper branding, logo, marketing copy, or an exact copied palette. |
+
+## 12. Process exit and uninstall
 
 First test normal quit while the app is installed:
 
@@ -283,7 +305,7 @@ Expected: the searches produce no path, login-item output is empty, the final co
 
 The local data file may remain after app removal because it is user content, not a background component. Record whether it remains. If cleanup of the disposable account is approved, remove only `~/Library/Application Support/Kopper` after evidence is complete.
 
-## 12. Failures, retests, and release decision
+## 13. Failures, retests, and release decision
 
 - A surprising or intermittent outcome is `Fail`, not `Not run`.
 - `Not run` is allowed only with an explicit blocker and required next action.
