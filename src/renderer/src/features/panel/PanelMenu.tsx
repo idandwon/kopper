@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useState, type Ref } from "react";
 
 import { useKopperDocument } from "../../app/DocumentProvider";
 import { Button } from "../../components/ui/button";
@@ -11,35 +11,22 @@ import {
   DropdownMenuTrigger,
 } from "../../components/ui/dropdown-menu";
 import { AddSectionDialog } from "../sections/AddSectionDialog";
+import type { SettingsTab } from "../settings/settingsRoute";
 import { PanelMenuIcon } from "./PanelMenuIcon";
-import {
-  PanelSettingsSheet,
-  type SettingsTab,
-} from "./PanelSettingsSheet";
 
-export function PanelMenu({
-  captureUnavailable,
-}: {
-  captureUnavailable: boolean;
-}) {
+interface PanelMenuProps {
+  openSettings(tab: SettingsTab): void;
+  triggerRef: Ref<HTMLButtonElement>;
+}
+
+export function PanelMenu({ openSettings, triggerRef }: PanelMenuProps) {
   const { document, pendingAction, undo } = useKopperDocument();
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settingsTab, setSettingsTab] = useState<SettingsTab>("appearance");
   const [sectionDialogOpen, setSectionDialogOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState("");
-  const triggerRef = useRef<HTMLButtonElement>(null);
   const busy = pendingAction !== null;
 
-  useEffect(() => {
-    return window.kopper.onOpenSettings(() => {
-      setSettingsTab("shortcuts");
-      setSettingsOpen(true);
-    });
-  }, []);
-
   const openAppearanceSettings = () => {
-    setSettingsTab("appearance");
-    setSettingsOpen(true);
+    openSettings("appearance");
   };
 
   const openSectionDialog = () => {
@@ -66,11 +53,6 @@ export function PanelMenu({
     } catch {
       setStatusMessage("The panel pin could not be changed.");
     }
-  };
-
-  const restoreMenuFocus = (event: Event) => {
-    event.preventDefault();
-    triggerRef.current?.focus();
   };
 
   const pinLabel = document.window.pinned ? "Unpin panel" : "Pin panel";
@@ -116,15 +98,6 @@ export function PanelMenu({
         mode="controlled"
         open={sectionDialogOpen}
         onOpenChange={setSectionDialogOpen}
-      />
-
-      <PanelSettingsSheet
-        activeTab={settingsTab}
-        captureUnavailable={captureUnavailable}
-        open={settingsOpen}
-        changeOpen={setSettingsOpen}
-        changeTab={setSettingsTab}
-        restoreMenuFocus={restoreMenuFocus}
       />
 
       {statusMessage.length > 0 ? (

@@ -38,20 +38,23 @@ function focusedOwnerKeepsShortcut(element: Element | null): boolean {
 
 interface PanelShortcutsProps {
   disabled: boolean;
+  enabled: boolean;
   focusSearch(): void;
   undo(): void;
 }
 
 export function PanelShortcuts({
   disabled,
+  enabled,
   focusSearch,
   undo,
 }: PanelShortcutsProps) {
-  const actionsRef = useRef({ disabled, focusSearch, undo });
-  actionsRef.current = { disabled, focusSearch, undo };
+  const actionsRef = useRef({ disabled, enabled, focusSearch, undo });
+  actionsRef.current = { disabled, enabled, focusSearch, undo };
 
   useEffect(() => {
     const routePanelShortcut = (event: KeyboardEvent) => {
+      if (!actionsRef.current.enabled) return;
       const commandPressed = event.metaKey || event.ctrlKey;
       const modifiedByOption = event.altKey;
       const focusedOwnerKeepsCommand = focusedOwnerKeepsShortcut(

@@ -1,4 +1,10 @@
-import { useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 import type { KopperDocument } from "../../../shared/domain/document";
 import type { KopperError } from "../../../shared/domain/errors";
@@ -11,7 +17,13 @@ import { NoteComposer } from "../features/notes/NoteComposer";
 import type { AccessibilityPermissionPanelControls } from "../features/onboarding/AccessibilityPermissionGate";
 import { PanelHeader } from "../features/panel/PanelHeader";
 import { PanelShell } from "../features/panel/PanelShell";
+import { PanelShortcuts } from "../features/panel/PanelShortcuts";
 import type { NoteProjectionView } from "../features/search/projectNotes";
+import { SettingsPage } from "../features/settings/SettingsPage";
+import type {
+  PanelRoute,
+  SettingsTab,
+} from "../features/settings/settingsRoute";
 import { useKopperDocument } from "./DocumentProvider";
 
 interface DocumentErrorProps {
@@ -115,47 +127,125 @@ export function DocumentPanel({
   captureUnavailable,
   permissionControls,
 }: DocumentPanelProps) {
-  const { error, pendingAction, retryLastAction } = useKopperDocument();
+  const { error, pendingAction, retryLastAction, undo } = useKopperDocument();
   const [query, setQuery] = useState("");
   const [view, setView] = useState<NoteProjectionView>("active");
+  const [route, setRoute] = useState<PanelRoute>({ page: "notes" });
   const [captureHighlightedNoteId, setCaptureHighlightedNoteId] = useState<
     string | null
   >(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const pendingReturnFocusRef = useRef<"menu" | "search" | null>(null);
   const busy = pendingAction !== null;
+
+  const openSettingsFromMenu = useCallback((tab: SettingsTab) => {
+    setRoute({ page: "settings", tab, returnFocus: "menu" });
+  }, []);
+
+  const openSettingsFromNativeEvent = useCallback(() => {
+    setRoute({
+      page: "settings",
+      tab: "shortcuts",
+      returnFocus: "search",
+    });
+  }, []);
+
+  useEffect(
+    () => window.kopper.onOpenSettings(openSettingsFromNativeEvent),
+    [openSettingsFromNativeEvent],
+  );
+
+  const changeSettingsTab = useCallback((tab: SettingsTab) => {
+    setRoute((currentRoute) =>
+      currentRoute.page === "settings"
+        ? { ...currentRoute, tab }
+        : currentRoute,
+    );
+  }, []);
+
+  const closeSettings = useCallback(() => {
+    if (route.page !== "settings") return;
+    pendingReturnFocusRef.current = route.returnFocus;
+    setRoute({ page: "notes" });
+  }, [route]);
+
+  useLayoutEffect(() => {
+    if (route.page !== "notes") return;
+    const returnFocus = pendingReturnFocusRef.current;
+    if (returnFocus === null) return;
+    pendingReturnFocusRef.current = null;
+    if (returnFocus === "menu") {
+      menuTriggerRef.current?.focus();
+      return;
+    }
+    searchInputRef.current?.focus();
+  }, [route.page]);
+
+  const focusSearch = () => {
+    searchInputRef.current?.focus();
+  };
+
+  const undoLastAction = () => {
+    void undo();
+  };
 
   return (
     <PanelFeedbackProvider>
       <NotePresentationProvider>
         <div className="contents">
           <PanelShell>
-            <PanelHeader
-              query={query}
-              view={view}
-              captureUnavailable={captureUnavailable}
-              changeQuery={setQuery}
-              changeView={setView}
-            />
+            <div
+              hidden={route.page !== "notes"}
+              className="min-h-0 flex flex-1 flex-col"
+            >
+              <PanelHeader
+                query={query}
+                view={view}
+                searchInputRef={searchInputRef}
+                menuTriggerRef={menuTriggerRef}
+                changeQuery={setQuery}
+                changeView={setView}
+                openSettings={openSettingsFromMenu}
+              />
 
-            {captureUnavailable ? (
-              <CaptureAccessPanel controls={permissionControls} />
+              {captureUnavailable ? (
+                <CaptureAccessPanel controls={permissionControls} />
+              ) : null}
+
+              {error === null ? null : (
+                <DocumentError
+                  error={error}
+                  retry={retryLastAction}
+                  disabled={busy}
+                />
+              )}
+
+              <NoteCollection
+                document={document}
+                query={query}
+                view={view}
+                captureHighlightedNoteId={captureHighlightedNoteId}
+              />
+
+              {view === "active" ? <NoteComposer /> : null}
+            </div>
+
+            {route.page === "settings" ? (
+              <SettingsPage
+                activeTab={route.tab}
+                captureUnavailable={captureUnavailable}
+                changeTab={changeSettingsTab}
+                closeSettings={closeSettings}
+              />
             ) : null}
 
-            {error === null ? null : (
-              <DocumentError
-                error={error}
-                retry={retryLastAction}
-                disabled={busy}
-              />
-            )}
-
-            <NoteCollection
-              document={document}
-              query={query}
-              view={view}
-              captureHighlightedNoteId={captureHighlightedNoteId}
+            <PanelShortcuts
+              disabled={busy}
+              enabled={route.page === "notes"}
+              focusSearch={focusSearch}
+              undo={undoLastAction}
             />
-
-            {view === "active" ? <NoteComposer /> : null}
           </PanelShell>
           <CaptureToast
             displayNotice={false}

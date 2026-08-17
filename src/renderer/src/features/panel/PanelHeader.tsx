@@ -1,11 +1,10 @@
-import { useRef } from "react";
+import type { Ref } from "react";
 
-import { useKopperDocument } from "../../app/DocumentProvider";
 import { Button } from "../../components/ui/button";
+import type { SettingsTab } from "../settings/settingsRoute";
 import { SearchField } from "../search/SearchField";
 import type { NoteProjectionView } from "../search/projectNotes";
 import { PanelMenu } from "./PanelMenu";
-import { PanelShortcuts } from "./PanelShortcuts";
 
 interface LifecycleViewButtonProps {
   view: NoteProjectionView;
@@ -39,30 +38,22 @@ function LifecycleViewButton({
 interface PanelHeaderProps {
   query: string;
   view: NoteProjectionView;
-  captureUnavailable: boolean;
+  searchInputRef: Ref<HTMLInputElement>;
+  menuTriggerRef: Ref<HTMLButtonElement>;
   changeQuery(query: string): void;
   changeView(view: NoteProjectionView): void;
+  openSettings(tab: SettingsTab): void;
 }
 
 export function PanelHeader({
   query,
   view,
-  captureUnavailable,
+  searchInputRef,
+  menuTriggerRef,
   changeQuery,
   changeView,
+  openSettings,
 }: PanelHeaderProps) {
-  const { pendingAction, undo } = useKopperDocument();
-  const searchInputRef = useRef<HTMLInputElement>(null);
-  const busy = pendingAction !== null;
-
-  const focusSearch = () => {
-    searchInputRef.current?.focus();
-  };
-
-  const undoLastAction = () => {
-    void undo();
-  };
-
   return (
     <header className="grid gap-2 px-4 pt-4 pb-3 pl-5">
       <div className="flex items-center gap-2">
@@ -71,7 +62,10 @@ export function PanelHeader({
           inputRef={searchInputRef}
           onQueryChange={changeQuery}
         />
-        <PanelMenu captureUnavailable={captureUnavailable} />
+        <PanelMenu
+          openSettings={openSettings}
+          triggerRef={menuTriggerRef}
+        />
       </div>
       <div
         role="group"
@@ -89,11 +83,6 @@ export function PanelHeader({
           selectView={changeView}
         />
       </div>
-      <PanelShortcuts
-        disabled={busy}
-        focusSearch={focusSearch}
-        undo={undoLastAction}
-      />
     </header>
   );
 }

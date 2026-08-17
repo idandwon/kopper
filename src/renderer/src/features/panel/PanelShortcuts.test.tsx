@@ -6,7 +6,13 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { PanelShortcuts } from "./PanelShortcuts";
 
-function ShortcutHarness({ disabled = false }: { disabled?: boolean }) {
+function ShortcutHarness({
+  disabled = false,
+  enabled = true,
+}: {
+  disabled?: boolean;
+  enabled?: boolean;
+}) {
   const searchRef = useRef<HTMLInputElement>(null);
   const [undoCount, setUndoCount] = useState(0);
 
@@ -21,6 +27,7 @@ function ShortcutHarness({ disabled = false }: { disabled?: boolean }) {
       <output aria-label="Undo count">{undoCount}</output>
       <PanelShortcuts
         disabled={disabled}
+        enabled={enabled}
         focusSearch={() => searchRef.current?.focus()}
         undo={() => setUndoCount((currentCount) => currentCount + 1)}
       />
@@ -68,6 +75,18 @@ describe("panel keyboard shortcuts", () => {
 
     fireEvent.keyDown(window, { key: "z", metaKey: true });
 
+    expect(screen.getByRole("status", { name: "Undo count" })).toHaveTextContent("0");
+  });
+
+  it("ignores note-page shortcuts while the notes route is hidden", () => {
+    render(<ShortcutHarness enabled={false} />);
+    const outside = screen.getByRole("button", { name: "Outside" });
+    outside.focus();
+
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    fireEvent.keyDown(window, { key: "z", metaKey: true });
+
+    expect(outside).toHaveFocus();
     expect(screen.getByRole("status", { name: "Undo count" })).toHaveTextContent("0");
   });
 });

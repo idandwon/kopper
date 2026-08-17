@@ -21,6 +21,7 @@ import {
 let captureOutcomeListener:
   | ((outcome: import("../../../shared/ipc/contract").CaptureOutcome) => void)
   | undefined;
+let openSettingsListener: (() => void) | undefined;
 
 const onboardingMock = vi.hoisted(() => ({
   mode: "grant" as "grant" | "hold",
@@ -145,6 +146,14 @@ function contextValue(
 }
 
 beforeEach(() => {
+  vi.stubGlobal(
+    "ResizeObserver",
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   globalThis.location.hash = "";
   onboardingMock.mode = "grant";
   onboardingMock.mounts = 0;
@@ -157,12 +166,16 @@ beforeEach(() => {
   retryLastAction.mockReset().mockResolvedValue(true);
   mockedUseKopperDocument.mockReturnValue(contextValue());
   captureOutcomeListener = undefined;
+  openSettingsListener = undefined;
   window.kopper = {
     onCaptureOutcome: vi.fn((listener) => {
       captureOutcomeListener = listener;
       return vi.fn();
     }),
-    onOpenSettings: vi.fn(() => vi.fn()),
+    onOpenSettings: vi.fn((listener) => {
+      openSettingsListener = listener;
+      return vi.fn();
+    }),
     openEditorWindow: vi.fn(),
     copyNotes: vi.fn(),
   } as never;
@@ -170,6 +183,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.unstubAllGlobals();
 });
 
 describe("Oxide Ledger App", () => {
@@ -277,17 +291,91 @@ describe("Oxide Ledger App", () => {
     vi.useRealTimers();
   });
 
-  it("restores focus to the panel menu trigger when the controlled settings sheet closes", async () => {
+  it("replaces notes with Appearance settings and restores menu focus on Back", async () => {
     const user = userEvent.setup();
     render(<App />);
     const trigger = screen.getByRole("button", { name: "Panel menu" });
     await user.click(trigger);
     await user.click(screen.getByRole("menuitem", { name: "Settings…" }));
-    expect(await screen.findByRole("dialog")).toHaveTextContent(
-      "Appearance controls",
+
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Appearance" })).toHaveAttribute(
+      "data-state",
+      "active",
     );
-    await user.click(screen.getByRole("button", { name: "Close settings" }));
+    expect(
+      screen.queryByRole("searchbox", { name: "Search notes" }),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Back to notes" }));
+    expect(
+      screen.getByRole("searchbox", { name: "Search notes" }),
+    ).toBeVisible();
     expect(trigger).toHaveFocus();
+  });
+
+  it("opens native Settings on Shortcuts and restores Search focus with Escape", async () => {
+    render(<App />);
+
+    act(() => openSettingsListener?.());
+
+    expect(screen.getByRole("heading", { name: "Settings" })).toBeVisible();
+    expect(screen.getByRole("tab", { name: "Shortcuts" })).toHaveAttribute(
+      "data-state",
+      "active",
+    );
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    await vi.waitFor(() =>
+      expect(
+        screen.getByRole("searchbox", { name: "Search notes" }),
+      ).toHaveFocus(),
+    );
+  });
+
+  it("preserves the search query and Completed view across Settings", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Completed notes" }));
+    await user.type(
+      screen.getByRole("searchbox", { name: "Search notes" }),
+      "Completed",
+    );
+    await user.click(screen.getByRole("button", { name: "Panel menu" }));
+    await user.click(screen.getByRole("menuitem", { name: "Settings…" }));
+    await user.click(screen.getByRole("button", { name: "Back to notes" }));
+
+    expect(screen.getByRole("searchbox", { name: "Search notes" })).toHaveValue(
+      "Completed",
+    );
+    expect(
+      screen.getByRole("button", { name: "Completed notes" }),
+    ).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByText("Completed note")).toBeVisible();
+  });
+
+  it("preserves note selection and the latest local composer draft across Settings", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(
+      screen.getByRole("option", { name: "Note: Captured note" }),
+    );
+    await user.type(
+      screen.getByRole("textbox", { name: "Add a note or prompt" }),
+      "Local draft",
+    );
+    await user.click(screen.getByRole("button", { name: "Panel menu" }));
+    await user.click(screen.getByRole("menuitem", { name: "Settings…" }));
+    await user.click(screen.getByRole("button", { name: "Back to notes" }));
+
+    expect(
+      screen.getByRole("option", { name: "Note: Captured note" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByRole("textbox", { name: "Add a note or prompt" }),
+    ).toHaveValue("Local draft");
   });
 
   it("moves from the initial tabbable card and extends selection from that card", () => {
