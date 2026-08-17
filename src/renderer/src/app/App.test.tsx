@@ -127,6 +127,7 @@ const mockedUseKopperDocument = vi.mocked(useKopperDocument);
 const execute = vi.fn<KopperDocumentContextValue["execute"]>();
 const undo = vi.fn<KopperDocumentContextValue["undo"]>();
 const retryLastAction = vi.fn<KopperDocumentContextValue["retryLastAction"]>();
+const setPinned = vi.fn();
 const scrollIntoView = vi.fn();
 
 function contextValue(
@@ -164,6 +165,10 @@ beforeEach(() => {
   execute.mockReset().mockResolvedValue(true);
   undo.mockReset().mockResolvedValue(true);
   retryLastAction.mockReset().mockResolvedValue(true);
+  setPinned.mockReset().mockResolvedValue({
+    ok: true,
+    value: { ...document, window: { ...document.window, pinned: true } },
+  });
   mockedUseKopperDocument.mockReturnValue(contextValue());
   captureOutcomeListener = undefined;
   openSettingsListener = undefined;
@@ -178,6 +183,7 @@ beforeEach(() => {
     }),
     openEditorWindow: vi.fn(),
     copyNotes: vi.fn(),
+    setPinned,
   } as never;
 });
 afterEach(() => {
@@ -708,6 +714,43 @@ describe("Oxide Ledger App", () => {
 
     await user.click(undoMenuItem);
     expect(undo).toHaveBeenCalledOnce();
+  });
+
+  it("reports pin success and failure through the shared visible feedback", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Panel menu" }));
+    await user.click(screen.getByRole("menuitem", { name: "Pin panel" }));
+
+    const status = globalThis.document.querySelector('[data-slot="toast"]');
+    expect(status).toHaveAttribute("role", "status");
+    expect(status).toHaveTextContent("Panel pinned.");
+    expect(status).toBeVisible();
+    expect(
+      globalThis.document.querySelectorAll('[data-slot="toast"]'),
+    ).toHaveLength(1);
+
+    setPinned.mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: "write_failed",
+        message: "The panel pin could not be saved.",
+        retryable: true,
+      },
+    });
+    await user.click(screen.getByRole("button", { name: "Panel menu" }));
+    await user.click(screen.getByRole("menuitem", { name: "Pin panel" }));
+
+    expect(
+      globalThis.document.querySelector('[data-slot="toast"][role="status"]'),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The panel pin could not be saved.",
+    );
+    expect(
+      globalThis.document.querySelectorAll('[data-slot="toast"]'),
+    ).toHaveLength(1);
   });
 
   it("renders a persistent structured error with Retry only when retryable", async () => {

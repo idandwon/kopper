@@ -16,6 +16,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "../../components/ui/tooltip";
+import { usePanelFeedback } from "../feedback/PanelFeedback";
 import { AddSectionDialog } from "../sections/AddSectionDialog";
 import type { SettingsTab } from "../settings/settingsRoute";
 import { PanelMenuIcon } from "./PanelMenuIcon";
@@ -32,8 +33,8 @@ export function PanelMenu({
   triggerRef,
 }: PanelMenuProps) {
   const { document, pendingAction, undo } = useKopperDocument();
+  const { reportNotice } = usePanelFeedback();
   const [sectionDialogOpen, setSectionDialogOpen] = useState(false);
-  const [statusMessage, setStatusMessage] = useState("");
   const busy = pendingAction !== null;
 
   useEffect(() => {
@@ -55,18 +56,17 @@ export function PanelMenu({
   const togglePinnedState = async () => {
     if (busy) return;
     const requestedPinnedState = !document.window.pinned;
-    setStatusMessage("");
     try {
       const result = await window.kopper.setPinned(requestedPinnedState);
       if (!result.ok) {
-        setStatusMessage(result.error.message);
+        reportNotice(result.error.message, "error");
         return;
       }
-      setStatusMessage(
+      reportNotice(
         result.value.window.pinned ? "Panel pinned." : "Panel unpinned.",
       );
     } catch {
-      setStatusMessage("The panel pin could not be changed.");
+      reportNotice("The panel pin could not be changed.", "error");
     }
   };
 
@@ -121,12 +121,6 @@ export function PanelMenu({
         open={notesVisible && sectionDialogOpen}
         onOpenChange={setSectionDialogOpen}
       />
-
-      {statusMessage.length > 0 ? (
-        <p role="status" aria-live="polite" className="sr-only">
-          {statusMessage}
-        </p>
-      ) : null}
     </>
   );
 }

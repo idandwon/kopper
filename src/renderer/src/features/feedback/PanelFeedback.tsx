@@ -10,6 +10,12 @@ import {
 } from "react";
 
 import type { ClipboardCopyResult } from "../../../../shared/ipc/contract";
+import {
+  Toast,
+  ToastProvider,
+  ToastTitle,
+  ToastViewport,
+} from "../../components/ui/toast";
 
 const FEEDBACK_DURATION_MS = 1_800;
 
@@ -18,7 +24,8 @@ interface FeedbackNotice {
   tone: "status" | "error";
 }
 
-interface PanelFeedbackValue {
+export interface PanelFeedbackValue {
+  reportNotice(message: string, tone?: "status" | "error"): void;
   reportClipboardResult(result: ClipboardCopyResult): void;
   reportClipboardUnavailable(): void;
 }
@@ -37,63 +44,84 @@ export function PanelFeedbackProvider({ children }: { children: ReactNode }) {
   const [notice, setNotice] = useState<FeedbackNotice | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const showNotice = useCallback((nextNotice: FeedbackNotice) => {
-    if (timerRef.current !== null) clearTimeout(timerRef.current);
-    setNotice(nextNotice);
-    timerRef.current = setTimeout(() => {
-      timerRef.current = null;
-      setNotice(null);
-    }, FEEDBACK_DURATION_MS);
+  const clearNoticeTimer = useCallback(() => {
+    if (timerRef.current === null) return;
+    clearTimeout(timerRef.current);
+    timerRef.current = null;
   }, []);
+
+  const reportNotice = useCallback(
+    (message: string, tone: "status" | "error" = "status") => {
+      clearNoticeTimer();
+      setNotice({ message, tone });
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null;
+        setNotice(null);
+      }, FEEDBACK_DURATION_MS);
+    },
+    [clearNoticeTimer],
+  );
+
+  const dismissNotice = useCallback(() => {
+    clearNoticeTimer();
+    setNotice(null);
+  }, [clearNoticeTimer]);
 
   const reportClipboardResult = useCallback(
     (result: ClipboardCopyResult) => {
       if (!result.ok) {
-        showNotice({ message: result.error.message, tone: "error" });
+        reportNotice(result.error.message, "error");
         return;
       }
 
       const copiedCount = result.value.copiedCount;
       const message =
         copiedCount === 1 ? "Copied note." : `Copied ${copiedCount} notes.`;
-      showNotice({ message, tone: "status" });
+      reportNotice(message);
     },
-    [showNotice],
+    [reportNotice],
   );
 
   const reportClipboardUnavailable = useCallback(() => {
-    showNotice({
-      message: "The selected notes could not be copied.",
-      tone: "error",
-    });
-  }, [showNotice]);
+    reportNotice("The selected notes could not be copied.", "error");
+  }, [reportNotice]);
 
   const feedback = useMemo(
-    () => ({ reportClipboardResult, reportClipboardUnavailable }),
-    [reportClipboardResult, reportClipboardUnavailable],
+    () => ({ reportNotice, reportClipboardResult, reportClipboardUnavailable }),
+    [reportNotice, reportClipboardResult, reportClipboardUnavailable],
   );
 
-  useEffect(() => {
-    return () => {
-      if (timerRef.current !== null) clearTimeout(timerRef.current);
-    };
-  }, []);
+  useEffect(
+    () => () => {
+      clearNoticeTimer();
+    },
+    [clearNoticeTimer],
+  );
+
+  const errorNotice = notice?.tone === "error";
 
   return (
     <PanelFeedbackContext value={feedback}>
-      {children}
-      {notice === null ? null : notice.tone === "error" ? (
-        <div
-          role="alert"
-          className="pointer-events-none fixed right-4 bottom-5 z-50 max-w-[calc(100%-2rem)] rounded-lg border border-destructive bg-popover px-3 py-2 text-sm text-popover-foreground shadow-lg"
-        >
-          {notice.message}
-        </div>
-      ) : (
-        <p role="status" aria-live="polite" className="sr-only">
-          {notice.message}
-        </p>
-      )}
+      <ToastProvider>
+        {children}
+        {notice === null ? null : (
+          <Toast
+            open
+            duration={Infinity}
+            type={errorNotice ? "foreground" : "background"}
+            role={errorNotice ? "alert" : "status"}
+            aria-live={errorNotice ? "assertive" : "polite"}
+            aria-atomic="true"
+            className={errorNotice ? "border-destructive" : undefined}
+            onOpenChange={(open) => {
+              if (!open) dismissNotice();
+            }}
+          >
+            <ToastTitle>{notice.message}</ToastTitle>
+          </Toast>
+        )}
+        <ToastViewport />
+      </ToastProvider>
     </PanelFeedbackContext>
   );
 }

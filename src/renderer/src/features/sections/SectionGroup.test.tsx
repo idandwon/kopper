@@ -170,8 +170,10 @@ describe("SectionGroup", () => {
     const firstNote = screen.getByRole("option", { name: "Note: First" });
 
     fireEvent.keyDown(firstNote, { key: "c", metaKey: true });
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Copied 2 notes.",
+    await vi.waitFor(() =>
+      expect(
+        globalThis.document.querySelector('[data-slot="toast"]'),
+      ).toHaveTextContent("Copied 2 notes."),
     );
     expect(copyNotes).toHaveBeenCalledWith(["one", "two"], "plain");
 

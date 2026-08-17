@@ -39,11 +39,24 @@ describe("CaptureToast", () => {
     [{ status: "failed", error: { code: "write_failed", message: "ignored", retryable: true } }, "Captured text could not be saved"],
     [{ status: "failed", error: { code: "capture_failed", message: "ignored", retryable: true } }, "Kopper could not capture the selection."],
   ] as const)("shows a nonfocusing status for %j", (event, copy) => {
-    render(<CaptureToast />);
+    render(
+      <>
+        <button type="button">Existing focus</button>
+        <CaptureToast />
+      </>,
+    );
+    const existingFocus = screen.getByRole("button", {
+      name: "Existing focus",
+    });
+    existingFocus.focus();
     outcome(event as CaptureOutcome);
     const status = screen.getByRole("status");
     expect(status).toHaveTextContent(copy);
     expect(status).not.toHaveAttribute("tabindex");
+    expect(
+      status.querySelectorAll("button, a, input, [tabindex]"),
+    ).toHaveLength(0);
+    expect(existingFocus).toHaveFocus();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
