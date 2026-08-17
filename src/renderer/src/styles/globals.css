@@ -88,6 +88,19 @@
       0 5px 16px color-mix(in srgb, var(--foreground) 5%, transparent);
   }
 
+  .kopper-composer {
+    transition:
+      border-color 150ms ease,
+      box-shadow 150ms ease;
+  }
+
+  .kopper-composer:focus-within {
+    border-color: var(--ring);
+    box-shadow:
+      0 0 0 2px color-mix(in srgb, var(--ring) 30%, transparent),
+      0 10px 28px color-mix(in srgb, var(--foreground) 10%, transparent);
+  }
+
   .kopper-note-card-preview[data-preview-clamped="true"] .kopper-markdown {
     display: -webkit-box;
     overflow: hidden;

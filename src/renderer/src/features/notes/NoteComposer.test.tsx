@@ -72,6 +72,21 @@ afterEach(() => {
 });
 
 describe("NoteComposer", () => {
+  it("renders one section-aware composer surface", () => {
+    render(<NoteComposer />);
+
+    const composer = screen.getByRole("textbox", {
+      name: "Add a note or prompt",
+    });
+    expect(composer).toHaveAttribute(
+      "placeholder",
+      "Add a note or prompt (Inbox)",
+    );
+    expect(composer.closest("[data-composer-surface]")).toBeInTheDocument();
+    expect(screen.queryByText("Inbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add note" })).toBeVisible();
+  });
+
   it("initializes from a valid persisted draft and saves typing after 250ms", async () => {
     mockedUseKopperDocument.mockReturnValue({
       ...mockedUseKopperDocument(),
@@ -398,7 +413,10 @@ describe("NoteComposer", () => {
     });
     rerender(<NoteComposer />);
 
-    expect(screen.getByText("Later")).toBeInTheDocument();
+    expect(screen.getByRole("textbox")).toHaveAttribute(
+      "placeholder",
+      "Add a note or prompt (Later)",
+    );
   });
 
   it.each([
@@ -438,7 +456,10 @@ describe("NoteComposer", () => {
       });
       rerender(<NoteComposer />);
 
-      expect(screen.getByText("Inbox")).toBeInTheDocument();
+      expect(screen.getByRole("textbox")).toHaveAttribute(
+        "placeholder",
+        "Add a note or prompt (Inbox)",
+      );
       expect(screen.getByRole("textbox")).toHaveValue(value);
     },
   );

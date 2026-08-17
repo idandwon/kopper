@@ -170,11 +170,11 @@
 - Consumes: active section, persisted draft, authoritative `execute`, and existing draft debounce/flush contract.
 - Produces: one visually unified composer surface that clears only after acknowledged add and remains ready for consecutive prompts.
 
-- [ ] Preserve draft persistence, dependent operation order, and failure behavior in characterization tests.
-- [ ] Remove permanent secondary chrome from the resting composer; expose necessary details without creating a separate footer panel.
-- [ ] Derive visual expansion from focus/content where useful while retaining the reference’s stable single-surface shape.
-- [ ] Keep multiline entry and Cmd+Enter; do not infer an unobserved Enter-to-submit contract from video editing.
-- [ ] Run focused tests, E2E prompt-entry journey, typecheck, and commit.
+- [x] Preserve draft persistence, dependent operation order, and failure behavior in characterization tests.
+- [x] Remove permanent secondary chrome from the resting composer; expose necessary details without creating a separate footer panel.
+- [x] Derive visual expansion from focus/content where useful while retaining the reference’s stable single-surface shape.
+- [x] Keep multiline entry and Cmd+Enter; do not infer an unobserved Enter-to-submit contract from video editing.
+- [x] Run focused tests, E2E prompt-entry journey, typecheck, and commit.
 
 ### Task 8: Capture Choreography and HUD
 
