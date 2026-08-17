@@ -2,7 +2,7 @@
 
 **Purpose:** Map the storyboard’s `DEMO-*` criteria to repeatable evidence without treating automated renderer coverage as signing, notarization, or physical macOS acceptance.
 
-**Exact automated-gate source:** `2828fa40f69478a11e5e99f61afe0fd046deeb7d` (tree `2fb3f0279134cc1ced9dadd27f62558435b23a01`). This tested source includes the approved E2E host-input isolation correction; the later evidence-pointer and plan-ledger commits change documentation only, change no production/package source, and are not the tested source SHA.
+**Exact automated-gate source:** `6054d26965ce66d924079cbcd4fb28dbcb05b38c` (tree `c7f57763fbebcc7dd288b40f1127344bbf987c41`). This tested source includes the final shadcn UI finding fixes and all prior reviewed corrections. The later evidence, branch-review, and progress-ledger commits change documentation only, change no production/package source, and are not the tested source SHA. The fresh ordered unsigned gate ran from `2026-08-17T15:55:39Z` through `2026-08-17T15:57:14Z`: 69 unit files / 766 tests and 16 Electron E2E journeys passed; source audit checked 104 files; the unsigned universal verifier passed 3,172 ASAR entries, exact `arm64` and `x86_64`, one native module, application ID `com.kopper.app`, and minimum macOS 14.0.
 
 | ID | Automated evidence | Remaining manual evidence |
 | --- | --- | --- |
@@ -28,5 +28,9 @@
 - `tests/e2e/demo-parity.spec.ts-snapshots/oxide-ledger-light-340x480-darwin.png`
 - `tests/e2e/demo-parity.spec.ts-snapshots/oxide-ledger-dark-380x640-darwin.png`
 - `tests/e2e/demo-parity.spec.ts-snapshots/oxide-ledger-dark-340x480-darwin.png`
+- `tests/e2e/demo-parity.spec.ts-snapshots/oxide-ledger-settings-light-380x640-darwin.png`
+- `tests/e2e/demo-parity.spec.ts-snapshots/oxide-ledger-settings-light-340x480-darwin.png`
+- `tests/e2e/demo-parity.spec.ts-snapshots/oxide-ledger-settings-dark-380x640-darwin.png`
+- `tests/e2e/demo-parity.spec.ts-snapshots/oxide-ledger-settings-dark-340x480-darwin.png`
 
-These screenshots are macOS renderer baselines. They do not prove native Accessibility behavior, source focus preservation, system-level HUD placement, signing, notarization, stapling, or Gatekeeper acceptance.
+All eight screenshots matched during the exact-source gate without baseline, mask, or tolerance changes. These screenshots are macOS renderer baselines. They do not prove native Accessibility behavior, source focus preservation, system-level HUD placement, signing, notarization, stapling, or Gatekeeper acceptance.
