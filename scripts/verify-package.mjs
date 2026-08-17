@@ -892,11 +892,7 @@ function inspectApplicationSource(
   let changed;
   do {
     changed = false;
-    for (const {
-      left,
-      right,
-      unresolvedDestination,
-    } of preferenceAliasEdges) {
+    for (const { left, right, unresolvedDestination } of preferenceAliasEdges) {
       if (isKnownWebPreferenceReceiver(left)) {
         changed = collectPreferenceExpression(right) || changed;
       }
