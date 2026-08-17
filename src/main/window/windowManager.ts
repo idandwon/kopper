@@ -107,6 +107,11 @@ export class WindowManager implements SecurityWindowRegistry {
     this.persistBounds = options.persistBounds ?? (() => undefined);
     this.captureHud = new CaptureHud({
       rendererUrl: this.rendererUrl,
+      anchorBounds: () => {
+        const window = this.mainWindow;
+        if (window === undefined || window.isDestroyed()) return undefined;
+        return window.getBounds();
+      },
       createWindow: (bounds) =>
         new BrowserWindow({
           ...bounds,

@@ -4,7 +4,7 @@ import type { CaptureOutcome } from "../../shared/ipc/contract";
 import { IPC_CHANNELS } from "../../shared/ipc/contract";
 import { loadRenderer } from "./loadRenderer";
 
-const HUD_WIDTH = 240;
+const HUD_WIDTH = 340;
 const HUD_HEIGHT = 72;
 const HUD_BOTTOM_INSET = 48;
 const HUD_DURATION_MS = 1_800;
@@ -18,6 +18,7 @@ interface CaptureHudWindowBounds {
 
 interface CaptureHudOptions {
   rendererUrl: URL;
+  anchorBounds(): CaptureHudWindowBounds | undefined;
   createWindow(bounds: CaptureHudWindowBounds): BrowserWindow;
   windowCreated(window: BrowserWindow): void;
 }
@@ -32,7 +33,9 @@ export class CaptureHud {
 
   show(outcome: CaptureOutcome): void {
     this.pendingOutcome = structuredClone(outcome);
-    const window = this.createWindow();
+    const existingWindow = this.getWindow();
+    const window = existingWindow ?? this.createWindow();
+    if (existingWindow !== undefined) window.setBounds(this.currentBounds());
     if (!this.ready) return;
     this.present(window);
   }
@@ -56,15 +59,7 @@ export class CaptureHud {
     const existing = this.getWindow();
     if (existing !== undefined) return existing;
 
-    const workArea = screen.getDisplayNearestPoint(
-      screen.getCursorScreenPoint(),
-    ).workArea;
-    const window = this.options.createWindow({
-      x: Math.round(workArea.x + (workArea.width - HUD_WIDTH) / 2),
-      y: workArea.y + workArea.height - HUD_HEIGHT - HUD_BOTTOM_INSET,
-      width: HUD_WIDTH,
-      height: HUD_HEIGHT,
-    });
+    const window = this.options.createWindow(this.currentBounds());
     this.window = window;
     this.ready = false;
     this.options.windowCreated(window);
@@ -82,6 +77,28 @@ export class CaptureHud {
       this.ready = false;
     });
     return window;
+  }
+
+  private currentBounds(): CaptureHudWindowBounds {
+    const anchorBounds = this.options.anchorBounds();
+    if (anchorBounds !== undefined) {
+      return {
+        x: anchorBounds.x + anchorBounds.width - HUD_WIDTH,
+        y: anchorBounds.y + anchorBounds.height - HUD_HEIGHT,
+        width: HUD_WIDTH,
+        height: HUD_HEIGHT,
+      };
+    }
+
+    const workArea = screen.getDisplayNearestPoint(
+      screen.getCursorScreenPoint(),
+    ).workArea;
+    return {
+      x: Math.round(workArea.x + (workArea.width - HUD_WIDTH) / 2),
+      y: workArea.y + workArea.height - HUD_HEIGHT - HUD_BOTTOM_INSET,
+      width: HUD_WIDTH,
+      height: HUD_HEIGHT,
+    };
   }
 
   private present(window: BrowserWindow): void {

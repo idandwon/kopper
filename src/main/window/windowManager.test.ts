@@ -236,7 +236,7 @@ describe("WindowManager", () => {
     expect(quittingPreventDefault).not.toHaveBeenCalled();
   });
 
-  it("shows a click-through capture HUD while leaving the hidden panel hidden", () => {
+  it("anchors a scrollbar-free capture HUD to the hidden panel bounds", () => {
     const manager = new WindowManager();
     manager.createMainWindow();
     const mainWindow = electron.FakeWindow.instances[0];
@@ -254,7 +254,9 @@ describe("WindowManager", () => {
     expect(mainWindow.show).not.toHaveBeenCalled();
     expect(mainWindow.focus).not.toHaveBeenCalled();
     expect(hudWindow.options).toMatchObject({
-      width: 240,
+      x: 1076,
+      y: 592,
+      width: 340,
       height: 72,
       frame: false,
       transparent: true,
@@ -285,6 +287,30 @@ describe("WindowManager", () => {
     vi.advanceTimersByTime(1_800);
     expect(hudWindow.hide).toHaveBeenCalledOnce();
     expect(mainWindow.hide).not.toHaveBeenCalled();
+  });
+
+  it("repositions the existing capture HUD when the panel moves", () => {
+    const manager = new WindowManager();
+    const mainWindow = manager.createMainWindow() as unknown as InstanceType<
+      typeof electron.FakeWindow
+    >;
+    mainWindow.emit("ready-to-show");
+    manager.showCaptureOutcome({ status: "empty" });
+
+    const hudWindow = electron.FakeWindow.instances[1];
+    expect(hudWindow).toBeDefined();
+    if (hudWindow === undefined) return;
+    hudWindow.emit("ready-to-show");
+    mainWindow.bounds = { x: 100, y: 50, width: 380, height: 600 };
+
+    manager.showCaptureOutcome({ status: "captured", noteId: "note-2" });
+
+    expect(hudWindow.setBounds).toHaveBeenLastCalledWith({
+      x: 140,
+      y: 578,
+      width: 340,
+      height: 72,
+    });
   });
 
   it("queues only the latest capture outcome until the HUD is ready", () => {
