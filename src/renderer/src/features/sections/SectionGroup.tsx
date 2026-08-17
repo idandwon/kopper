@@ -1,9 +1,7 @@
-import { useState, type Dispatch } from "react";
+import type { Dispatch } from "react";
 
 import { cn } from "../../lib/utils";
-import { useKopperDocument } from "../../app/DocumentProvider";
 import { NoteCard } from "../notes/NoteCard";
-import type { NoteMenuAction } from "../notes/NoteContextMenu";
 import type {
   SelectionAction,
   SelectionState,
@@ -13,6 +11,7 @@ import type {
   SectionProjection,
 } from "../search/projectNotes";
 import { SectionManager } from "./SectionManager";
+import { useSectionNoteActions } from "./useSectionNoteActions";
 
 export interface SectionGroupProps {
   projection: SectionProjection;
@@ -37,7 +36,15 @@ export function SectionGroup({
   onEdit,
   onEditNewWindow,
 }: SectionGroupProps) {
-  const { document, execute, pendingAction } = useKopperDocument();
+  const {
+    activateSection,
+    changeEditing,
+    disabled,
+    document,
+    editingNoteId,
+    handleAction,
+    saveNote,
+  } = useSectionNoteActions({ onExpand, onEdit, onEditNewWindow });
   const { section, notes } = projection;
   const active = document.activeSectionId === section.id;
   const selectedIds = new Set(selection.selectedIds);
@@ -46,57 +53,6 @@ export function SectionGroup({
     const note = notesById.get(id);
     return note === undefined ? [] : [note];
   });
-  const disabled = pendingAction !== null;
-  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
-
-  const handleAction = (action: NoteMenuAction) => {
-    switch (action.type) {
-      case "copy":
-        void window.kopper.copyNotes(action.noteIds, action.mode).catch(() => {
-          // Document actions own persistent error UI; a later task adds clipboard notices.
-        });
-        return;
-      case "complete":
-        void execute({ type: "note.complete", noteIds: action.noteIds });
-        return;
-      case "restore":
-        void execute({ type: "note.restore", noteIds: action.noteIds });
-        return;
-      case "merge":
-        void execute({ type: "note.merge", noteIds: action.noteIds });
-        return;
-      case "delete":
-        void execute({ type: "note.delete", noteIds: action.noteIds });
-        return;
-      case "move": {
-        const selected = new Set(action.noteIds);
-        const destinationOrder = document.notes.filter(
-          (note) =>
-            note.completedAt === null &&
-            note.sectionId === action.destinationSectionId &&
-            !selected.has(note.id),
-        ).length;
-        void execute({
-          type: "note.move",
-          noteIds: action.noteIds,
-          destinationSectionId: action.destinationSectionId,
-          destinationOrder,
-        });
-        return;
-      }
-      case "expand":
-        onExpand?.(action.noteId);
-        return;
-      case "edit":
-        setEditingNoteId(action.noteId);
-        onEdit?.(action.noteId);
-        return;
-      case "edit-new-window":
-        onEditNewWindow?.(action.noteId);
-        return;
-    }
-  };
-
   return (
     <section aria-labelledby={`section-${section.id}`}>
       <div className="mb-2 flex items-center gap-2 font-mono text-[10px] tracking-[0.13em] text-muted-foreground uppercase">
@@ -109,9 +65,7 @@ export function SectionGroup({
             )}
             aria-current={active ? "true" : undefined}
             disabled={disabled}
-            onClick={() =>
-              void execute({ type: "section.activate", sectionId: section.id })
-            }
+            onClick={() => activateSection(section.id)}
           >
             {section.title}
           </button>
@@ -147,12 +101,8 @@ export function SectionGroup({
               sections={document.sections}
               disabled={disabled}
               editing={editingNoteId === note.id}
-              onEditingChange={(editing) =>
-                setEditingNoteId(editing ? note.id : null)
-              }
-              onSave={(body) =>
-                execute({ type: "note.edit", noteId: note.id, body })
-              }
+              onEditingChange={(editing) => changeEditing(note.id, editing)}
+              onSave={(body) => saveNote(note.id, body)}
               onSelect={(intent) =>
                 dispatchSelection({
                   type: "click",

@@ -2,13 +2,16 @@ import "@testing-library/jest-dom/vitest";
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KopperDocument } from "../../../../shared/domain/document";
+import type { KopperApi } from "../../../../shared/ipc/contract";
 import {
   useKopperDocument,
   type KopperDocumentContextValue,
 } from "../../app/DocumentProvider";
+import { PanelFeedbackProvider } from "../feedback/PanelFeedback";
 import { SectionGroup } from "./SectionGroup";
 
 vi.mock("../../app/DocumentProvider", () => ({ useKopperDocument: vi.fn() }));
@@ -65,9 +68,18 @@ const document: KopperDocument = {
   draft: null,
 };
 const execute = vi.fn<KopperDocumentContextValue["execute"]>();
+const copyNotes = vi.fn<KopperApi["copyNotes"]>();
 
 beforeEach(() => {
   execute.mockReset().mockResolvedValue(true);
+  copyNotes.mockReset().mockResolvedValue({
+    ok: true,
+    value: { copiedCount: 2 },
+  });
+  Object.defineProperty(window, "kopper", {
+    configurable: true,
+    value: { copyNotes },
+  });
   vi.mocked(useKopperDocument).mockReturnValue({
     document,
     ready: true,
@@ -81,9 +93,15 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+function renderWithPanelFeedback(children: ReactNode) {
+  return render(
+    <PanelFeedbackProvider>{children}</PanelFeedbackProvider>,
+  );
+}
+
 describe("SectionGroup", () => {
   it("renders a heading, count, and note bodies", () => {
-    render(
+    renderWithPanelFeedback(
       <SectionGroup
         projection={{ section: document.sections[0], notes: document.notes }}
         view="active"
@@ -99,7 +117,7 @@ describe("SectionGroup", () => {
   });
 
   it("preserves displayed selection order when dispatching a batch shortcut", () => {
-    render(
+    renderWithPanelFeedback(
       <SectionGroup
         projection={{ section: document.sections[0], notes: document.notes }}
         view="active"
@@ -122,9 +140,38 @@ describe("SectionGroup", () => {
     });
   });
 
+  it("reports clipboard success and unexpected bridge failure", async () => {
+    renderWithPanelFeedback(
+      <SectionGroup
+        projection={{ section: document.sections[0], notes: document.notes }}
+        view="active"
+        displayedIds={["one", "two"]}
+        selection={{
+          focusedId: "one",
+          anchorId: "one",
+          selectedIds: ["one", "two"],
+        }}
+        dispatchSelection={vi.fn()}
+      />,
+    );
+    const firstNote = screen.getByRole("option", { name: "Note: First" });
+
+    fireEvent.keyDown(firstNote, { key: "c", metaKey: true });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Copied 2 notes.",
+    );
+    expect(copyNotes).toHaveBeenCalledWith(["one", "two"], "plain");
+
+    copyNotes.mockRejectedValueOnce(new Error("private detail"));
+    fireEvent.keyDown(firstNote, { key: "c", metaKey: true });
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "The selected notes could not be copied.",
+    );
+  });
+
   it("activates a section from its heading", async () => {
     const user = userEvent.setup();
-    render(
+    renderWithPanelFeedback(
       <SectionGroup
         projection={{ section: document.sections[0], notes: document.notes }}
         view="active"

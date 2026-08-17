@@ -6,8 +6,16 @@ import {
   test,
 } from "./fixtures/electronApp";
 
+async function choosePanelMenuAction(
+  page: Page,
+  actionName: string,
+): Promise<void> {
+  await page.getByRole("button", { name: "Panel menu" }).click();
+  await page.getByRole("menuitem", { name: actionName }).click();
+}
+
 async function addSection(page: Page, name: string): Promise<void> {
-  await page.getByRole("button", { name: "Add section" }).click();
+  await choosePanelMenuAction(page, "Add section");
   const dialog = page.getByRole("dialog", { name: "Add section" });
   await dialog.getByLabel("Section name").fill(name);
   await dialog.getByRole("button", { name: "Create section" }).click();
@@ -72,7 +80,7 @@ test("isolates a complete document journey and persists only acknowledged state"
     name: "Note: Alpha finding\n\nBeta decision",
   });
   await expect(merged).toBeVisible();
-  await page.getByRole("button", { name: "Undo" }).click();
+  await choosePanelMenuAction(page, "Undo");
   await expect(beta).toBeVisible();
 
   await alpha.click();
@@ -100,7 +108,7 @@ test("isolates a complete document journey and persists only acknowledged state"
   await openNoteMenu(page, "Gamma reference");
   await page.getByRole("menuitem", { name: "Delete" }).click();
   await expect(page.getByRole("option", { name: "Note: Gamma reference" })).toHaveCount(0);
-  await page.getByRole("button", { name: "Undo" }).click();
+  await choosePanelMenuAction(page, "Undo");
   await expect(page.getByRole("option", { name: "Note: Gamma reference" })).toBeVisible();
 
   await kopper.closeKopper();

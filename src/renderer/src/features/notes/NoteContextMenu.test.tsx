@@ -81,6 +81,19 @@ describe("NoteContextMenu", () => {
       screen.queryByRole("menuitem", { name: "Merge notes" }),
     ).not.toBeInTheDocument();
 
+    expect(screen.getByRole("menuitem", { name: "Copy" })).toHaveTextContent(
+      "⌘C",
+    );
+    expect(
+      screen.getByRole("menuitem", { name: "Copy as list" }),
+    ).toHaveTextContent("⇧⌘C");
+    expect(
+      screen.getByRole("menuitem", { name: "Mark as done" }),
+    ).toHaveTextContent("Space");
+    expect(screen.getByRole("menuitem", { name: "Edit" })).toHaveTextContent(
+      "↩",
+    );
+
     fireEvent.click(screen.getByRole("menuitem", { name: "Copy" }));
     expect(onAction).toHaveBeenCalledWith({
       type: "copy",

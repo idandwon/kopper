@@ -151,11 +151,11 @@
 - Consumes: existing structured `ClipboardCopyResult`, selection state, and copy actions.
 - Produces: one deep transient-feedback module, reference-clear selected-card outlines, multi-selection cues, shortcut-labeled actions, and exact copy success/failure announcements.
 
-- [ ] Test single selection, additive selection, range selection, context selection, and copy outcomes.
-- [ ] Keep visual selection distinct from keyboard focus and lifecycle state.
-- [ ] Route clipboard results through one feedback seam rather than prop-drilling or duplicated timers.
-- [ ] Preserve Kopper’s approved unordered Markdown-list contract unless the storyboard records an explicit product ruling.
-- [ ] Run focused tests, clipboard E2E, typecheck, and commit.
+- [x] Test single selection, additive selection, range selection, context selection, and copy outcomes.
+- [x] Keep visual selection distinct from keyboard focus and lifecycle state.
+- [x] Route clipboard results through one feedback seam rather than prop-drilling or duplicated timers.
+- [x] Preserve Kopper’s approved unordered Markdown-list contract unless the storyboard records an explicit product ruling.
+- [x] Run focused tests, clipboard E2E, typecheck, and commit.
 
 ### Task 7: Single-Surface Composer
 

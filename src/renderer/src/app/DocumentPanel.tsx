@@ -4,6 +4,7 @@ import type { KopperDocument } from "../../../shared/domain/document";
 import type { KopperError } from "../../../shared/domain/errors";
 import { Button } from "../components/ui/button";
 import { CaptureToast } from "../features/capture/CaptureToast";
+import { PanelFeedbackProvider } from "../features/feedback/PanelFeedback";
 import { NoteCollection } from "../features/notes/NoteCollection";
 import { NoteComposer } from "../features/notes/NoteComposer";
 import type { AccessibilityPermissionPanelControls } from "../features/onboarding/AccessibilityPermissionGate";
@@ -122,8 +123,9 @@ export function DocumentPanel({
   const busy = pendingAction !== null;
 
   return (
-    <div className="contents">
-      <PanelShell>
+    <PanelFeedbackProvider>
+      <div className="contents">
+        <PanelShell>
         <PanelHeader
           query={query}
           view={view}
@@ -151,9 +153,10 @@ export function DocumentPanel({
           captureHighlightedNoteId={captureHighlightedNoteId}
         />
 
-        {view === "active" ? <NoteComposer /> : null}
-      </PanelShell>
-      <CaptureToast onHighlightedNoteChange={setCaptureHighlightedNoteId} />
-    </div>
+          {view === "active" ? <NoteComposer /> : null}
+        </PanelShell>
+        <CaptureToast onHighlightedNoteChange={setCaptureHighlightedNoteId} />
+      </div>
+    </PanelFeedbackProvider>
   );
 }

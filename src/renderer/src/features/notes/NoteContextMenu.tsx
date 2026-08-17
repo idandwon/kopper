@@ -7,6 +7,7 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuShortcut,
   ContextMenuSub,
   ContextMenuSubContent,
   ContextMenuSubTrigger,
@@ -54,6 +55,7 @@ export function NoteContextMenu({
           onSelect={() => onAction({ type: "copy", noteIds, mode: "plain" })}
         >
           Copy
+          <ContextMenuShortcut aria-hidden="true">⌘C</ContextMenuShortcut>
         </ContextMenuItem>
         <ContextMenuItem
           onSelect={() =>
@@ -61,6 +63,7 @@ export function NoteContextMenu({
           }
         >
           Copy as list
+          <ContextMenuShortcut aria-hidden="true">⇧⌘C</ContextMenuShortcut>
         </ContextMenuItem>
 
         {(allActive || allCompleted) && <ContextMenuSeparator />}
@@ -69,6 +72,7 @@ export function NoteContextMenu({
             onSelect={() => onAction({ type: "complete", noteIds })}
           >
             Mark as done
+            <ContextMenuShortcut aria-hidden="true">Space</ContextMenuShortcut>
           </ContextMenuItem>
         )}
         {allCompleted && (
@@ -76,6 +80,7 @@ export function NoteContextMenu({
             onSelect={() => onAction({ type: "restore", noteIds })}
           >
             Restore
+            <ContextMenuShortcut aria-hidden="true">Space</ContextMenuShortcut>
           </ContextMenuItem>
         )}
 
@@ -93,6 +98,7 @@ export function NoteContextMenu({
               onSelect={() => onAction({ type: "edit", noteId: singleNote.id })}
             >
               Edit
+              <ContextMenuShortcut aria-hidden="true">↩</ContextMenuShortcut>
             </ContextMenuItem>
             <ContextMenuItem
               onSelect={() =>
@@ -100,6 +106,7 @@ export function NoteContextMenu({
               }
             >
               Edit in new window
+              <ContextMenuShortcut aria-hidden="true">⌘↩</ContextMenuShortcut>
             </ContextMenuItem>
           </>
         )}
@@ -111,6 +118,7 @@ export function NoteContextMenu({
                 onSelect={() => onAction({ type: "merge", noteIds })}
               >
                 Merge notes
+                <ContextMenuShortcut aria-hidden="true">⇧⌘M</ContextMenuShortcut>
               </ContextMenuItem>
             )}
             <ContextMenuSub>
@@ -141,6 +149,7 @@ export function NoteContextMenu({
           onSelect={() => onAction({ type: "delete", noteIds })}
         >
           Delete
+          <ContextMenuShortcut aria-hidden="true">⌫</ContextMenuShortcut>
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

@@ -128,7 +128,8 @@ export function NoteCard({
             "kopper-note-card kopper-note-card-preview rounded-[calc(var(--radius)+0.25rem)] border border-border bg-card py-3 pr-3 pl-10 text-[13px] leading-relaxed text-card-foreground outline-none transition-colors motion-reduce:transition-none",
             "focus-visible:ring-2 focus-visible:ring-ring/50",
             focused && "ring-1 ring-ring/40",
-            selected && "border-primary/60 bg-accent",
+            selected && "border-primary bg-card ring-2 ring-primary/35",
+            selected && focused && "pr-20",
             captureHighlighted &&
               "border-[var(--capture)] ring-2 ring-[var(--capture)]/35",
             disabled && "opacity-60",
@@ -139,6 +140,11 @@ export function NoteCard({
           <span className="sr-only">
             {view === "completed" ? "Completed" : "Captured"}
           </span>
+          {selected && focused ? (
+            <span className="pointer-events-none absolute top-2 right-2 rounded-full border border-primary/35 bg-card px-1.5 py-0.5 font-mono text-[9px] tracking-wide text-primary uppercase">
+              ⌘C Copy
+            </span>
+          ) : null}
           <MarkdownEditor
             noteId={note.id}
             body={note.body}

@@ -330,6 +330,7 @@ describe("Oxide Ledger App", () => {
     expect(extendedCard).toHaveFocus();
     expect(initialCard).toHaveAttribute("aria-selected", "true");
     expect(extendedCard).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("2 selected · ⌘C copy · Space done")).toBeVisible();
   });
 
   it("restores focus to the nearest card when the focused card is completed or deleted", () => {

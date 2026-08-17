@@ -57,11 +57,13 @@ describe("NoteCard", () => {
     expect(
       screen.getByRole("button", { name: "Mark First body as done" }),
     ).toBeVisible();
+    expect(screen.getByText("⌘C Copy")).toBeVisible();
 
     rerender(<NoteCard {...props({ focused: true, selected: false })} />);
     expect(card).toHaveAttribute("aria-selected", "false");
     expect(card).toHaveAttribute("data-focused", "true");
     expect(card).toHaveAttribute("data-selected", "false");
+    expect(screen.queryByText("⌘C Copy")).not.toBeInTheDocument();
   });
 
   it("keeps complete long Markdown available behind a clamped card preview", () => {

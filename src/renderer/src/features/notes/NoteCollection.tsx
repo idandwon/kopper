@@ -129,6 +129,7 @@ export function NoteCollection({
       }),
     [displayedIds, fallbackFocusedId, selection],
   );
+  const selectedCount = visibleSelection.selectedIds.length;
 
   useEffect(() => {
     dispatchSelection({
@@ -150,6 +151,15 @@ export function NoteCollection({
   return (
     <ScrollArea className="min-h-0 flex-1" aria-label="Notes by section">
       <div className="space-y-5 px-4 pt-1 pb-36 pl-5">
+        {selectedCount > 1 ? (
+          <p
+            role="status"
+            aria-live="polite"
+            className="sticky top-0 z-10 m-0 w-fit rounded-full border border-primary/25 bg-card px-2 py-1 font-mono text-[9px] tracking-wide text-primary uppercase shadow-sm"
+          >
+            {selectedCount} selected · ⌘C copy · Space done
+          </p>
+        ) : null}
         <ProjectedNotes
           projections={projections}
           displayedIds={displayedIds}
