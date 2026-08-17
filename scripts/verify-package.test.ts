@@ -624,6 +624,38 @@ describe("source security auditor", () => {
       "unknown key through a resolved webPreferences property-name alias",
       'const key = chooseKey(); const preferenceName = "web" + "Preferences"; const preferences = {}; const options = { [preferenceName]: preferences }; preferences[key] = false; void options;',
     ],
+    [
+      "unknown key through an assigned property-held alias",
+      "const key = chooseKey(); const options = { webPreferences: {} }; const holder: { preferences: Record<string, boolean> } = { preferences: {} }; holder.preferences = options.webPreferences; holder.preferences[key] = false;",
+    ],
+    [
+      "unknown key through an object property-held alias",
+      "const key = chooseKey(); const options = { webPreferences: {} }; const holder = { preferences: options.webPreferences }; holder.preferences[key] = false;",
+    ],
+    [
+      "unknown key through a nested property-held alias chain",
+      "const key = chooseKey(); const options = { webPreferences: {} }; const holder = { nested: { preferences: options.webPreferences } }; const first = holder.nested.preferences; const second = first; second[key] = false;",
+    ],
+    [
+      "unknown key through a static element property-held alias",
+      'const key = chooseKey(); const options = { webPreferences: {} }; const holder = { ["preferences"]: options["webPreferences"] }; holder["preferences"][key] = false;',
+    ],
+    [
+      "unresolved assignment destination receiving known preferences",
+      "const destination = chooseKey(); const options = { webPreferences: {} }; const holder: Record<string, Record<string, boolean>> = {}; holder[destination] = options.webPreferences;",
+    ],
+    [
+      "unresolved object-property destination receiving known preferences",
+      "const destination = chooseKey(); const options = { webPreferences: {} }; const holder = { [destination]: options.webPreferences }; void holder;",
+    ],
+    [
+      "dynamic spread assigned through a property-held alias",
+      "const options = { webPreferences: {} }; const holder = { preferences: options.webPreferences }; holder.preferences = { ...loadPreferences() };",
+    ],
+    [
+      "unknown key through a cyclic property-held alias graph",
+      "const key = chooseKey(); const options = { webPreferences: {} }; let first: Record<string, boolean>; let second: Record<string, boolean>; first = second; second = first; first = options.webPreferences; second[key] = false;",
+    ],
   ])("rejects %s", async (_name, source) => {
     const root = await createSourceFixture({ "src/main/unsafe.ts": source });
 
@@ -658,6 +690,24 @@ describe("source security auditor", () => {
     const root = await createSourceFixture({
       "src/main/safe.ts":
         "const key = chooseKey(); const palette = loadPalette(); const theme = { [key]: value, ...palette }; theme[key] = nextValue; void theme;",
+    });
+
+    await expect(verifySource(root)).resolves.toMatchObject({
+      ok: true,
+      failures: [],
+    });
+  });
+
+  it("preserves property-held aliases, cycles, and spreads for benign theme data", async () => {
+    const root = await createSourceFixture({
+      "src/main/safe.ts": [
+        "const key = chooseKey(); const palette = loadPalette(); const theme = { colors: {} };",
+        "const assigned: { preferences: Record<string, unknown> } = { preferences: {} }; assigned.preferences = theme.colors; assigned.preferences[key] = value;",
+        "const nested = { inner: { preferences: theme.colors } }; const alias = nested.inner.preferences; alias[key] = value;",
+        'const element = { ["preferences"]: theme.colors }; element["preferences"][key] = value;',
+        "let first: Record<string, unknown>; let second: Record<string, unknown>; first = second; second = first; first = theme.colors; second[key] = value;",
+        "const spread = { ...assigned.preferences, ...palette }; void spread;",
+      ].join("\n"),
     });
 
     await expect(verifySource(root)).resolves.toMatchObject({

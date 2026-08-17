@@ -661,8 +661,10 @@ function inspectApplicationSource(
 ) {
   const rules = new Set();
   const webPreferenceSymbols = new Set();
+  const webPreferencePaths = new Set();
   const webPreferenceObjects = new Set();
   const preferenceAliasEdges = [];
+  const symbolIdentities = new Map();
 
   const expressionProperty = (expression) => {
     const unwrapped = typeOnlyWrappedExpression(expression);
@@ -670,28 +672,146 @@ function inspectApplicationSource(
     return assignedProperty(expression, checker);
   };
 
+  const symbolIdentity = (symbol) => {
+    let identity = symbolIdentities.get(symbol);
+    if (identity === undefined) {
+      identity = symbolIdentities.size;
+      symbolIdentities.set(symbol, identity);
+    }
+    return identity;
+  };
+
+  const preferenceSymbol = (expression) => {
+    if (ts.isPropertyAccessExpression(expression)) {
+      return (
+        checker.getSymbolAtLocation(expression.name) ??
+        checker.getSymbolAtLocation(expression)
+      );
+    }
+    if (ts.isElementAccessExpression(expression)) {
+      return checker.getSymbolAtLocation(expression);
+    }
+    if (ts.isComputedPropertyName(expression)) {
+      return checker.getSymbolAtLocation(expression);
+    }
+    return expressionSymbol(expression, checker);
+  };
+
+  const staticExpressionPath = (expression) => {
+    const unwrapped = typeOnlyWrappedExpression(expression);
+    if (unwrapped !== undefined) return staticExpressionPath(unwrapped);
+    if (ts.isIdentifier(expression)) {
+      const symbol = expressionSymbol(expression, checker);
+      return symbol === undefined
+        ? undefined
+        : { base: symbolIdentity(symbol), properties: [] };
+    }
+    const property = expressionProperty(expression);
+    if (property?.name === undefined) return undefined;
+    const base = staticExpressionPath(property.receiver);
+    if (base === undefined) return undefined;
+    return {
+      base: base.base,
+      properties: [...base.properties, property.name],
+    };
+  };
+
+  const objectLiteralPath = (objectLiteral) => {
+    const parent = objectLiteral.parent;
+    if (
+      ts.isVariableDeclaration(parent) &&
+      parent.initializer === objectLiteral &&
+      ts.isIdentifier(parent.name)
+    ) {
+      return staticExpressionPath(parent.name);
+    }
+    if (
+      ts.isBinaryExpression(parent) &&
+      parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      parent.right === objectLiteral
+    ) {
+      return staticExpressionPath(parent.left);
+    }
+    if (
+      ts.isPropertyAssignment(parent) &&
+      parent.initializer === objectLiteral
+    ) {
+      return propertyDeclarationPath(parent.name);
+    }
+    return undefined;
+  };
+
+  const propertyDeclarationPath = (name) => {
+    const property = name.parent;
+    if (
+      (!ts.isPropertyAssignment(property) &&
+        !ts.isShorthandPropertyAssignment(property)) ||
+      !ts.isObjectLiteralExpression(property.parent)
+    ) {
+      return undefined;
+    }
+    const propertyName = propertyNameText(name, checker);
+    if (propertyName === undefined) return undefined;
+    const base = objectLiteralPath(property.parent);
+    if (base === undefined) return undefined;
+    return {
+      base: base.base,
+      properties: [...base.properties, propertyName],
+    };
+  };
+
+  const preferencePath = (expression) => {
+    const path =
+      ts.isIdentifier(expression) ||
+      ts.isStringLiteral(expression) ||
+      ts.isNumericLiteral(expression) ||
+      ts.isComputedPropertyName(expression)
+        ? propertyDeclarationPath(expression)
+        : staticExpressionPath(expression);
+    return path === undefined
+      ? undefined
+      : `${path.base}:${JSON.stringify(path.properties)}`;
+  };
+
   const collectPreferenceExpression = (expression, seenSymbols = new Set()) => {
     const unwrapped = typeOnlyWrappedExpression(expression);
     if (unwrapped !== undefined) {
       return collectPreferenceExpression(unwrapped, seenSymbols);
     }
+
+    let changed = false;
     if (ts.isObjectLiteralExpression(expression)) {
       const size = webPreferenceObjects.size;
       webPreferenceObjects.add(expression);
       return webPreferenceObjects.size !== size;
     }
-    if (!ts.isIdentifier(expression)) return false;
-    const symbol = expressionSymbol(expression, checker);
-    if (symbol === undefined || seenSymbols.has(symbol.id)) return false;
-    const size = webPreferenceSymbols.size;
-    webPreferenceSymbols.add(symbol.id);
-    const initializer = constVariableInitializer(symbol);
-    if (initializer !== undefined) {
-      const nextSeen = new Set(seenSymbols);
-      nextSeen.add(symbol.id);
-      collectPreferenceExpression(initializer, nextSeen);
+
+    const symbol = preferenceSymbol(expression);
+    if (symbol !== undefined) {
+      const size = webPreferenceSymbols.size;
+      webPreferenceSymbols.add(symbol);
+      changed = webPreferenceSymbols.size !== size;
     }
-    return webPreferenceSymbols.size !== size;
+    const path = preferencePath(expression);
+    if (path !== undefined) {
+      const size = webPreferencePaths.size;
+      webPreferencePaths.add(path);
+      changed = webPreferencePaths.size !== size || changed;
+    }
+
+    if (
+      ts.isIdentifier(expression) &&
+      symbol !== undefined &&
+      !seenSymbols.has(symbol)
+    ) {
+      const initializer = constVariableInitializer(symbol);
+      if (initializer !== undefined) {
+        const nextSeen = new Set(seenSymbols);
+        nextSeen.add(symbol);
+        changed = collectPreferenceExpression(initializer, nextSeen) || changed;
+      }
+    }
+    return changed;
   };
 
   const isKnownWebPreferenceReceiver = (
@@ -707,15 +827,21 @@ function inspectApplicationSource(
     }
     const property = expressionProperty(expression);
     if (property?.name === "webPreferences") return true;
-    if (!ts.isIdentifier(expression)) return false;
-    const symbol = expressionSymbol(expression, checker);
-    if (symbol === undefined) return false;
-    if (webPreferenceSymbols.has(symbol.id)) return true;
-    if (seenSymbols.has(symbol.id)) return false;
+    const symbol = preferenceSymbol(expression);
+    if (symbol !== undefined && webPreferenceSymbols.has(symbol)) return true;
+    const path = preferencePath(expression);
+    if (path !== undefined && webPreferencePaths.has(path)) return true;
+    if (
+      !ts.isIdentifier(expression) ||
+      symbol === undefined ||
+      seenSymbols.has(symbol)
+    ) {
+      return false;
+    }
     const initializer = constVariableInitializer(symbol);
     if (initializer === undefined) return false;
     const nextSeen = new Set(seenSymbols);
-    nextSeen.add(symbol.id);
+    nextSeen.add(symbol);
     return isKnownWebPreferenceReceiver(initializer, nextSeen);
   };
 
@@ -731,7 +857,19 @@ function inspectApplicationSource(
     }
 
     if (ts.isVariableDeclaration(node) && node.initializer) {
-      preferenceAliasEdges.push([node.name, node.initializer]);
+      preferenceAliasEdges.push({
+        left: node.name,
+        right: node.initializer,
+        unresolvedDestination: false,
+      });
+    } else if (ts.isPropertyAssignment(node)) {
+      preferenceAliasEdges.push({
+        left: node.name,
+        right: node.initializer,
+        unresolvedDestination:
+          ts.isComputedPropertyName(node.name) &&
+          propertyNameText(node.name, checker) === undefined,
+      });
     } else if (
       ts.isBinaryExpression(node) &&
       node.operatorToken.kind === ts.SyntaxKind.EqualsToken
@@ -740,7 +878,12 @@ function inspectApplicationSource(
       if (assignment?.name === "webPreferences") {
         collectPreferenceExpression(node.right);
       }
-      preferenceAliasEdges.push([node.left, node.right]);
+      preferenceAliasEdges.push({
+        left: node.left,
+        right: node.right,
+        unresolvedDestination:
+          assignment?.computed === true && assignment.name === undefined,
+      });
     }
     node.forEachChild(collectWebPreferenceContexts);
   };
@@ -749,12 +892,20 @@ function inspectApplicationSource(
   let changed;
   do {
     changed = false;
-    for (const [left, right] of preferenceAliasEdges) {
+    for (const {
+      left,
+      right,
+      unresolvedDestination,
+    } of preferenceAliasEdges) {
       if (isKnownWebPreferenceReceiver(left)) {
         changed = collectPreferenceExpression(right) || changed;
       }
       if (isKnownWebPreferenceReceiver(right)) {
-        changed = collectPreferenceExpression(left) || changed;
+        if (unresolvedDestination) {
+          rules.add("insecure_web_preference");
+        } else {
+          changed = collectPreferenceExpression(left) || changed;
+        }
       }
     }
   } while (changed);
