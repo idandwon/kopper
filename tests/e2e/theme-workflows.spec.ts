@@ -8,6 +8,11 @@ import {
   fixturePath,
   test,
 } from "./fixtures/electronApp";
+import {
+  expectOverlayContained,
+  expectSurfaceContained,
+  setSurfaceSize,
+} from "./helpers/surfaceGeometry";
 
 const CANONICAL_ROOT_THEME_PROPERTIES = [
   "--background",
@@ -97,6 +102,7 @@ async function openAppearance(page: Page): Promise<void> {
 
 async function chooseAppearanceMode(page: Page, name: "System" | "Light" | "Dark"): Promise<void> {
   await page.getByRole("combobox", { name: "Appearance mode" }).click();
+  await expectOverlayContained(page, page.getByRole("listbox"));
   await page.getByRole("option", { name, exact: true }).click();
   await expect(
     page.getByRole("status").filter({
@@ -105,12 +111,19 @@ async function chooseAppearanceMode(page: Page, name: "System" | "Light" | "Dark
   ).toBeAttached();
 }
 
+async function openThemeActions(page: Page, themeName: string): Promise<void> {
+  await page.getByRole("button", { name: `Actions for ${themeName}` }).click();
+  await expectOverlayContained(page, page.getByRole("menu"));
+}
+
 test("persists modes, presets, edited custom theme, and imported preview decisions", async ({
   kopper,
 }) => {
   const page = await kopper.launchKopper();
   await continueWithoutCaptureIfNeeded(page);
+  await setSurfaceSize(page, 340, 480);
   await openAppearance(page);
+  await expectSurfaceContained(page, "settings");
 
   await chooseAppearanceMode(page, "Light");
   await chooseAppearanceMode(page, "Dark");
@@ -121,8 +134,13 @@ test("persists modes, presets, edited custom theme, and imported preview decisio
     await expect(page.getByRole("button", { name: `Active ${preset}` })).toBeVisible();
   }
 
-  await page.getByRole("button", { name: "Customize Oxide Ledger" }).click();
+  await openThemeActions(page, "Oxide Ledger");
+  await page.getByRole("menuitem", { name: "Customize" }).click();
   const createDialog = page.getByRole("dialog", { name: "Customize theme" });
+  await expectOverlayContained(page, createDialog);
+  await expect(
+    createDialog.locator('[data-scroll-owner="theme-editor"]'),
+  ).toBeVisible();
   const foreground = createDialog.getByLabel("foreground", { exact: true });
   await foreground.fill("#F6F9F6");
   await expect(createDialog.getByRole("button", { name: "Save theme" })).toBeDisabled();
@@ -132,8 +150,21 @@ test("persists modes, presets, edited custom theme, and imported preview decisio
   await createDialog.getByRole("button", { name: "Save theme" }).click();
 
   await expect(page.getByRole("button", { name: "Active Oxide Ledger Custom" })).toBeVisible();
-  await page.getByRole("button", { name: "Edit Oxide Ledger Custom" }).click();
+  await openThemeActions(page, "Oxide Ledger Custom");
+  await page.getByRole("menuitem", { name: "Delete" }).click();
+  const deleteDialog = page.getByRole("alertdialog", {
+    name: "Delete custom theme?",
+  });
+  await expectOverlayContained(page, deleteDialog);
+  await deleteDialog.getByRole("button", { name: "Cancel" }).click();
+
+  await openThemeActions(page, "Oxide Ledger Custom");
+  await page.getByRole("menuitem", { name: "Edit" }).click();
   const editDialog = page.getByRole("dialog", { name: "Edit custom theme" });
+  await expectOverlayContained(page, editDialog);
+  await expect(
+    editDialog.locator('[data-scroll-owner="theme-editor"]'),
+  ).toBeVisible();
   await editDialog.getByLabel("primary", { exact: true }).fill("#285F54");
   await editDialog.getByLabel("capture", { exact: true }).fill("#A05030");
   await editDialog.getByLabel("radius", { exact: true }).fill("1rem");
@@ -144,7 +175,8 @@ test("persists modes, presets, edited custom theme, and imported preview decisio
 
   const exportedTheme = fixturePath(kopper, "edited-theme.kopper-theme.json");
   await kopper.stubNextSaveDialog(exportedTheme);
-  await page.getByRole("button", { name: "Export Oxide Ledger Custom" }).click();
+  await openThemeActions(page, "Oxide Ledger Custom");
+  await page.getByRole("menuitem", { name: "Export" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Theme exported." })).toBeVisible();
   const exported = JSON.parse(await readFile(exportedTheme, "utf8")) as {
     light: { capture: string; primary: string; radius: string };
@@ -160,6 +192,7 @@ test("persists modes, presets, edited custom theme, and imported preview decisio
   await kopper.stubNextOpenDialog(exportedTheme);
   await page.getByRole("button", { name: "Import theme" }).click();
   const importDialog = page.getByRole("dialog", { name: "Oxide Ledger Custom" });
+  await expectOverlayContained(page, importDialog);
   await expect(importDialog.getByText("Validated preview only.")).toBeVisible();
   const beforeCancelledPreview = await readRootThemeSnapshot(page);
   await importDialog.getByRole("button", { name: "Preview" }).click();
@@ -174,6 +207,7 @@ test("persists modes, presets, edited custom theme, and imported preview decisio
   await kopper.stubNextOpenDialog(exportedTheme);
   await page.getByRole("button", { name: "Import theme" }).click();
   const secondImport = page.getByRole("dialog", { name: "Oxide Ledger Custom" });
+  await expectOverlayContained(page, secondImport);
   const beforeSavedPreview = await readRootThemeSnapshot(page);
   await secondImport.getByRole("button", { name: "Preview" }).click();
   const savedPreview = await expectExportedLightPreview(page, exported);
@@ -181,6 +215,7 @@ test("persists modes, presets, edited custom theme, and imported preview decisio
   await secondImport.getByRole("button", { name: "Save imported theme" }).click();
   await expect(page.getByText("Oxide Ledger Custom saved and activated.")).toBeVisible();
   await expect.poll(() => readRootThemeSnapshot(page)).toEqual(savedPreview);
+  await expectSurfaceContained(page, "settings");
 
   await kopper.closeKopper();
   const persisted = await kopper.readPersistedDocument();

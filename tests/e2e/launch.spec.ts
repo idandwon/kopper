@@ -16,6 +16,10 @@ import {
   fixturePath,
   test,
 } from "./fixtures/electronApp";
+import {
+  expectSurfaceContained,
+  setSurfaceSize,
+} from "./helpers/surfaceGeometry";
 
 let firstDirectory = "";
 let secondDirectory = "";
@@ -40,7 +44,41 @@ test.describe.serial("isolated Electron fixture", () => {
     });
 
     const page = await kopper.launchKopper(initial);
+    await kopper.electronApp.evaluate(({ systemPreferences }) => {
+      Object.defineProperty(
+        systemPreferences,
+        "isTrustedAccessibilityClient",
+        {
+          configurable: true,
+          value: () => false,
+        },
+      );
+    });
+    await page.reload();
+    await setSurfaceSize(page, 340, 480);
+    await expect(
+      page.getByRole("button", { name: "Continue without capture" }),
+    ).toBeVisible();
+    await expectSurfaceContained(page, "onboarding");
+    const openSettings = page.getByRole("button", {
+      name: "Open System Settings",
+    });
+    const checkAgain = page.getByRole("button", { name: "Check again" });
+    const [openBounds, checkBounds] = await Promise.all([
+      openSettings.boundingBox(),
+      checkAgain.boundingBox(),
+    ]);
+    expect(openBounds).not.toBeNull();
+    expect(checkBounds).not.toBeNull();
+    if (openBounds !== null && checkBounds !== null) {
+      expect(checkBounds.y).toBeGreaterThanOrEqual(
+        openBounds.y + openBounds.height,
+      );
+      expect(checkBounds.x).toBe(openBounds.x);
+      expect(checkBounds.width).toBe(openBounds.width);
+    }
     await continueWithoutCaptureIfNeeded(page);
+    await expectSurfaceContained(page, "notes");
     await expect(page.getByText("Initial fixture note")).toBeVisible();
     await kopper.closeKopper();
     expect((await kopper.readPersistedDocument()).notes[0]?.body).toBe(

@@ -10,6 +10,10 @@ import {
   expect,
   test,
 } from "./fixtures/electronApp";
+import {
+  expectSurfaceContained,
+  setSurfaceSize,
+} from "./helpers/surfaceGeometry";
 
 const TIMESTAMP = "2026-08-16T12:00:00.000Z";
 
@@ -72,39 +76,18 @@ function demoDocument(mode: AppearanceMode): KopperDocument {
   };
 }
 
-async function expectPanelFitsViewport(
-  page: Page,
-  width: number,
-  height: number,
-): Promise<void> {
-  await page.setViewportSize({ width, height });
-  const layout = await page.evaluate(() => {
-    const panel = document.querySelector("main");
-    const composer = document.querySelector("[data-composer-surface]");
-    const panelBounds = panel?.getBoundingClientRect();
-    const composerBounds = composer?.getBoundingClientRect();
-    return {
-      innerWidth,
-      innerHeight,
-      scrollWidth: document.documentElement.scrollWidth,
-      panelRight: panelBounds?.right ?? Number.POSITIVE_INFINITY,
-      panelBottom: panelBounds?.bottom ?? Number.POSITIVE_INFINITY,
-      composerRight: composerBounds?.right ?? Number.POSITIVE_INFINITY,
-      composerBottom: composerBounds?.bottom ?? Number.POSITIVE_INFINITY,
-    };
-  });
-
-  expect(layout).toMatchObject({
-    innerWidth: width,
-    innerHeight: height,
-    scrollWidth: width,
-    panelRight: width,
-    panelBottom: height,
-  });
-  expect(width - layout.composerRight).toBeGreaterThanOrEqual(15);
-  expect(width - layout.composerRight).toBeLessThanOrEqual(18);
-  expect(height - layout.composerBottom).toBeGreaterThanOrEqual(15);
-  expect(height - layout.composerBottom).toBeLessThanOrEqual(18);
+async function openAppearanceSettings(page: Page): Promise<void> {
+  const trigger = page.getByRole("button", { name: "Panel menu" });
+  await trigger.focus();
+  await trigger.press("Enter");
+  const item = page.getByRole("menuitem", { name: "Settings…" });
+  await item.focus();
+  await item.press("Enter");
+  await expect(page.getByRole("tab", { name: "Appearance" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
 }
 
 async function expectVisualBaselines(
@@ -119,19 +102,44 @@ async function expectVisualBaselines(
     )
     .toBe(mode);
 
-  await expectPanelFitsViewport(page, 380, 640);
-  await expect(page).toHaveScreenshot(`oxide-ledger-${mode}-380x640.png`, {
-    animations: "disabled",
-    caret: "hide",
-    maxDiffPixelRatio: 0.01,
-  });
+  for (const [width, height] of [
+    [380, 640],
+    [340, 480],
+  ] as const) {
+    await setSurfaceSize(page, width, height);
+    await expectSurfaceContained(page, "notes");
+    await page.mouse.move(1, Math.floor(height / 2));
+    await expect(page).toHaveScreenshot(
+      `oxide-ledger-${mode}-${width}x${height}.png`,
+      {
+        animations: "disabled",
+        caret: "hide",
+        maxDiffPixelRatio: 0.01,
+      },
+    );
+  }
 
-  await expectPanelFitsViewport(page, 340, 480);
-  await expect(page).toHaveScreenshot(`oxide-ledger-${mode}-340x480.png`, {
-    animations: "disabled",
-    caret: "hide",
-    maxDiffPixelRatio: 0.01,
-  });
+  await openAppearanceSettings(page);
+  for (const [width, height] of [
+    [380, 640],
+    [340, 480],
+  ] as const) {
+    await setSurfaceSize(page, width, height);
+    await expectSurfaceContained(page, "settings");
+    await page.evaluate(() => {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement) active.blur();
+    });
+    await page.mouse.move(1, Math.floor(height / 2));
+    await expect(page).toHaveScreenshot(
+      `oxide-ledger-settings-${mode}-${width}x${height}.png`,
+      {
+        animations: "disabled",
+        caret: "hide",
+        maxDiffPixelRatio: 0.01,
+      },
+    );
+  }
 }
 
 test("matches the keyboard-first prompt, copy, complete, and restore loop", async ({
@@ -188,13 +196,60 @@ test("matches the keyboard-first prompt, copy, complete, and restore loop", asyn
   await expect(second).toBeVisible();
 });
 
-test("renders deterministic Oxide Ledger light baselines", async ({ kopper }) => {
+test("preserves notes state through the full keyboard Settings traversal", async ({
+  kopper,
+}) => {
+  const page = await kopper.launchKopper(demoDocument("light"));
+  await continueWithoutCaptureIfNeeded(page);
+  await setSurfaceSize(page, 340, 480);
+
+  const search = page.getByRole("searchbox", { name: "Search notes" });
+  await search.fill("edge cases");
+  const preservedNote = page.getByRole("option", {
+    name: "Note: Which edge cases should double-Shift capture handle?",
+  });
+  await expect(preservedNote).toBeVisible();
+  await expectSurfaceContained(page, "notes");
+
+  const panelMenu = page.getByRole("button", { name: "Panel menu" });
+  await panelMenu.focus();
+  await panelMenu.press("Enter");
+  const settingsItem = page.getByRole("menuitem", { name: "Settings…" });
+  await settingsItem.focus();
+  await settingsItem.press("Enter");
+
+  const appearanceTab = page.getByRole("tab", { name: "Appearance" });
+  await expect(appearanceTab).toHaveAttribute("aria-selected", "true");
+  await expectSurfaceContained(page, "settings");
+  await appearanceTab.focus();
+  await appearanceTab.press("ArrowRight");
+  await expect(page.getByRole("heading", { name: "Data files" })).toBeVisible();
+  await page.getByRole("tab", { name: "Data" }).press("ArrowRight");
+  await expect(page.getByRole("heading", { name: "Shortcuts & panel" })).toBeVisible();
+  await page.getByRole("tab", { name: "Shortcuts" }).press("ArrowRight");
+  await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
+
+  const back = page.getByRole("button", { name: "Back to notes" });
+  await back.focus();
+  await back.press("Enter");
+  await expect(search).toHaveValue("edge cases");
+  await expect(page.getByRole("button", { name: "Completed notes" })).toBeVisible();
+  await expect(preservedNote).toBeVisible();
+  await expect(panelMenu).toBeFocused();
+  await expectSurfaceContained(page, "notes");
+});
+
+test("renders deterministic Oxide Ledger Light Settings baselines", async ({
+  kopper,
+}) => {
   const page = await kopper.launchKopper(demoDocument("light"));
   await continueWithoutCaptureIfNeeded(page);
   await expectVisualBaselines(page, "light");
 });
 
-test("renders deterministic Oxide Ledger dark baselines", async ({ kopper }) => {
+test("renders deterministic Oxide Ledger Dark Settings baselines", async ({
+  kopper,
+}) => {
   const page = await kopper.launchKopper(demoDocument("dark"));
   await continueWithoutCaptureIfNeeded(page);
   await expectVisualBaselines(page, "dark");

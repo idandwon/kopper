@@ -18,7 +18,7 @@ function ContextMenuContent({
       <ContextMenuPrimitive.Content
         collisionPadding={collisionPadding}
         className={cn(
-          "z-50 max-h-[calc(100dvh-2rem)] min-w-44 max-w-[calc(100vw-2rem)] overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md outline-none motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95",
+          "z-50 max-h-[calc(100dvh-2rem)] w-44 min-w-0 max-w-[min(calc(100vw-2rem),var(--radix-context-menu-content-available-width))] overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md outline-none motion-safe:animate-in motion-safe:fade-in-0 motion-safe:zoom-in-95",
           className,
         )}
         {...props}
@@ -37,7 +37,7 @@ function ContextMenuSubContent({
       <ContextMenuPrimitive.SubContent
         collisionPadding={collisionPadding}
         className={cn(
-          "z-50 max-h-[calc(100dvh-2rem)] min-w-36 max-w-[calc(100vw-2rem)] overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md outline-none motion-safe:animate-in motion-safe:fade-in-0",
+          "z-50 max-h-[calc(100dvh-2rem)] w-36 min-w-0 max-w-[min(calc(100vw-2rem),var(--radix-context-menu-content-available-width))] overflow-y-auto overflow-x-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md outline-none motion-safe:animate-in motion-safe:fade-in-0",
           className,
         )}
         {...props}

@@ -300,7 +300,7 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
           onInteractOutside={(event) => {
             if (saving) event.preventDefault();
           }}
-          className="flex h-[92vh] max-h-[48rem] max-w-xl flex-col gap-3 overflow-hidden p-4"
+          className="flex h-[92vh] max-h-[48rem] w-[calc(100vw-2rem)] max-w-xl flex-col gap-3 overflow-hidden p-4"
         >
           <DialogHeader className="shrink-0 pr-8">
             <DialogTitle>

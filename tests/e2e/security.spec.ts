@@ -4,6 +4,10 @@ import {
   expect,
   test,
 } from "./fixtures/electronApp";
+import {
+  expectSurfaceContained,
+  setSurfaceSize,
+} from "./helpers/surfaceGeometry";
 
 const DOCUMENTED_BRIDGE_METHODS = [
   "chooseDataImport",
@@ -40,6 +44,8 @@ test("keeps renderer isolation, navigation, bridge validation, and CSP intact", 
 }) => {
   const page = await kopper.launchKopper();
   await continueWithoutCaptureIfNeeded(page);
+  await setSurfaceSize(page, 340, 480);
+  await expectSurfaceContained(page, "notes");
 
   const shape = await page.evaluate(() => ({
     process: typeof window.process,
@@ -56,6 +62,26 @@ test("keeps renderer isolation, navigation, bridge validation, and CSP intact", 
     electron: "undefined",
     fs: "undefined",
     bridge: [...DOCUMENTED_BRIDGE_METHODS].sort(),
+  });
+  const webPreferences = await kopper.electronApp.evaluate(
+    ({ BrowserWindow }, rendererUrl) => {
+      const target = BrowserWindow.getAllWindows().find(
+        ({ webContents }) => webContents.getURL() === rendererUrl,
+      );
+      if (target === undefined) throw new Error("Renderer window not found.");
+      const preferences = target.webContents.getLastWebPreferences();
+      return {
+        sandbox: preferences.sandbox,
+        contextIsolation: preferences.contextIsolation,
+        nodeIntegration: preferences.nodeIntegration,
+      };
+    },
+    page.url(),
+  );
+  expect(webPreferences).toEqual({
+    sandbox: true,
+    contextIsolation: true,
+    nodeIntegration: false,
   });
 
   const originalUrl = page.url();
