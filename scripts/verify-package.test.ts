@@ -150,7 +150,7 @@ describe("source security auditor", () => {
     ],
     [
       "generic external URL",
-      "void shell.openExternal(targetUrl);",
+      'import { shell } from "electron"; void shell.openExternal(targetUrl);',
       "unrestricted_external_open",
     ],
     [
@@ -204,22 +204,47 @@ describe("source security auditor", () => {
     ],
     [
       "computed external open",
-      'shell["openExternal"](target);',
+      'import { shell } from "electron"; shell["openExternal"](target);',
       "unrestricted_external_open",
     ],
     [
       "template-computed external open",
-      "shell[`openExternal`](target);",
+      'import { shell } from "electron"; shell[`openExternal`](target);',
+      "unrestricted_external_open",
+    ],
+    [
+      "concatenated computed external open",
+      'import { shell } from "electron"; shell["open" + "External"](target);',
+      "unrestricted_external_open",
+    ],
+    [
+      "identifier-chain computed external open",
+      'import { shell } from "electron"; const first = "open"; const method = first + "External"; shell[method](target);',
+      "unrestricted_external_open",
+    ],
+    [
+      "unknown computed Electron shell access",
+      'import { shell } from "electron"; const method = chooseMethod(); shell[method](target);',
       "unrestricted_external_open",
     ],
     [
       "destructured external open",
-      "const { openExternal: open } = shell; open(target);",
+      'import { shell } from "electron"; const { openExternal: open } = shell; open(target);',
+      "unrestricted_external_open",
+    ],
+    [
+      "computed destructured external open",
+      'import { shell } from "electron"; const method = "open" + "External"; const { [method]: open } = shell; open(target);',
+      "unrestricted_external_open",
+    ],
+    [
+      "unknown computed destructuring from Electron shell",
+      'import { shell } from "electron"; const method = chooseMethod(); const { [method]: open } = shell; open(target);',
       "unrestricted_external_open",
     ],
     [
       "aliased external open",
-      "const open = shell.openExternal; open(target);",
+      'import { shell } from "electron"; const open = shell.openExternal; open(target);',
       "unrestricted_external_open",
     ],
     [
@@ -251,6 +276,14 @@ describe("source security auditor", () => {
     [
       "unrelated nearby import",
       'import safe from "safe-package"; const example = "posthog-js"; void safe;',
+    ],
+    [
+      "unrelated computed expressions",
+      'const method = "open" + "External"; theme[method](value); const copy = { [method]: value };',
+    ],
+    [
+      "unknown unrelated computed access",
+      "const method = chooseMethod(); theme[method](value);",
     ],
   ])("allows %s that are not executable findings", async (_name, source) => {
     const root = await createSourceFixture({ "src/main/safe.ts": source });
@@ -300,6 +333,8 @@ describe("source security auditor", () => {
           urlImport,
           `const adapter = () => ${call};`,
         ].join("\n"),
+        "src/main/permissions/permissionManager.ts":
+          'export const ACCESSIBILITY_SETTINGS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";',
       });
 
       await expect(verifySource(root)).resolves.toMatchObject({
@@ -321,6 +356,12 @@ describe("source security auditor", () => {
       'import { shell } from "electron";',
       'import { ACCESSIBILITY_SETTINGS_URL } from "./permissions/permissionManager";',
       "const adapter = (ACCESSIBILITY_SETTINGS_URL: string) => shell.openExternal(ACCESSIBILITY_SETTINGS_URL);",
+    ],
+    [
+      "locally aliased shell receiver",
+      'import { shell } from "electron";',
+      'import { ACCESSIBILITY_SETTINGS_URL } from "./permissions/permissionManager";',
+      "const electronShell = shell; electronShell.openExternal(ACCESSIBILITY_SETTINGS_URL);",
     ],
     [
       "Electron path spoof",
@@ -354,6 +395,86 @@ describe("source security auditor", () => {
   });
 
   it.each([
+    [
+      "the exported deep link changes",
+      'export const ACCESSIBILITY_SETTINGS_URL = "https://example.invalid";',
+      {},
+    ],
+    [
+      "the exported binding is not const",
+      'export let ACCESSIBILITY_SETTINGS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";',
+      {},
+    ],
+    [
+      "the canonical module re-exports a wrong target",
+      'export { ACCESSIBILITY_SETTINGS_URL } from "./other";',
+      {
+        "src/main/permissions/other.ts":
+          'export const ACCESSIBILITY_SETTINGS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";',
+      },
+    ],
+  ])(
+    "rejects the Accessibility exception when %s",
+    async (_name, permissionModule, extraFiles) => {
+      const root = await createSourceFixture({
+        "src/main/index.ts": [
+          'import { shell } from "electron";',
+          'import { ACCESSIBILITY_SETTINGS_URL } from "./permissions/permissionManager";',
+          "shell.openExternal(ACCESSIBILITY_SETTINGS_URL);",
+        ].join("\n"),
+        "src/main/permissions/permissionManager.ts": permissionModule,
+        ...extraFiles,
+      });
+
+      const result = await verifySource(root);
+
+      expect(result.failures).toContainEqual({
+        file: "src/main/index.ts",
+        rule: "unrestricted_external_open",
+      });
+    },
+  );
+
+  it("rejects a fixed constant imported from the wrong target", async () => {
+    const root = await createSourceFixture({
+      "src/main/index.ts": [
+        'import { shell } from "electron";',
+        'import { ACCESSIBILITY_SETTINGS_URL } from "./permissions/other";',
+        "shell.openExternal(ACCESSIBILITY_SETTINGS_URL);",
+      ].join("\n"),
+      "src/main/permissions/other.ts":
+        'export const ACCESSIBILITY_SETTINGS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";',
+    });
+
+    const result = await verifySource(root);
+
+    expect(result.failures).toContainEqual({
+      file: "src/main/index.ts",
+      rule: "unrestricted_external_open",
+    });
+  });
+
+  it("rejects a local alias of the reviewed imported constant", async () => {
+    const root = await createSourceFixture({
+      "src/main/index.ts": [
+        'import { shell } from "electron";',
+        'import { ACCESSIBILITY_SETTINGS_URL } from "./permissions/permissionManager";',
+        "const settingsUrl = ACCESSIBILITY_SETTINGS_URL;",
+        "shell.openExternal(settingsUrl);",
+      ].join("\n"),
+      "src/main/permissions/permissionManager.ts":
+        'export const ACCESSIBILITY_SETTINGS_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";',
+    });
+
+    const result = await verifySource(root);
+
+    expect(result.failures).toContainEqual({
+      file: "src/main/index.ts",
+      rule: "unrestricted_external_open",
+    });
+  });
+
+  it.each([
     ["nodeIntegration true", "nodeIntegration: true"],
     ["nodeIntegration dynamic", "nodeIntegration: disabled"],
     ["nodeIntegration shorthand", "nodeIntegration"],
@@ -366,9 +487,14 @@ describe("source security auditor", () => {
     ["computed nodeIntegration", '["nodeIntegration"]: true'],
     ["computed contextIsolation", "[`contextIsolation`]: false"],
     ["computed webSecurity", '["webSecurity"]: false'],
+    ["concatenated nodeIntegration", '["node" + "Integration"]: true'],
+    [
+      "identifier-chain contextIsolation",
+      "[preferencePrefix + preferenceSuffix]: false",
+    ],
   ])("rejects unsafe web preference %s", async (_name, property) => {
     const root = await createSourceFixture({
-      "src/main/unsafe.ts": `const disabled = false; const enabled = true; const nodeIntegration = false; const contextIsolation = true; const webSecurity = true; const options = { ${property} };`,
+      "src/main/unsafe.ts": `const disabled = false; const enabled = true; const nodeIntegration = false; const contextIsolation = true; const webSecurity = true; const preferencePrefix = "context"; const preferenceSuffix = "Isolation"; const options = { ${property} };`,
     });
 
     const result = await verifySource(root);
@@ -379,13 +505,67 @@ describe("source security auditor", () => {
     });
   });
 
-  it("allows only literal-safe web preference properties", async () => {
+  it.each([
+    [
+      "insecure direct preference assignment",
+      "const preferences = {}; preferences.nodeIntegration = true;",
+    ],
+    [
+      "insecure concatenated preference assignment",
+      'const preferences = {}; preferences["context" + "Isolation"] = false;',
+    ],
+    [
+      "dynamic preference assignment through an alias",
+      "const preferences = {}; const alias = preferences; alias.webSecurity = enabled;",
+    ],
+    [
+      "unknown computed key in a webPreferences object",
+      "const key = chooseKey(); const options = { webPreferences: { [key]: false } };",
+    ],
+    [
+      "unknown computed key in an aliased webPreferences object",
+      "const key = chooseKey(); const preferences = { [key]: false }; const options = { webPreferences: preferences };",
+    ],
+    [
+      "unknown computed write through a webPreferences alias",
+      "const key = chooseKey(); const preferences = {}; preferences[key] = false; const options = { webPreferences: preferences };",
+    ],
+    [
+      "dynamic spread in a webPreferences object",
+      "const dynamic = loadPreferences(); const options = { webPreferences: { ...dynamic } };",
+    ],
+  ])("rejects %s", async (_name, source) => {
+    const root = await createSourceFixture({ "src/main/unsafe.ts": source });
+
+    const result = await verifySource(root);
+
+    expect(result.failures).toContainEqual({
+      file: "src/main/unsafe.ts",
+      rule: "insecure_web_preference",
+    });
+  });
+
+  it("allows literal-safe web preference objects, assignments, and proven spreads", async () => {
     const root = await createSourceFixture({
       "src/main/safe.ts": [
         "const one = { nodeIntegration: false, contextIsolation: true, webSecurity: true };",
         'const two = { ["nodeIntegration"]: false, [`contextIsolation`]: true };',
-        "void one; void two;",
+        "const preferences = {}; preferences.nodeIntegration = false; preferences.contextIsolation = true; preferences.webSecurity = true;",
+        "const defaults = { nodeIntegration: false }; const options = { webPreferences: { ...defaults, contextIsolation: true } };",
+        "void one; void two; void options;",
       ].join("\n"),
+    });
+
+    await expect(verifySource(root)).resolves.toMatchObject({
+      ok: true,
+      failures: [],
+    });
+  });
+
+  it("does not treat unrelated computed theme keys or spreads as web preferences", async () => {
+    const root = await createSourceFixture({
+      "src/main/safe.ts":
+        "const key = chooseKey(); const palette = loadPalette(); const theme = { [key]: value, ...palette }; theme[key] = nextValue; void theme;",
     });
 
     await expect(verifySource(root)).resolves.toMatchObject({

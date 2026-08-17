@@ -306,12 +306,46 @@ const SECURE_WEB_PREFERENCES = new Map([
   ["contextIsolation", ts.SyntaxKind.TrueKeyword],
   ["webSecurity", ts.SyntaxKind.TrueKeyword],
 ]);
+const ACCESSIBILITY_SETTINGS_URL =
+  "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility";
+const ACCESSIBILITY_SETTINGS_MODULE =
+  "src/main/permissions/permissionManager.ts";
 
 function forbiddenImport(moduleName) {
   return [...FORBIDDEN_IMPORTS].some(
     (forbidden) =>
       moduleName === forbidden || moduleName.startsWith(`${forbidden}/`),
   );
+}
+
+function constVariableInitializer(symbol) {
+  if (symbol === undefined || symbol.declarations.length !== 1) {
+    return undefined;
+  }
+  const declaration = symbol.declarations[0].resolve();
+  if (
+    !declaration ||
+    !ts.isVariableDeclaration(declaration) ||
+    !declaration.initializer ||
+    !ts.isVariableDeclarationList(declaration.parent) ||
+    (declaration.parent.flags & ts.NodeFlags.Const) === 0
+  ) {
+    return undefined;
+  }
+  return declaration.initializer;
+}
+
+function typeOnlyWrappedExpression(node) {
+  if (
+    ts.isParenthesizedExpression(node) ||
+    ts.isAsExpression(node) ||
+    ts.isTypeAssertion(node) ||
+    ts.isSatisfiesExpression(node) ||
+    ts.isNonNullExpression(node)
+  ) {
+    return node.expression;
+  }
+  return undefined;
 }
 
 function staticString(node, checker, seenSymbols = new Set()) {
@@ -327,25 +361,27 @@ function staticString(node, checker, seenSymbols = new Set()) {
     }
     return value;
   }
-  if (ts.isParenthesizedExpression(node)) {
-    return staticString(node.expression, checker, seenSymbols);
+  const unwrapped = typeOnlyWrappedExpression(node);
+  if (unwrapped !== undefined) {
+    return staticString(unwrapped, checker, seenSymbols);
+  }
+  if (
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === ts.SyntaxKind.PlusToken
+  ) {
+    const left = staticString(node.left, checker, seenSymbols);
+    const right = staticString(node.right, checker, seenSymbols);
+    return left === undefined || right === undefined ? undefined : left + right;
   }
   if (!ts.isIdentifier(node)) return undefined;
 
   const symbol = checker.getSymbolAtLocation(node);
   if (symbol === undefined || seenSymbols.has(symbol.id)) return undefined;
-  seenSymbols.add(symbol.id);
-  for (const declarationHandle of symbol.declarations) {
-    const declaration = declarationHandle.resolve();
-    if (
-      declaration &&
-      ts.isVariableDeclaration(declaration) &&
-      declaration.initializer
-    ) {
-      return staticString(declaration.initializer, checker, seenSymbols);
-    }
-  }
-  return undefined;
+  const initializer = constVariableInitializer(symbol);
+  if (initializer === undefined) return undefined;
+  const nextSeen = new Set(seenSymbols);
+  nextSeen.add(symbol.id);
+  return staticString(initializer, checker, nextSeen);
 }
 
 function propertyNameText(name, checker) {
@@ -379,9 +415,98 @@ function importedBinding(symbol, importedName, moduleName) {
   });
 }
 
-function reviewedExternalOpen(relativePath, propertyAccess, checker) {
+function expressionResolvesToImportedBinding(
+  expression,
+  checker,
+  importedName,
+  moduleName,
+  seenSymbols = new Set(),
+) {
+  const unwrapped = typeOnlyWrappedExpression(expression);
+  if (unwrapped !== undefined) {
+    return expressionResolvesToImportedBinding(
+      unwrapped,
+      checker,
+      importedName,
+      moduleName,
+      seenSymbols,
+    );
+  }
+  if (!ts.isIdentifier(expression)) return false;
+  const symbol = checker.getSymbolAtLocation(expression);
+  if (importedBinding(symbol, importedName, moduleName)) return true;
+  if (symbol === undefined || seenSymbols.has(symbol.id)) return false;
+  const initializer = constVariableInitializer(symbol);
+  if (initializer === undefined) return false;
+  const nextSeen = new Set(seenSymbols);
+  nextSeen.add(symbol.id);
+  return expressionResolvesToImportedBinding(
+    initializer,
+    checker,
+    importedName,
+    moduleName,
+    nextSeen,
+  );
+}
+
+function isExportedConstVariable(declaration) {
+  if (
+    !ts.isVariableDeclaration(declaration) ||
+    !declaration.initializer ||
+    !ts.isVariableDeclarationList(declaration.parent) ||
+    (declaration.parent.flags & ts.NodeFlags.Const) === 0
+  ) {
+    return false;
+  }
+  const statement = declaration.parent.parent;
+  return (
+    ts.isVariableStatement(statement) &&
+    statement.modifiers?.some(
+      (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+    ) === true
+  );
+}
+
+function reviewedAccessibilityBinding(symbol, checker, absoluteRoot) {
+  if (
+    !importedBinding(
+      symbol,
+      "ACCESSIBILITY_SETTINGS_URL",
+      "./permissions/permissionManager",
+    )
+  ) {
+    return false;
+  }
+  const exportedSymbol = checker.getAliasedSymbol(symbol);
+  if (
+    checker.isUnknownSymbol(exportedSymbol) ||
+    exportedSymbol.declarations.length !== 1
+  ) {
+    return false;
+  }
+  const declaration = exportedSymbol.declarations[0].resolve();
+  if (
+    !declaration ||
+    !isExportedConstVariable(declaration) ||
+    !ts.isIdentifier(declaration.name) ||
+    declaration.name.text !== "ACCESSIBILITY_SETTINGS_URL" ||
+    resolve(declaration.getSourceFile().fileName) !==
+      join(absoluteRoot, ACCESSIBILITY_SETTINGS_MODULE)
+  ) {
+    return false;
+  }
+  return (
+    staticString(declaration.initializer, checker) === ACCESSIBILITY_SETTINGS_URL
+  );
+}
+
+function reviewedExternalOpen(
+  relativePath,
+  propertyAccess,
+  checker,
+  absoluteRoot,
+) {
   if (relativePath !== "src/main/index.ts") return false;
-  if (!ts.isIdentifier(propertyAccess.expression)) return false;
   const call = propertyAccess.parent;
   if (
     !ts.isCallExpression(call) ||
@@ -392,15 +517,16 @@ function reviewedExternalOpen(relativePath, propertyAccess, checker) {
     return false;
   }
   return (
+    ts.isIdentifier(propertyAccess.expression) &&
     importedBinding(
       checker.getSymbolAtLocation(propertyAccess.expression),
       "shell",
       "electron",
     ) &&
-    importedBinding(
+    reviewedAccessibilityBinding(
       checker.getSymbolAtLocation(call.arguments[0]),
-      "ACCESSIBILITY_SETTINGS_URL",
-      "./permissions/permissionManager",
+      checker,
+      absoluteRoot,
     )
   );
 }
@@ -424,15 +550,57 @@ function moduleReference(node, checker) {
   return staticString(node.arguments[0], checker);
 }
 
-function hasUnsafeWebPreference(objectLiteral, checker) {
+function resolveObjectLiteral(expression, checker, seenSymbols = new Set()) {
+  if (ts.isObjectLiteralExpression(expression)) return expression;
+  const unwrapped = typeOnlyWrappedExpression(expression);
+  if (unwrapped !== undefined) {
+    return resolveObjectLiteral(unwrapped, checker, seenSymbols);
+  }
+  if (!ts.isIdentifier(expression)) return undefined;
+  const symbol = checker.getSymbolAtLocation(expression);
+  if (symbol === undefined || seenSymbols.has(symbol.id)) return undefined;
+  const initializer = constVariableInitializer(symbol);
+  if (initializer === undefined) return undefined;
+  const nextSeen = new Set(seenSymbols);
+  nextSeen.add(symbol.id);
+  return resolveObjectLiteral(initializer, checker, nextSeen);
+}
+
+function hasUnsafeWebPreference(
+  objectLiteral,
+  checker,
+  failClosed,
+  seenObjects = new Set(),
+) {
+  if (seenObjects.has(objectLiteral)) return failClosed;
+  const nextSeen = new Set(seenObjects);
+  nextSeen.add(objectLiteral);
   for (const property of objectLiteral.properties) {
+    if (ts.isSpreadAssignment(property)) {
+      if (!failClosed) continue;
+      const spread = resolveObjectLiteral(property.expression, checker);
+      if (
+        spread === undefined ||
+        hasUnsafeWebPreference(spread, checker, true, nextSeen)
+      ) {
+        return true;
+      }
+      continue;
+    }
     if (!property.name) continue;
     const name = propertyNameText(property.name, checker);
     const expected = SECURE_WEB_PREFERENCES.get(name);
-    if (expected === undefined) continue;
-    if (
-      !ts.isPropertyAssignment(property) ||
-      property.initializer.kind !== expected
+    if (expected !== undefined) {
+      if (
+        !ts.isPropertyAssignment(property) ||
+        property.initializer.kind !== expected
+      ) {
+        return true;
+      }
+    } else if (
+      failClosed &&
+      ts.isComputedPropertyName(property.name) &&
+      name === undefined
     ) {
       return true;
     }
@@ -440,8 +608,86 @@ function hasUnsafeWebPreference(objectLiteral, checker) {
   return false;
 }
 
-function inspectApplicationSource(relativePath, sourceFile, checker) {
+function isAssignmentOperator(kind) {
+  return (
+    kind >= ts.SyntaxKind.FirstAssignment && kind <= ts.SyntaxKind.LastAssignment
+  );
+}
+
+function assignedProperty(left, checker) {
+  if (ts.isPropertyAccessExpression(left)) {
+    return { name: left.name.text, receiver: left.expression, computed: false };
+  }
+  if (ts.isElementAccessExpression(left)) {
+    return {
+      name: staticString(left.argumentExpression, checker),
+      receiver: left.expression,
+      computed: true,
+    };
+  }
+  return undefined;
+}
+
+function inspectApplicationSource(
+  relativePath,
+  sourceFile,
+  checker,
+  absoluteRoot,
+) {
   const rules = new Set();
+  const webPreferenceSymbols = new Set();
+
+  const collectPreferenceExpression = (expression, seenSymbols = new Set()) => {
+    const unwrapped = typeOnlyWrappedExpression(expression);
+    if (unwrapped !== undefined) {
+      collectPreferenceExpression(unwrapped, seenSymbols);
+      return;
+    }
+    if (!ts.isIdentifier(expression)) return;
+    const symbol = checker.getSymbolAtLocation(expression);
+    if (symbol === undefined || seenSymbols.has(symbol.id)) return;
+    webPreferenceSymbols.add(symbol.id);
+    const initializer = constVariableInitializer(symbol);
+    if (initializer === undefined) return;
+    const nextSeen = new Set(seenSymbols);
+    nextSeen.add(symbol.id);
+    collectPreferenceExpression(initializer, nextSeen);
+  };
+
+  const collectWebPreferenceContexts = (node) => {
+    if (ts.isPropertyAssignment(node)) {
+      if (propertyNameText(node.name, checker) === "webPreferences") {
+        collectPreferenceExpression(node.initializer);
+      }
+    } else if (
+      ts.isBinaryExpression(node) &&
+      isAssignmentOperator(node.operatorToken.kind)
+    ) {
+      const assignment = assignedProperty(node.left, checker);
+      if (assignment?.name === "webPreferences") {
+        collectPreferenceExpression(node.right);
+      }
+    }
+    node.forEachChild(collectWebPreferenceContexts);
+  };
+  collectWebPreferenceContexts(sourceFile);
+
+  const isKnownWebPreferenceReceiver = (expression, seenSymbols = new Set()) => {
+    const unwrapped = typeOnlyWrappedExpression(expression);
+    if (unwrapped !== undefined) {
+      return isKnownWebPreferenceReceiver(unwrapped, seenSymbols);
+    }
+    if (!ts.isIdentifier(expression)) return false;
+    const symbol = checker.getSymbolAtLocation(expression);
+    if (symbol === undefined) return false;
+    if (webPreferenceSymbols.has(symbol.id)) return true;
+    if (seenSymbols.has(symbol.id)) return false;
+    const initializer = constVariableInitializer(symbol);
+    if (initializer === undefined) return false;
+    const nextSeen = new Set(seenSymbols);
+    nextSeen.add(symbol.id);
+    return isKnownWebPreferenceReceiver(initializer, nextSeen);
+  };
 
   const visit = (node) => {
     const importedModule = moduleReference(node, checker);
@@ -455,36 +701,97 @@ function inspectApplicationSource(relativePath, sourceFile, checker) {
 
     if (
       ts.isObjectLiteralExpression(node) &&
-      hasUnsafeWebPreference(node, checker)
+      hasUnsafeWebPreference(node, checker, false)
     ) {
       rules.add("insecure_web_preference");
+    }
+
+    if (ts.isPropertyAssignment(node)) {
+      if (propertyNameText(node.name, checker) === "webPreferences") {
+        const preferences = resolveObjectLiteral(node.initializer, checker);
+        if (
+          preferences === undefined ||
+          hasUnsafeWebPreference(preferences, checker, true)
+        ) {
+          rules.add("insecure_web_preference");
+        }
+      }
+    } else if (
+      ts.isBinaryExpression(node) &&
+      isAssignmentOperator(node.operatorToken.kind)
+    ) {
+      const assignment = assignedProperty(node.left, checker);
+      if (assignment !== undefined) {
+        const expected = SECURE_WEB_PREFERENCES.get(assignment.name);
+        if (
+          expected !== undefined &&
+          (node.operatorToken.kind !== ts.SyntaxKind.EqualsToken ||
+            node.right.kind !== expected)
+        ) {
+          rules.add("insecure_web_preference");
+        } else if (
+          assignment.computed &&
+          assignment.name === undefined &&
+          isKnownWebPreferenceReceiver(assignment.receiver)
+        ) {
+          rules.add("insecure_web_preference");
+        }
+        if (assignment.name === "webPreferences") {
+          const preferences = resolveObjectLiteral(node.right, checker);
+          if (
+            preferences === undefined ||
+            hasUnsafeWebPreference(preferences, checker, true)
+          ) {
+            rules.add("insecure_web_preference");
+          }
+        }
+      }
     }
 
     if (
       ts.isPropertyAccessExpression(node) &&
       node.name.text === "openExternal"
     ) {
-      if (!reviewedExternalOpen(relativePath, node, checker)) {
+      if (!reviewedExternalOpen(relativePath, node, checker, absoluteRoot)) {
         rules.add("unrestricted_external_open");
       }
     } else if (
       ts.isElementAccessExpression(node) &&
-      staticString(node.argumentExpression, checker) === "openExternal"
+      expressionResolvesToImportedBinding(
+        node.expression,
+        checker,
+        "shell",
+        "electron",
+      )
     ) {
-      rules.add("unrestricted_external_open");
-    } else if (
-      ts.isComputedPropertyName(node) &&
-      staticString(node.expression, checker) === "openExternal"
-    ) {
-      rules.add("unrestricted_external_open");
-    } else if (ts.isIdentifier(node) && node.text === "openExternal") {
-      const property = node.parent;
-      if (
-        !ts.isPropertyAccessExpression(property) ||
-        property.name !== node ||
-        !reviewedExternalOpen(relativePath, property, checker)
-      ) {
+      const name = staticString(node.argumentExpression, checker);
+      if (name === undefined || name === "openExternal") {
         rules.add("unrestricted_external_open");
+      }
+    } else if (ts.isBindingElement(node)) {
+      const pattern = node.parent;
+      const declaration = pattern.parent;
+      if (
+        ts.isObjectBindingPattern(pattern) &&
+        ts.isVariableDeclaration(declaration) &&
+        declaration.initializer &&
+        expressionResolvesToImportedBinding(
+          declaration.initializer,
+          checker,
+          "shell",
+          "electron",
+        )
+      ) {
+        const property = node.propertyName ?? node.name;
+        const name =
+          ts.isComputedPropertyName(property)
+            ? staticString(property.expression, checker)
+            : ts.isIdentifier(property) || ts.isStringLiteral(property)
+              ? property.text
+              : undefined;
+        if (name === undefined || name === "openExternal") {
+          rules.add("unrestricted_external_open");
+        }
       }
     }
 
@@ -530,6 +837,7 @@ export async function verifySource(root = process.cwd()) {
         relativePath,
         sourceFile,
         project.checker,
+        absoluteRoot,
       )) {
         failures.push({ file: relativePath, rule });
       }
