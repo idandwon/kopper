@@ -171,3 +171,9 @@
 
 - **Release remains Incomplete — blocked; do not publish or promote.** Automated source and unsigned packaging gates pass, but an exact release tag, protected signing/notarization/stapling/Gatekeeper artifact evidence, physical macOS matrices, physical status-item interaction, VoiceOver review, independent acceptance approval, and promotion authorization remain `Not run`.
 - No workflow was altered and no signing, notarization, stapling, physical acceptance, publication, promotion, push, or merge was performed.
+
+## Final scoped re-review residual
+
+- Final fix re-review persisted at `448486b` verdicts the portal, Markdown, and Settings-feedback findings Addressed, but finds one new Important race in custom-theme deletion: Cancel/Escape and a second Delete remain enabled while `appearance.deleteCustomTheme` acknowledgement is pending, so failure can lose the open retry surface.
+- Ruling: this residual is real and load-bearing for merge readiness; it is not adjudicated away. The single permitted final fix wave is exhausted, so no unreviewed second wave is launched. Branch remains **Not ready to merge** and the worktree is preserved for an explicitly authorized follow-up — if wrong, this conservatively delays integration; if ignored, users could dismiss or double-invoke a pending destructive theme operation.
+- Release remains independently Incomplete/Blocked; exact gated source `6054d269` accurately passed its automated gate, but that evidence does not negate the merge blocker.
