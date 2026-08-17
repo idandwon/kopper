@@ -66,10 +66,10 @@
 - Consumes: `useKopperDocument`, `projectNotes`, selection reducer, existing settings/section modules.
 - Produces: a small application router, a panel orchestration module, and feature-local interfaces that later visual and interaction tasks can refine without reopening document ownership.
 
-- [ ] Characterize current routing, focus reconciliation, selection, settings, and error behavior with tests.
-- [ ] Extract modules by owned behavior rather than JSX size; do not add pass-through wrappers.
-- [ ] Keep derived projection and selection state during render and narrow effect dependencies to primitives.
-- [ ] Run focused renderer tests, typecheck, and commit.
+- [x] Characterize current routing, focus reconciliation, selection, settings, and error behavior with tests.
+- [x] Extract modules by owned behavior rather than JSX size; do not add pass-through wrappers.
+- [x] Keep derived projection and selection state during render and narrow effect dependencies to primitives.
+- [x] Run focused renderer tests, typecheck, and commit.
 
 ### Task 3: Native-Feeling Frameless Panel
 
