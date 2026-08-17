@@ -664,7 +664,7 @@ function inspectApplicationSource(
   const webPreferencePaths = new Set();
   const webPreferenceObjects = new Set();
   const preferenceAliasEdges = [];
-  const symbolIdentities = new Map();
+  const baseIdentities = new Map();
 
   const expressionProperty = (expression) => {
     const unwrapped = typeOnlyWrappedExpression(expression);
@@ -672,43 +672,66 @@ function inspectApplicationSource(
     return assignedProperty(expression, checker);
   };
 
-  const symbolIdentity = (symbol) => {
-    let identity = symbolIdentities.get(symbol);
+  const baseIdentity = (value) => {
+    let identity = baseIdentities.get(value);
     if (identity === undefined) {
-      identity = symbolIdentities.size;
-      symbolIdentities.set(symbol, identity);
+      identity = baseIdentities.size;
+      baseIdentities.set(value, identity);
     }
     return identity;
   };
 
   const preferenceSymbol = (expression) => {
-    if (ts.isPropertyAccessExpression(expression)) {
-      return (
-        checker.getSymbolAtLocation(expression.name) ??
-        checker.getSymbolAtLocation(expression)
-      );
-    }
-    if (ts.isElementAccessExpression(expression)) {
-      return checker.getSymbolAtLocation(expression);
-    }
-    if (ts.isComputedPropertyName(expression)) {
-      return checker.getSymbolAtLocation(expression);
+    if (!ts.isIdentifier(expression)) return undefined;
+    const parent = expression.parent;
+    if (
+      (ts.isPropertyAccessExpression(parent) && parent.name === expression) ||
+      (ts.isPropertyAssignment(parent) && parent.name === expression)
+    ) {
+      return undefined;
     }
     return expressionSymbol(expression, checker);
   };
 
-  const staticExpressionPath = (expression) => {
+  const thisReceiverIdentity = (expression) => {
+    let current = expression.parent;
+    while (current !== undefined) {
+      if (ts.isClassDeclaration(current) || ts.isClassExpression(current)) {
+        return baseIdentity(current);
+      }
+      current = current.parent;
+    }
+    return baseIdentity(sourceFile);
+  };
+
+  const staticExpressionPath = (expression, seenSymbols = new Set()) => {
     const unwrapped = typeOnlyWrappedExpression(expression);
-    if (unwrapped !== undefined) return staticExpressionPath(unwrapped);
+    if (unwrapped !== undefined) {
+      return staticExpressionPath(unwrapped, seenSymbols);
+    }
+    if (expression.kind === ts.SyntaxKind.ThisKeyword) {
+      return { base: thisReceiverIdentity(expression), properties: [] };
+    }
     if (ts.isIdentifier(expression)) {
       const symbol = expressionSymbol(expression, checker);
-      return symbol === undefined
-        ? undefined
-        : { base: symbolIdentity(symbol), properties: [] };
+      if (symbol === undefined) return undefined;
+      if (!seenSymbols.has(symbol)) {
+        const initializer = constVariableInitializer(symbol);
+        if (
+          initializer !== undefined &&
+          !ts.isObjectLiteralExpression(initializer)
+        ) {
+          const nextSeen = new Set(seenSymbols);
+          nextSeen.add(symbol);
+          const origin = staticExpressionPath(initializer, nextSeen);
+          if (origin !== undefined) return origin;
+        }
+      }
+      return { base: baseIdentity(symbol), properties: [] };
     }
     const property = expressionProperty(expression);
     if (property?.name === undefined) return undefined;
-    const base = staticExpressionPath(property.receiver);
+    const base = staticExpressionPath(property.receiver, seenSymbols);
     if (base === undefined) return undefined;
     return {
       base: base.base,

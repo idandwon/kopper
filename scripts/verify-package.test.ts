@@ -656,6 +656,18 @@ describe("source security auditor", () => {
       "unknown key through a cyclic property-held alias graph",
       "const key = chooseKey(); const options = { webPreferences: {} }; let first: Record<string, boolean>; let second: Record<string, boolean>; first = second; second = first; first = options.webPreferences; second[key] = false;",
     ],
+    [
+      "unknown key through a const interface receiver alias chain",
+      "interface Holder { preferences: Record<string, unknown>; } const key = chooseKey(); const options = { webPreferences: {} }; const securityHolder = {} as Holder; securityHolder.preferences = options.webPreferences; const first = securityHolder; const second = first; second.preferences[key] = value;",
+    ],
+    [
+      "unknown key through a const nested receiver alias",
+      "const key = chooseKey(); const options = { webPreferences: {} }; const securityHolder = { nested: { preferences: options.webPreferences } }; const alias = securityHolder.nested; alias.preferences[key] = value;",
+    ],
+    [
+      "unknown key through a class this receiver",
+      "class Holder { preferences: Record<string, unknown> = {}; attach(options: { webPreferences: Record<string, unknown> }) { this.preferences = options.webPreferences; } write(key: string) { this.preferences[key] = value; } } void Holder;",
+    ],
   ])("rejects %s", async (_name, source) => {
     const root = await createSourceFixture({ "src/main/unsafe.ts": source });
 
@@ -715,6 +727,34 @@ describe("source security auditor", () => {
       failures: [],
     });
   });
+
+  it.each([
+    [
+      "interface property",
+      "interface Holder { preferences: Record<string, unknown>; } const securityHolder = {} as Holder; const themeHolder = {} as Holder;",
+    ],
+    [
+      "class property",
+      "class Holder { preferences: Record<string, unknown> = {}; attach(options: { webPreferences: Record<string, unknown> }) { this.preferences = options.webPreferences; } } const securityHolder = new Holder(); const themeHolder = new Holder();",
+    ],
+  ])(
+    "keeps separate receiver instances isolated for a shared %s symbol",
+    async (_name, declarations) => {
+      const root = await createSourceFixture({
+        "src/main/safe.ts": [
+          "const key = chooseKey(); const options = { webPreferences: {} };",
+          declarations,
+          "securityHolder.preferences = options.webPreferences;",
+          "themeHolder.preferences[key] = value;",
+        ].join("\n"),
+      });
+
+      await expect(verifySource(root)).resolves.toMatchObject({
+        ok: true,
+        failures: [],
+      });
+    },
+  );
 
   it("scans application source only and treats tests as negative fixture data", async () => {
     const unsafe =
