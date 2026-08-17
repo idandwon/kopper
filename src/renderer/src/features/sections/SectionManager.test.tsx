@@ -2,11 +2,13 @@ import "@testing-library/jest-dom/vitest";
 
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KopperDocument } from "../../../../shared/domain/document";
 import { useKopperDocument, type KopperDocumentContextValue } from "../../app/DocumentProvider";
-import { AddSectionDialog, SectionManager } from "./SectionManager";
+import { AddSectionDialog } from "./AddSectionDialog";
+import { SectionManager } from "./SectionManager";
 
 vi.mock("../../app/DocumentProvider", () => ({ useKopperDocument: vi.fn() }));
 
@@ -33,6 +35,23 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+function ControlledAddSectionDialog() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)}>
+        Open add section
+      </button>
+      <AddSectionDialog
+        mode="controlled"
+        open={open}
+        onOpenChange={setOpen}
+      />
+    </>
+  );
+}
+
 describe("section management", () => {
   it("trims names when creating and renaming", async () => {
     const user = userEvent.setup();
@@ -51,6 +70,20 @@ describe("section management", () => {
     await user.type(rename, "  Capture  ");
     await user.click(screen.getByRole("button", { name: "Save name" }));
     expect(execute).toHaveBeenCalledWith({ type: "section.rename", sectionId: "inbox", title: "Capture" });
+  });
+
+  it("supports a controlled dialog without rendering its own trigger", async () => {
+    const user = userEvent.setup();
+    render(<ControlledAddSectionDialog />);
+
+    expect(
+      screen.queryByRole("button", { name: "Add section" }),
+    ).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Open add section" }));
+    expect(screen.getByRole("dialog", { name: "Add section" })).toBeVisible();
+    await user.type(screen.getByRole("textbox", { name: "Section name" }), "Ideas");
+    await user.click(screen.getByRole("button", { name: "Create section" }));
+    expect(execute).toHaveBeenCalledWith({ type: "section.add", title: "Ideas" });
   });
 
   it("uses explicit move up and down commands", async () => {

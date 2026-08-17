@@ -107,11 +107,11 @@
 - Consumes: document actions, undo, settings opening, pinning, Active/Completed view selection.
 - Produces: a search-plus-menu primary command surface, quiet lifecycle switching, one global panel shortcut listener, and accessible SVG controls via direct imports.
 
-- [ ] Lock current keyboard behavior and menu actions with tests.
-- [ ] Move low-frequency actions out of the always-visible toolbar.
-- [ ] Centralize Cmd+K and Cmd+Z routing without adding a dependency or duplicate listener.
-- [ ] Add visible shortcut labels to applicable menus while preserving screen-reader labels.
-- [ ] Run focused tests, E2E smoke, typecheck, and commit.
+- [x] Lock current keyboard behavior and menu actions with tests.
+- [x] Move low-frequency actions out of the always-visible toolbar.
+- [x] Centralize Cmd+K and Cmd+Z routing without adding a dependency or duplicate listener.
+- [x] Add visible shortcut labels to applicable menus while preserving screen-reader labels.
+- [x] Run focused tests, E2E smoke, typecheck, and commit.
 
 ### Task 5: Oxide Ledger Surface Completion
 

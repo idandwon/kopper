@@ -242,8 +242,10 @@ describe("Oxide Ledger App", () => {
     expect(
       screen.getByRole("textbox", { name: "Add a note or prompt" }),
     ).toBeEnabled();
-    expect(screen.getByRole("button", { name: "Undo" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Add section" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Add section" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByText("Lifecycle: captured to completed"),
     ).toBeInTheDocument();
@@ -519,14 +521,33 @@ describe("Oxide Ledger App", () => {
     );
   });
 
-  it("supports Cmd+K outside editors and Undo", async () => {
-    const user = userEvent.setup();
+  it("routes Cmd+K and Cmd+Z through one panel shortcut listener", () => {
     render(<App />);
-    screen.getByRole("button", { name: "Undo" }).focus();
+    const panelMenu = screen.getByRole("button", { name: "Panel menu" });
+    panelMenu.focus();
+
     fireEvent.keyDown(window, { key: "k", metaKey: true });
     expect(screen.getByRole("searchbox")).toHaveFocus();
 
-    await user.click(screen.getByRole("button", { name: "Undo" }));
+    panelMenu.focus();
+    fireEvent.keyDown(window, { key: "z", metaKey: true });
+    expect(undo).toHaveBeenCalledOnce();
+  });
+
+  it("keeps low-frequency panel actions in the overflow menu", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: "Panel menu" }));
+
+    expect(screen.getByRole("menuitem", { name: "Add section" })).toBeVisible();
+    const undoMenuItem = screen.getByRole("menuitem", { name: "Undo" });
+    expect(undoMenuItem).toBeVisible();
+    expect(undoMenuItem).toHaveTextContent("⌘Z");
+    expect(screen.getByRole("menuitem", { name: "Pin panel" })).toBeVisible();
+    expect(screen.getByRole("menuitem", { name: "Settings…" })).toBeVisible();
+
+    await user.click(undoMenuItem);
     expect(undo).toHaveBeenCalledOnce();
   });
 

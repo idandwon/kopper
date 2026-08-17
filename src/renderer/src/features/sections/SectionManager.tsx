@@ -19,7 +19,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "../../components/ui/dialog";
 import {
   DropdownMenu,
@@ -33,45 +32,6 @@ import { useKopperDocument } from "../../app/DocumentProvider";
 
 function orderedSections(sections: Section[]): Section[] {
   return [...sections].sort((left, right) => left.order - right.order);
-}
-
-export function AddSectionDialog() {
-  const { execute, pendingAction } = useKopperDocument();
-  const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const trimmedTitle = title.trim();
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (trimmedTitle.length === 0) return;
-    if (await execute({ type: "section.add", title: trimmedTitle })) {
-      setTitle("");
-      setOpen(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button type="button" variant="ghost" size="xs">Add section</Button>
-      </DialogTrigger>
-      <DialogContent>
-        <form onSubmit={(event) => void submit(event)} className="grid gap-4">
-          <DialogHeader>
-            <DialogTitle>Add section</DialogTitle>
-            <DialogDescription>Create another place for active notes.</DialogDescription>
-          </DialogHeader>
-          <label className="grid gap-1.5 text-sm">
-            <span>Section name</span>
-            <Input autoFocus value={title} onChange={(event) => setTitle(event.currentTarget.value)} />
-          </label>
-          <DialogFooter>
-            <Button type="submit" disabled={trimmedTitle.length === 0 || pendingAction !== null}>Create section</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
 }
 
 export interface SectionManagerProps {

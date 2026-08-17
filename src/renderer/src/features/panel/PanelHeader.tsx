@@ -1,9 +1,11 @@
+import { useRef } from "react";
+
 import { useKopperDocument } from "../../app/DocumentProvider";
 import { Button } from "../../components/ui/button";
 import { SearchField } from "../search/SearchField";
 import type { NoteProjectionView } from "../search/projectNotes";
-import { AddSectionDialog } from "../sections/SectionManager";
 import { PanelMenu } from "./PanelMenu";
+import { PanelShortcuts } from "./PanelShortcuts";
 
 interface LifecycleViewButtonProps {
   view: NoteProjectionView;
@@ -50,7 +52,12 @@ export function PanelHeader({
   changeView,
 }: PanelHeaderProps) {
   const { pendingAction, undo } = useKopperDocument();
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const busy = pendingAction !== null;
+
+  const focusSearch = () => {
+    searchInputRef.current?.focus();
+  };
 
   const undoLastAction = () => {
     void undo();
@@ -58,38 +65,35 @@ export function PanelHeader({
 
   return (
     <header className="grid gap-2 px-4 pt-4 pb-3 pl-5">
-      <SearchField query={query} onQueryChange={changeQuery} />
-      <div className="flex items-center justify-between gap-2">
-        <div
-          role="group"
-          className="flex rounded-lg border border-border bg-card p-0.5"
-          aria-label="Note lifecycle view"
-        >
-          <LifecycleViewButton
-            view="active"
-            currentView={view}
-            selectView={changeView}
-          />
-          <LifecycleViewButton
-            view="completed"
-            currentView={view}
-            selectView={changeView}
-          />
-        </div>
-        <div className="flex items-center gap-1">
-          <PanelMenu captureUnavailable={captureUnavailable} />
-          <AddSectionDialog />
-          <Button
-            type="button"
-            variant="ghost"
-            size="xs"
-            disabled={busy}
-            onClick={undoLastAction}
-          >
-            Undo
-          </Button>
-        </div>
+      <div className="flex items-center gap-2">
+        <SearchField
+          query={query}
+          inputRef={searchInputRef}
+          onQueryChange={changeQuery}
+        />
+        <PanelMenu captureUnavailable={captureUnavailable} />
       </div>
+      <div
+        role="group"
+        className="flex w-fit rounded-lg bg-card/60 p-0.5"
+        aria-label="Note lifecycle view"
+      >
+        <LifecycleViewButton
+          view="active"
+          currentView={view}
+          selectView={changeView}
+        />
+        <LifecycleViewButton
+          view="completed"
+          currentView={view}
+          selectView={changeView}
+        />
+      </div>
+      <PanelShortcuts
+        disabled={busy}
+        focusSearch={focusSearch}
+        undo={undoLastAction}
+      />
     </header>
   );
 }
