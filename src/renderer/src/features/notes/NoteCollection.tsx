@@ -191,7 +191,7 @@ export function NoteCollection({
 
   return (
     <ScrollArea className="min-h-0 flex-1" aria-label="Notes by section">
-      <div className="space-y-5 px-4 pt-1 pb-36 pl-5">
+      <div className="space-y-5 px-4 pt-1 pb-4 pl-5">
         {selectedCount > 1 ? (
           <p
             role="status"

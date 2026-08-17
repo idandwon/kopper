@@ -251,10 +251,10 @@
 - Consumes: `DEMO-*` acceptance IDs and completed panel behavior.
 - Produces: keyboard-only demo journey, light/dark fixed-size visual baselines, and an evidence map from acceptance ID to automated/manual verification.
 
-- [ ] Add the prompt-entry/select/copy/clipboard/complete/restore journey.
-- [ ] Add deterministic 380×640 and 340×480 light/dark screenshots with dynamic values controlled or masked.
-- [ ] Review changed React code against relevant Vercel rules and the global code constraints.
-- [ ] Run focused tests, full Vitest, typecheck, build, E2E repeats, audits, and commit.
+- [x] Add the prompt-entry/select/copy/clipboard/complete/restore journey.
+- [x] Add deterministic 380×640 and 340×480 light/dark screenshots with dynamic values controlled or masked.
+- [x] Review changed React code against relevant Vercel rules and the global code constraints.
+- [x] Run focused tests, full Vitest, typecheck, build, E2E repeats, audits, and commit.
 
 ### Task 12: Release-Evidence Refresh
 

@@ -21,7 +21,7 @@ export function NoteComposer() {
   return (
     <div
       data-composer-surface="true"
-      className="kopper-composer absolute right-4 bottom-4 left-5 grid grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-2 rounded-[calc(var(--radius)+0.35rem)] border border-border bg-card p-2 shadow-sm"
+      className="kopper-composer relative z-20 mx-4 mt-2 mb-4 ml-5 grid shrink-0 grid-cols-[auto_minmax(0,1fr)_auto] items-end gap-2 rounded-[calc(var(--radius)+0.35rem)] border border-border bg-card p-2 shadow-sm"
     >
       <span
         aria-hidden="true"
