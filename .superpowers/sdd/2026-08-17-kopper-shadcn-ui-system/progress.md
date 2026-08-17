@@ -138,3 +138,36 @@
 - **Release status: Incomplete — blocked; do not publish or promote.** The fresh exact-source unsigned gate passed, but it does not resolve prior promotion-workflow defects or substitute for an exact release tag, protected signing/notarization/stapling/Gatekeeper evidence, protected artifact checks, physical macOS acceptance, VoiceOver/accessibility review, independent acceptance approval, or promotion authorization.
 - Every protected, physical, signing, notarization, stapling, Gatekeeper, VoiceOver, independent approval, and promotion row remains `Not run`; the canonical 91-row procedure is unchanged.
 - No signing, notarization, stapling, publishing, promotion, push, merge, workflow alteration, or protected release action was performed.
+
+## Final whole-branch review and permitted fix wave
+
+- Final reviewer record at starting clean HEAD `cc7762dfa102deb663509f588e27885f63d2b057` found 3 Important items and 1 Minor test debt: notes-owned portals escaping mounted-hidden routing; nested Markdown horizontal owners; Settings failures announced as status; and missing direct failed custom-theme deletion coverage.
+- One permitted TDD source wave addressed all four findings. Focused RED was 4 failed files / 12 failed and 36 passed component tests; focused Electron RED was 1/1 failed with a 5252.078125 px descendant right edge at 340 px. Focused GREEN was 9 files / 75 component tests, 1/1 Markdown Electron journey, and typecheck Pass.
+- Final source/test commit: `6054d26965ce66d924079cbcd4fb28dbcb05b38c` — `fix: close final shadcn UI findings`; tree `c7f57763fbebcc7dd288b40f1127344bbf987c41`; commit time `2026-08-17T18:55:24+03:00`.
+- Portal disposition: `DocumentPanel` owns one notes-surface visibility provider consumed by panel/Add Section/SectionManager/note/editor portal roots, including submenus, Selects, and tooltips. Native listener tests prove Shortcuts is the sole visible/accessibility surface, Back entry focus and Search restoration are deterministic, and editor/selection/composer state survives.
+- Markdown disposition: code pre-wraps anywhere; 100%-width fixed-layout GFM tables and cells wrap; adversarial full-content tests pass at 340×480 notes and 420×480 editor with no root or Markdown-descendant horizontal owner.
+- Settings disposition: shared `{ text, tone: "status" | "error" }` feedback gives failures alert semantics and progress/success/cancel polite status semantics across Appearance, Data, and Shortcuts. Direct failed custom-theme deletion keeps the authoritative row and open retry action.
+- Precommit validation: 69 files / 766 unit tests Pass; typecheck/build Pass with main 38 / preload 240 / renderer 682 modules; 16/16 Electron E2E Pass. All eight notes/Settings baselines matched; no screenshot, mask, or tolerance changed.
+
+## Final fresh exact-source unsigned gate and evidence
+
+- Completely fresh ordered interval: `RUN_START=2026-08-17T15:55:39Z`; `RUN_END=2026-08-17T15:57:14Z`.
+- `pnpm test`: Pass — 69 files / 766 tests, 10.19 s.
+- `pnpm typecheck`: Pass — no diagnostics.
+- `pnpm build`: Pass — main 38 / preload 240 / renderer 682 modules; CSS 50.62 kB; renderer JS 1,882.44 kB; existing dependency-level ignored `use client` warnings only.
+- `pnpm test:e2e`: Pass — 16/16 with one worker, 23.3 s.
+- `pnpm audit:deps`: Pass — no known vulnerabilities.
+- `pnpm audit:source`: Pass — `ok: true`, 104 source files, zero failures.
+- `pnpm validate:release-docs`: Pass — 91 canonical rows in both acceptance records.
+- `actionlint .github/workflows/*.yml`: Pass — no findings/output.
+- `pnpm package:unsigned`: Pass — universal directory app produced; signing explicitly skipped because identity was null.
+- `pnpm verify:package "release/mac-universal/Kopper.app"`: Pass — 3,172 ASAR entries; exact `arm64` and `x86_64`; one native module; ID `com.kopper.app`; minimum macOS 14.0; zero failures.
+- Cleanup: no surviving E2E/app process, no E2E/dialog fixture directory, and no generated `test-results/`.
+- Evidence commit: `e318a23f410bfe9d586f936d1ad5c207a80506ba` — `docs: refresh final shadcn UI evidence`; only the two release evidence documents changed.
+- Branch review/fix record commit: `da6867db3c4e0b37a754a3968a65e789d11f5896` — `docs: record final shadcn UI branch review`; only the final reviewer record and final fix report changed.
+- No production/package input differs after exact source `6054d269`. The tracked ledger commit carrying this section is documentation-only and is identified by subject `docs: finalize shadcn UI branch ledger`.
+
+## Final release ruling after branch closure
+
+- **Release remains Incomplete — blocked; do not publish or promote.** Automated source and unsigned packaging gates pass, but an exact release tag, protected signing/notarization/stapling/Gatekeeper artifact evidence, physical macOS matrices, physical status-item interaction, VoiceOver review, independent acceptance approval, and promotion authorization remain `Not run`.
+- No workflow was altered and no signing, notarization, stapling, physical acceptance, publication, promotion, push, or merge was performed.
