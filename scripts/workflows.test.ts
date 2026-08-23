@@ -14,6 +14,9 @@ const promote = readFileSync(
   new URL("../.github/workflows/promote-release.yml", import.meta.url),
   "utf8",
 );
+const packageJson = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+) as { scripts: Record<string, string> };
 
 function step(workflow: string, name: string) {
   const marker = `      - name: ${name}\n`;
@@ -21,10 +24,6 @@ function step(workflow: string, name: string) {
   expect(start, `missing workflow step: ${name}`).toBeGreaterThanOrEqual(0);
   const next = workflow.indexOf("\n      - name: ", start + marker.length);
   return workflow.slice(start, next === -1 ? workflow.length : next);
-}
-
-function secretNames(value: string) {
-  return [...value.matchAll(/secrets\.([A-Z0-9_]+)/gu)].map((match) => match[1]);
 }
 
 const actionPins = new Map([
@@ -73,43 +72,56 @@ describe("workflow security semantics", () => {
     },
   );
 
-  it("does not expose signing or release credentials to dependency installation", () => {
-    const jobPreamble = release.slice(0, release.indexOf("    steps:\n"));
-    const install = step(release, "Install dependencies from lockfile");
-
-    expect(jobPreamble).not.toContain("secrets.");
-    expect(install).not.toContain("secrets.");
-    expect(install).not.toMatch(/APPLE_API|CSC_|GH_TOKEN/u);
+  it("builds the release without Apple credentials, signing, or notarization", () => {
+    expect(release).not.toMatch(/secrets\.|APPLE_|CSC_|notarytool|stapler/u);
+    const build = step(release, "Build unsigned universal DMG");
+    expect(build).toContain("run: pnpm package:beta");
+    expect(packageJson.scripts["package:beta"]).toContain("--mac dmg --universal");
+    expect(packageJson.scripts["package:beta"]).toContain("-c.mac.identity=null");
+    expect(packageJson.scripts["package:beta"]).toContain("-c.mac.notarize=false");
   });
 
-  it("scopes each release credential to only the step that consumes it", () => {
-    const checkout = step(release, "Check out tagged revision");
-    const prepareKey = step(release, "Prepare Apple API key");
-    const packageRelease = step(release, "Build signed and notarized release");
-    const createRelease = step(release, "Create draft GitHub Release");
-    const cleanup = step(release, "Remove temporary Apple API key");
+  it("validates tag/version equality before release gates", () => {
+    const version = step(release, "Verify exact tag version");
+    expect(version).toContain('test "$GITHUB_REF_NAME" = "v${package_version}"');
+    expect(release.indexOf(version)).toBeLessThan(
+      release.indexOf(step(release, "Run tests")),
+    );
+  });
 
-    expect(checkout).toContain("persist-credentials: false");
-    expect(new Set(secretNames(prepareKey))).toEqual(
-      new Set(["APPLE_API_KEY_P8", "APPLE_API_KEY_ID"]),
+  it("runs every unsigned release gate before packaging", () => {
+    const names = [
+      "Run tests",
+      "Run typecheck",
+      "Build application",
+      "Run Electron end-to-end tests",
+      "Audit production dependencies",
+      "Audit application source",
+    ];
+    const packageStep = step(release, "Build unsigned universal DMG");
+    for (const name of names) {
+      expect(release.indexOf(step(release, name))).toBeLessThan(
+        release.indexOf(packageStep),
+      );
+    }
+  });
+
+  it("verifies unsigned package metadata before draft creation", () => {
+    const verify = step(release, "Verify unsigned package");
+    expect(verify).toContain(
+      'pnpm verify:package "release/mac-universal/Kopper.app"',
     );
-    expect(new Set(secretNames(packageRelease))).toEqual(
-      new Set([
-        "APPLE_API_KEY_ID",
-        "APPLE_API_ISSUER",
-        "CSC_LINK",
-        "CSC_KEY_PASSWORD",
-      ]),
+    expect(release.indexOf(verify)).toBeLessThan(
+      release.indexOf(step(release, "Create draft GitHub Release")),
     );
-    expect(createRelease).toContain("GH_TOKEN: ${{ github.token }}");
-    expect(createRelease).not.toContain("secrets.");
-    expect(cleanup).not.toMatch(/secrets\.|APPLE_API_KEY_ID|APPLE_API_KEY_P8/u);
-    expect(cleanup).toContain('$RUNNER_TEMP/kopper-release-secrets');
   });
 
   it("creates only a draft candidate from a pushed exact tag", () => {
     const createRelease = step(release, "Create draft GitHub Release");
     expect(createRelease).toContain('gh release create "$GITHUB_REF_NAME"');
+    expect(createRelease.match(/"\$DMG_PATH"/gu)).toHaveLength(1);
+    expect(createRelease.match(/"\$CHECKSUM_PATH"/gu)).toHaveLength(1);
+    expect(createRelease.match(/"\$INSTALLER_PATH"/gu)).toHaveLength(1);
     expect(createRelease).toContain("--draft");
     expect(createRelease).not.toContain("--draft=false");
   });
