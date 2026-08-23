@@ -45,4 +45,144 @@ checksum_name="${dmg_name}.sha256"
 asset_base="${KOPPER_RELEASES_URL}/download/${tag}"
 
 temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/kopper-install.XXXXXX")"
-trap 'rm -rf "$temporary_directory"' EXIT
+mount_point="${temporary_directory}/mount"
+staged_target=""
+rollback_target=""
+mounted=0
+installed_new=0
+
+verify_app() {
+  local app_path="$1"
+  codesign --verify --deep --strict "$app_path" >/dev/null 2>&1 &&
+    spctl --assess --type execute "$app_path" >/dev/null 2>&1
+}
+
+cleanup_downloads() {
+  local cleanup_status=0
+
+  if [[ "$mounted" == "1" ]]; then
+    if hdiutil detach "$mount_point" >/dev/null 2>&1; then
+      mounted=0
+    else
+      cleanup_status=1
+    fi
+  fi
+
+  if [[ "$mounted" == "0" && -n "$temporary_directory" ]]; then
+    if rm -rf "$temporary_directory"; then
+      temporary_directory=""
+    else
+      cleanup_status=1
+    fi
+  fi
+
+  return "$cleanup_status"
+}
+
+installer_cleanup() {
+  local original_status=$?
+  local final_status=$original_status
+  trap - EXIT HUP INT TERM
+
+  if [[ -n "$staged_target" && -e "$staged_target" ]]; then
+    rm -rf "$staged_target" || final_status=1
+  fi
+
+  if [[ "$original_status" != "0" ]]; then
+    if [[ "$installed_new" == "1" && -e "$KOPPER_TARGET" ]]; then
+      if rm -rf "$KOPPER_TARGET"; then
+        installed_new=0
+      else
+        final_status=1
+      fi
+    fi
+
+    if [[ -n "$rollback_target" && -e "$rollback_target" ]]; then
+      if [[ -e "$KOPPER_TARGET" ]]; then
+        final_status=1
+      elif mv "$rollback_target" "$KOPPER_TARGET"; then
+        rollback_target=""
+      else
+        final_status=1
+      fi
+    fi
+  fi
+
+  if ! cleanup_downloads; then
+    printf 'Kopper installer: Could not completely clean up installer files.\n' >&2
+    final_status=1
+  fi
+
+  exit "$final_status"
+}
+
+trap installer_cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+printf 'Downloading Kopper %s...\n' "$tag"
+curl -fL --retry 3 --proto '=https' --tlsv1.2 \
+  -o "${temporary_directory}/${dmg_name}" "${asset_base}/${dmg_name}" \
+  || fail "Could not download ${dmg_name}."
+curl -fL --retry 3 --proto '=https' --tlsv1.2 \
+  -o "${temporary_directory}/${checksum_name}" "${asset_base}/${checksum_name}" \
+  || fail "Could not download ${checksum_name}."
+
+printf 'Verifying checksum and Apple signature...\n'
+checksum_lines=()
+while IFS= read -r checksum_line || [[ -n "$checksum_line" ]]; do
+  checksum_lines+=("$checksum_line")
+done < "${temporary_directory}/${checksum_name}"
+[[ "${#checksum_lines[@]}" == "1" ]] || fail "The Kopper checksum file is invalid."
+checksum_hash="${checksum_lines[0]%% *}"
+[[ "$checksum_hash" =~ ^[0-9a-f]{64}$ ]] \
+  || fail "The Kopper checksum file is invalid."
+[[ "${checksum_lines[0]}" == "${checksum_hash}  ${dmg_name}" ]] \
+  || fail "The Kopper checksum file is invalid."
+(
+  cd "$temporary_directory"
+  shasum -a 256 -c "$checksum_name"
+) >/dev/null || fail "The Kopper download checksum did not match."
+
+spctl --assess --type open --context context:primary-signature \
+  "${temporary_directory}/${dmg_name}" >/dev/null 2>&1 \
+  || fail "Gatekeeper rejected the Kopper disk image."
+
+mkdir -p "$mount_point"
+hdiutil attach -readonly -nobrowse -mountpoint "$mount_point" \
+  "${temporary_directory}/${dmg_name}" >/dev/null \
+  || fail "Could not mount the Kopper disk image."
+mounted=1
+
+shopt -s nullglob
+mounted_apps=("$mount_point"/*.app)
+shopt -u nullglob
+[[ "${#mounted_apps[@]}" == "1" ]] \
+  || fail "The Kopper disk image does not contain exactly one Kopper.app application."
+mounted_app="${mounted_apps[0]}"
+[[ "${mounted_app##*/}" == "Kopper.app" ]] \
+  || fail "The Kopper disk image does not contain exactly one Kopper.app application."
+verify_app "$mounted_app" \
+  || fail "The Kopper application on the disk image failed verification."
+
+pgrep -x Kopper >/dev/null 2>&1 &&
+  fail "Quit Kopper, then run this command again."
+
+mkdir -p "$KOPPER_INSTALL_DIRECTORY"
+staged_target="${KOPPER_INSTALL_DIRECTORY}/.Kopper.app.install.$$"
+rollback_target="${KOPPER_INSTALL_DIRECTORY}/.Kopper.app.rollback.$$"
+ditto "$mounted_app" "$staged_target" || fail "Could not stage Kopper."
+verify_app "$staged_target" || fail "The staged Kopper application failed verification."
+
+if [[ -e "$KOPPER_TARGET" ]]; then
+  mv "$KOPPER_TARGET" "$rollback_target" \
+    || fail "Could not prepare the existing Kopper installation for upgrade."
+fi
+mv "$staged_target" "$KOPPER_TARGET" || fail "Could not install Kopper."
+installed_new=1
+verify_app "$KOPPER_TARGET" || fail "The installed Kopper application failed verification."
+cleanup_downloads || fail "Could not clean up the Kopper disk image."
+open "$KOPPER_TARGET" || fail "Kopper was installed but could not be launched."
+
+rm -rf "$rollback_target"
+rollback_target=""
+printf 'Kopper installed successfully.\n'
