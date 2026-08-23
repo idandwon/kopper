@@ -2,6 +2,18 @@
 
 Kopper is a local-first macOS capture queue for collecting selected text and organizing short Markdown notes. It requires macOS 14 Sonoma or later.
 
+## Install
+
+Kopper requires macOS 14 Sonoma or newer. Install the latest signed and notarized release with:
+
+```bash
+curl -fsSL https://github.com/idandwon/kopper/releases/latest/download/install.sh | bash
+```
+
+Kopper is installed for your account at `~/Applications/Kopper.app` and opens automatically. Complete the in-app Accessibility onboarding if you want global selection capture.
+
+To upgrade, quit Kopper and run the same command again. To uninstall the application, move `~/Applications/Kopper.app` to Trash. Your local notes remain at `~/Library/Application Support/Kopper/kopper.json` unless you deliberately remove that file.
+
 ## Privacy and local data
 
 Kopper stores its document locally at:
@@ -73,6 +85,6 @@ On a clean, exactly tagged, credentialed macOS release runner, the release gate 
 pnpm package:release
 ```
 
-The tag-triggered release workflow signs and notarizes the universal DMG, creates its SHA-256 checksum, and uploads only the DMG and checksum to a **draft GitHub Release**. That draft is an acceptance candidate, not a published release.
+The tag-triggered release workflow signs and notarizes the universal DMG, creates its SHA-256 checksum, and uploads the DMG, checksum, and exact tagged `install.sh` to a **draft GitHub Release**. That draft is an acceptance candidate, not a published release. The unsigned development package above is non-distributable.
 
 Promotion is a separate manual action in the protected `release` environment. Run the **Promote Release** workflow with the exact candidate tag only after the versioned acceptance record is complete for the same tag, version, commit, DMG, and checksum. The promotion workflow verifies the draft and final evidence before changing the release to non-draft; any required `Fail` or `Not run` status blocks publication.
