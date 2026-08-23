@@ -144,7 +144,13 @@ ditto "$APP" "$BEFORE_APP"
 running_install_status=0
 curl -fsSL https://github.com/idandwon/kopper/releases/latest/download/install.sh | bash || running_install_status=$?
 test "$running_install_status" != "0"
-diff -qr "$BEFORE_APP" "$APP" | sed -n '1,20p'
+DIFF_OUTPUT="$BEFORE_APP.diff"
+rm -f "$DIFF_OUTPUT"
+diff_status=0
+diff -qr "$BEFORE_APP" "$APP" > "$DIFF_OUTPUT" || diff_status=$?
+sed -n '1,20p' "$DIFF_OUTPUT"
+test "$diff_status" = "0"
+rm -f "$DIFF_OUTPUT"
 rm -rf "$BEFORE_APP"
 
 # Quit Kopper before the next command.
