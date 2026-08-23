@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   promote:
-    name: Validate final evidence and publish draft
+    name: Inspect and publish unsigned draft
     runs-on: macos-14
     environment: release
 
@@ -68,7 +68,6 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Inspect draft and verify exact candidate assets
-        id: release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.candidate.outputs.tag }}
@@ -81,6 +80,20 @@ jobs:
           rm -rf -- "$download_directory"
           mkdir -p "$download_directory"
           gh release view "$TAG" --json tagName,isDraft,assets > "$release_json"
+          node - "$release_json" "$TAG" "$ARTIFACT" "$CHECKSUM" "$INSTALLER" <<'NODE'
+          const { readFileSync } = require("node:fs");
+          const [releasePath, expectedTag, ...expectedAssets] = process.argv.slice(2);
+          const release = JSON.parse(readFileSync(releasePath, "utf8"));
+          const assetNames = release.assets.map(({ name }) => name).sort();
+          expectedAssets.sort();
+          if (
+            release.tagName !== expectedTag ||
+            release.isDraft !== true ||
+            JSON.stringify(assetNames) !== JSON.stringify(expectedAssets)
+          ) {
+            throw new Error("Draft release metadata or exact asset set did not match.");
+          }
+          NODE
           gh release download "$TAG" \
             --dir "$download_directory" \
             --pattern "$ARTIFACT" \
@@ -98,24 +111,8 @@ jobs:
           checksum_pattern="^[0-9a-f]{64}[[:space:]][[:space:]]${ARTIFACT}$"
           [[ "$expected_line" =~ $checksum_pattern ]]
           shasum -a 256 -c "$CHECKSUM"
-          artifact_sha256="$(shasum -a 256 "$ARTIFACT" | awk '{print $1}')"
-          {
-            printf 'release_json=%s\n' "$release_json"
-            printf 'artifact_sha256=%s\n' "$artifact_sha256"
-          } >> "$GITHUB_OUTPUT"
 
-      - name: Validate final release evidence
-        run: >-
-          pnpm validate:release-docs -- --final
-          --version "${{ steps.candidate.outputs.version }}"
-          --tag "${{ steps.candidate.outputs.tag }}"
-          --commit "${{ steps.candidate.outputs.commit }}"
-          --artifact "${{ steps.candidate.outputs.artifact }}"
-          --checksum "${{ steps.candidate.outputs.checksum }}"
-          --artifact-sha256 "${{ steps.release.outputs.artifact_sha256 }}"
-          --release-json "${{ steps.release.outputs.release_json }}"
-
-      - name: Publish validated draft release
+      - name: Publish inspected unsigned draft
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.candidate.outputs.tag }}

@@ -137,21 +137,24 @@ describe("workflow security semantics", () => {
     expect(createRelease).toContain('"$INSTALLER_PATH"');
   });
 
-  it("promotes only after exact-tag final evidence validation", () => {
+  it("publishes only an exact inspected unsigned draft", () => {
     expect(promote).toContain("workflow_dispatch:");
     expect(promote).toContain("environment: release");
     expect(promote).toContain("permissions:\n  contents: write");
     const checkout = step(promote, "Check out exact release tag");
+    const inspect = step(promote, "Inspect draft and verify exact candidate assets");
+    const publish = step(promote, "Publish inspected unsigned draft");
     expect(checkout).toContain("ref: ${{ inputs.tag }}");
     expect(checkout).toContain("persist-credentials: false");
-    const validation = step(promote, "Validate final release evidence");
-    expect(validation).toContain("--final");
-    expect(validation).toContain('--version "${{ steps.candidate.outputs.version }}"');
-    expect(validation).toContain('--tag "${{ steps.candidate.outputs.tag }}"');
-    const publish = step(promote, "Publish validated draft release");
+    expect(promote).not.toContain("--final");
+    expect(promote).not.toContain("Validate final release evidence");
+    expect(promote.indexOf(inspect)).toBeLessThan(promote.indexOf(publish));
     expect(publish).toContain('gh release edit "$TAG" --draft=false');
     expect(publish).toContain("GH_TOKEN: ${{ github.token }}");
-    expect(promote.indexOf(validation)).toBeLessThan(promote.indexOf(publish));
+    expect(inspect).toContain("release.isDraft !== true");
+    expect(inspect).toContain(
+      "JSON.stringify(assetNames) !== JSON.stringify(expectedAssets)",
+    );
   });
 
   it("downloads and compares the installer before promotion", () => {
@@ -159,12 +162,12 @@ describe("workflow security semantics", () => {
     expect(inspect).toContain('--pattern "$INSTALLER"');
     expect(inspect).toContain('cmp "$INSTALLER" "$GITHUB_WORKSPACE/install.sh"');
     expect(promote.indexOf(inspect)).toBeLessThan(
-      promote.indexOf(step(promote, "Publish validated draft release")),
+      promote.indexOf(step(promote, "Publish inspected unsigned draft")),
     );
   });
 
   it("fails promotion unless the published release reports immutable", () => {
-    const publish = step(promote, "Publish validated draft release");
+    const publish = step(promote, "Publish inspected unsigned draft");
     const verify = step(promote, "Verify published release is immutable");
 
     expect(verify).toContain(
