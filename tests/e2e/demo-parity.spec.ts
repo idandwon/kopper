@@ -141,7 +141,9 @@ async function expectVisualBaselines(
       {
         animations: "disabled",
         caret: "hide",
-        maxDiffPixelRatio: 0.01,
+        // macOS 14 CI rasterizes SF Pro glyph edges slightly differently at
+        // the minimum surface size; keep larger baselines at the stricter cap.
+        maxDiffPixelRatio: width === 340 && height === 480 ? 0.015 : 0.01,
       },
     );
   }
@@ -163,7 +165,8 @@ async function expectVisualBaselines(
       {
         animations: "disabled",
         caret: "hide",
-        maxDiffPixelRatio: 0.01,
+        // Match the minimum-size notes tolerance without masking layout drift.
+        maxDiffPixelRatio: width === 340 && height === 480 ? 0.015 : 0.01,
       },
     );
   }
