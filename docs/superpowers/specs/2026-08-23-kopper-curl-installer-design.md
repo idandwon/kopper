@@ -58,7 +58,7 @@ Repository release immutability must be enabled and verified on `idandwon/kopper
 
 The existing draft-and-promote boundary remains authoritative:
 
-1. `.github/workflows/release.yml` builds, signs, notarizes, and verifies the release assets, independently requires the repository immutable-release setting to report enabled, then uploads the DMG, checksum, and tagged installer as a draft GitHub Release.
+1. `.github/workflows/release.yml` builds, signs, notarizes, and verifies the release assets, then uploads the DMG, checksum, and tagged installer as a draft GitHub Release. The repository owner verifies immutability before pushing the tag because GitHub's workflow token cannot read this administration setting.
 2. `.github/workflows/promote-release.yml` requires and verifies the exact three assets before publishing the draft, then verifies that the published exact-tag release is immutable.
 3. GitHub's `/releases/latest` route exposes the installer only after promotion; draft and prerelease candidates are not installable through the canonical command.
 
@@ -173,7 +173,7 @@ Automated tests execute the script against temporary directories and controlled 
 Existing workflow tests verify that:
 
 - the release workflow uploads `install.sh` from the tagged checkout;
-- the release workflow refuses to create a draft unless the repository immutable-release setting reports enabled;
+- the repository-owner procedure enables and verifies immutable releases before the first tag;
 - the draft contains exactly the required DMG, checksum, and installer assets;
 - promotion rejects a missing or unexpected installer asset;
 - promotion verifies that the published release reports `isImmutable: true`; and

@@ -460,7 +460,7 @@ git commit -m "feat: install verified Kopper releases"
 **Interfaces:**
 
 - Consumes: the exact-tag `install.sh`, `Kopper-<version>-universal.dmg`, and its checksum.
-- Produces: a release job that independently requires repository immutable releases enabled before draft creation, a draft release whose asset list is exactly those three files, and a promotion gate that compares downloaded `install.sh` byte-for-byte with the tagged checkout, publishes only after validation, and then requires the exact published release to report immutable.
+- Produces: a draft release whose asset list is exactly those three files, and a promotion gate that compares downloaded `install.sh` byte-for-byte with the tagged checkout, publishes only after validation, and then requires the exact published release to report immutable. The repository owner enables and verifies immutability before pushing the first tag because GitHub's workflow token cannot read this administration setting.
 - Final validator contract: `expectedNames` is `[options.artifact, options.checksum, "install.sh"]`.
 
 - [ ] **Step 1: Write failing release-contract tests**
@@ -476,14 +476,6 @@ it("publishes the syntax-checked installer from the exact tagged checkout", () =
   const createRelease = step(release, "Create draft GitHub Release");
   expect(createRelease).toContain("INSTALLER_PATH: ${{ steps.assets.outputs.installer_path }}");
   expect(createRelease).toContain('"$INSTALLER_PATH"');
-});
-
-it("refuses to create a draft unless repository immutable releases are enabled", () => {
-  const verify = step(release, "Verify repository immutable releases are enabled");
-  const createRelease = step(release, "Create draft GitHub Release");
-  expect(verify).toContain('gh api "repos/$GITHUB_REPOSITORY/immutable-releases"');
-  expect(verify).toContain('test "$immutable_releases_enabled" = "true"');
-  expect(release.indexOf(verify)).toBeLessThan(release.indexOf(createRelease));
 });
 
 it("downloads and compares the installer before promotion", () => {
@@ -520,13 +512,9 @@ Run:
 pnpm vitest run scripts/workflows.test.ts
 ```
 
-Expected: FAIL because the workflows currently publish and validate only the DMG and checksum, do not gate draft creation on the immutable-release setting, and do not verify published immutability.
+Expected: FAIL because the workflows currently publish and validate only the DMG and checksum and do not verify published immutability.
 
-- [ ] **Step 3: Gate draft creation on repository immutable releases**
-
-Before `Create draft GitHub Release`, query `GET /repos/$GITHUB_REPOSITORY/immutable-releases` with `gh api` and require `.enabled` to equal `true`. This independently enforces the repository-owner prerequisite at the final workflow boundary; it does not replace Task 6's required pre-tag `PUT` and `GET`.
-
-- [ ] **Step 4: Update draft release creation**
+- [ ] **Step 3: Update draft release creation**
 
 Rename `Generate exact DMG checksum` to `Generate exact release assets`, change its `id` to `assets`, and add:
 
@@ -538,7 +526,7 @@ printf 'installer_path=install.sh\n' >> "$GITHUB_OUTPUT"
 
 Keep the existing versioned DMG/checksum outputs. In `Create draft GitHub Release`, bind all three outputs and pass all three quoted paths to `gh release create`. Do not copy the installer from another branch, URL, artifact job, or generated string.
 
-- [ ] **Step 5: Update promotion inspection**
+- [ ] **Step 4: Update promotion inspection**
 
 Have `Verify exact tag version and commit` output `installer=install.sh`. Pass it into the inspection step as `INSTALLER`, add the third `gh release download --pattern`, require exactly one downloaded installer, run `bash -n "$INSTALLER"`, and compare it to the checkout:
 
@@ -550,7 +538,7 @@ cmp "$INSTALLER" "$GITHUB_WORKSPACE/install.sh"
 
 Keep this inspection before final evidence validation and publication.
 
-- [ ] **Step 6: Update exact asset validation**
+- [ ] **Step 5: Update exact asset validation**
 
 Change the final validator to:
 
@@ -565,11 +553,11 @@ if (JSON.stringify(assetNames) !== JSON.stringify(expectedNames)) {
 
 No new command-line argument is needed because the installer asset name is a fixed public contract.
 
-- [ ] **Step 7: Verify published release immutability**
+- [ ] **Step 6: Verify published release immutability**
 
 After `Publish validated draft release`, add `Verify published release is immutable`. Query the exact tag with `gh release view "$TAG" --json tagName,isDraft,isImmutable`; require the returned tag to equal `$TAG`, `isDraft` to equal `false`, and `isImmutable` to equal `true`. This final step is part of promotion success: a published but mutable release fails the workflow and must never be reported as successfully promoted.
 
-- [ ] **Step 8: Run focused workflow and traceability gates**
+- [ ] **Step 7: Run focused workflow and traceability gates**
 
 Run:
 
@@ -580,7 +568,7 @@ pnpm validate:release-docs
 
 Expected: PASS; the current incomplete v0.1.0 final fixture still fails for its existing evidence reasons, not because its three-asset fixture is malformed.
 
-- [ ] **Step 9: Commit release integration**
+- [ ] **Step 8: Commit release integration**
 
 ```bash
 git add .github/workflows/release.yml .github/workflows/promote-release.yml scripts/workflows.test.ts scripts/validate-release-doc-traceability.mjs
