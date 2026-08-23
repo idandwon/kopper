@@ -4,7 +4,7 @@
 
 **Goal:** Publish Kopper at `github.com/idandwon/kopper` with a one-command macOS installer that downloads, verifies, transactionally installs, and launches the latest promoted signed release.
 
-**Architecture:** A root-level Bash 3.2-compatible `install.sh` resolves the latest published semantic-version release, verifies the versioned DMG checksum, Apple signature, and Gatekeeper assessment, then installs to `~/Applications/Kopper.app` with rollback. Existing GitHub release workflows upload the exact tagged installer as a third release asset and require that asset during promotion; mocked Vitest coverage exercises the script without network, disk-image, signing, or real Applications-directory access.
+**Architecture:** A root-level Bash 3.2-compatible `install.sh` resolves the latest published semantic-version release, verifies the versioned DMG checksum, exact Kopper bundle identity, Apple signature, and Gatekeeper assessment, then installs to `~/Applications/Kopper.app` with an explicit pre-commit rollback and post-launch committed phase. Existing GitHub release workflows upload the exact tagged installer as a third release asset, require that asset during promotion, and fail unless the published release reports immutable; mocked Vitest coverage exercises the script without network, disk-image, signing, or real Applications-directory access.
 
 **Tech Stack:** Bash 3.2, built-in macOS command-line tools, GitHub Releases, GitHub Actions, Vitest, Node.js 24, pnpm 10.15
 
@@ -18,7 +18,9 @@
 - Install to exactly `~/Applications/Kopper.app`; never require `sudo`.
 - Require no Git, Node.js, pnpm, Homebrew, or added runtime dependency on the destination Mac.
 - Install only a versioned universal DMG from an exact `v<major>.<minor>.<patch>` published release.
+- Before the first release tag or tag-triggered draft, the repository owner must enable and verify immutable releases for `idandwon/kopper`; promotion must verify the published exact-tag release reports `isImmutable: true`.
 - Never disable Gatekeeper, clear quarantine attributes, execute from the mounted DMG, or accept caller-controlled release origins.
+- Do not embed, request, derive, or gate on an Apple Team ID. Distribution provenance is the immutable exact-tag GitHub Release plus exact DMG checksum; app identity is the real bundle directory, exact `com.kopper.app` identifier, exact release version, and existing `codesign`/Gatekeeper acceptance.
 - Preserve `~/Library/Application Support/Kopper/kopper.json` and all other data outside the app bundle.
 - Keep automatic updates, analytics, telemetry, package managers, mirrors, forks, and configurable channels out of scope.
 - A public repository and passing source tests do not prove that the curl command is live; that claim requires a promoted signed release and post-publication physical acceptance.
@@ -146,7 +148,7 @@ macos_version="$(sw_vers -productVersion)"
 [[ "$(version_major "$macos_version")" =~ ^[0-9]+$ ]] || fail "Could not determine the macOS version."
 (( $(version_major "$macos_version") >= 14 )) || fail "Kopper requires macOS 14 or newer."
 
-for command_name in curl hdiutil shasum codesign spctl ditto open pgrep mktemp sw_vers; do
+for command_name in curl hdiutil shasum codesign spctl plutil ditto open pgrep mktemp sw_vers; do
   require_command "$command_name"
 done
 
@@ -212,8 +214,9 @@ git commit -m "feat: add public installer preflight"
 **Interfaces:**
 
 - Consumes: `tag`, `version`, `dmg_name`, `checksum_name`, `asset_base`, the temporary directory, and fixed `KOPPER_TARGET` from Task 1.
-- Produces: a verified installation at `~/Applications/Kopper.app`, rollback-safe replacement, deterministic cleanup, and launch through `open`.
+- Produces: a verified installation at `~/Applications/Kopper.app`, phase-driven rollback-safe replacement, deterministic idempotent cleanup, and launch through `open`.
 - Invariant: no existing target changes until the downloaded DMG, mounted app, and staged app all pass verification.
+- Commit boundary: before successful launch, any failure or deferred signal restores the complete old app (or removes a failed first install); after successful launch commits the new app, cleanup never deletes it or restores a possibly partial backup.
 
 - [ ] **Step 1: Add failing end-to-end shell behavior tests**
 
@@ -260,9 +263,17 @@ it("refuses to replace a running Kopper process", () => {
   expect(result.stderr).toContain("Quit Kopper, then run this command again.");
   expect(fixture.installedMarker()).toBe("old");
 });
+
+it("successfully upgrades an existing app and removes its rollback backup", () => {
+  const fixture = createInstallerFixture({ existingApp: "old" });
+  const result = fixture.run();
+  expect(result.status).toBe(0);
+  expect(fixture.installedMarker()).toBe("new-v0.1.0");
+  expect(fixture.temporaryArtifacts()).toEqual([]);
+});
 ```
 
-Also cover download failure, checksum file naming mismatch, zero or multiple root-level `.app` bundles, read-only mount flags, first installation with no prior target, preservation of a sibling sentinel under the temporary `HOME`, and cleanup after signals or ordinary failures.
+Also cover download failure, checksum file naming mismatch, zero or multiple root-level `.app` bundles, a root-level `Kopper.app` that is not a real non-symlink directory, exact `com.kopper.app` identifier, exact resolved release version, Apple publisher rejection, read-only mount flags, first installation with no prior target, preservation of a sibling sentinel and inert store under the temporary `HOME`, both rename signal windows, and rollback-cleanup failure/interruption after commit.
 
 Define `expectCallSubsequence(actual, expected)` in the test file to compare each expected marker against a strictly increasing index in `actual`; this proves order while allowing preflight and download calls around the security-critical subsequence.
 
@@ -315,11 +326,19 @@ hdiutil attach -readonly -nobrowse -mountpoint "$mount_point" \
 mounted=1
 ```
 
-Use Bash `nullglob` and an array to require exactly one root-level app and require its basename to equal `Kopper.app`. Implement a shared `verify_app()` that runs both commands and returns nonzero on either failure:
+Use Bash `nullglob` and an array to require exactly one root-level app and require its basename to equal `Kopper.app`. Implement a shared `verify_app()` that requires a real directory, extracts bundle metadata with built-in `plutil`, requires identifier `com.kopper.app` and `CFBundleShortVersionString` equal to the resolved release version, then runs both Apple verification commands:
 
 ```bash
 verify_app() {
   local app_path="$1"
+  local bundle_identifier=""
+  local bundle_version=""
+
+  [[ -d "$app_path" && ! -L "$app_path" ]] || return 1
+  bundle_identifier="$(plutil -extract CFBundleIdentifier raw -o - "${app_path}/Contents/Info.plist")" || return 1
+  [[ "$bundle_identifier" == "com.kopper.app" ]] || return 1
+  bundle_version="$(plutil -extract CFBundleShortVersionString raw -o - "${app_path}/Contents/Info.plist")" || return 1
+  [[ "$bundle_version" == "$version" ]] || return 1
   codesign --verify --deep --strict "$app_path" >/dev/null 2>&1 &&
     spctl --assess --type execute "$app_path" >/dev/null 2>&1
 }
@@ -336,15 +355,16 @@ staged_target="${KOPPER_INSTALL_DIRECTORY}/.Kopper.app.install.$$"
 rollback_target="${KOPPER_INSTALL_DIRECTORY}/.Kopper.app.rollback.$$"
 ```
 
-Track whether a new target has replaced the old one. The EXIT trap must:
+Track an explicit transaction phase (`unmodified`, `rollback-ready`, `new-installed`, or `committed`). The signal handler must defer exit while a filesystem rename, launch/commit, or rollback-cleanup command and its matching state update are in progress, then exit from the coherent phase. The EXIT trap must:
 
 1. disable itself before cleanup;
 2. capture and preserve the original exit status;
 3. remove any staging path;
-4. after failure, remove a newly installed target and restore the rollback when one exists;
+4. after failure before commit, remove a newly installed target and restore the rollback when one exists;
 5. detach the exact mount point when `mounted=1`;
 6. remove the temporary directory; and
-7. exit with the original status, or with failure if rollback/cleanup cannot preserve a safe installation.
+7. after commit, retain the verified new target and idempotently retry removal of the bounded rollback artifact without ever restoring it; and
+8. exit with the original status, or with failure if rollback/cleanup cannot preserve a safe installation.
 
 Perform the transaction in this exact order:
 
@@ -357,20 +377,58 @@ ditto "$mounted_app" "$staged_target" || fail "Could not stage Kopper."
 verify_app "$staged_target" || fail "The staged Kopper application failed verification."
 
 if [[ -e "$KOPPER_TARGET" ]]; then
-  mv "$KOPPER_TARGET" "$rollback_target" || fail "Could not prepare the existing Kopper installation for upgrade."
+  begin_transaction_update
+  if mv "$KOPPER_TARGET" "$rollback_target"; then
+    transaction_phase="rollback-ready"
+  else
+    if [[ ! -e "$KOPPER_TARGET" && -e "$rollback_target" ]]; then
+      transaction_phase="rollback-ready"
+    fi
+    finish_transaction_update
+    fail "Could not prepare the existing Kopper installation for upgrade."
+  fi
+  finish_transaction_update
 fi
-mv "$staged_target" "$KOPPER_TARGET" || fail "Could not install Kopper."
-installed_new=1
+
+begin_transaction_update
+if mv "$staged_target" "$KOPPER_TARGET"; then
+  staged_target=""
+  transaction_phase="new-installed"
+else
+  if [[ ! -e "$staged_target" && -e "$KOPPER_TARGET" ]]; then
+    staged_target=""
+    transaction_phase="new-installed"
+  fi
+  finish_transaction_update
+  fail "Could not install Kopper."
+fi
+finish_transaction_update
 verify_app "$KOPPER_TARGET" || fail "The installed Kopper application failed verification."
 cleanup_downloads || fail "Could not clean up the Kopper disk image."
-open "$KOPPER_TARGET" || fail "Kopper was installed but could not be launched."
 
-rm -rf "$rollback_target"
-rollback_target=""
+begin_transaction_update
+if open "$KOPPER_TARGET"; then
+  transaction_phase="committed"
+else
+  finish_transaction_update
+  fail "Kopper was installed but could not be launched."
+fi
+finish_transaction_update
+
+if [[ -n "$rollback_target" && -e "$rollback_target" ]]; then
+  begin_transaction_update
+  if rm -rf "$rollback_target"; then
+    rollback_target=""
+  else
+    finish_transaction_update
+    fail "Kopper was installed, but the previous application backup could not be removed."
+  fi
+  finish_transaction_update
+fi
 printf 'Kopper installed successfully.\n'
 ```
 
-`cleanup_downloads()` owns DMG detachment and temporary-directory removal. The EXIT trap calls it after every early exit; the success path calls it once before launch and clears its state so the EXIT trap is idempotent. This preserves the required detach-before-launch order. It may print a bounded cleanup warning, but never dump command output or environment values.
+If an interrupted rename returns nonzero after moving the path, reconcile the source/destination filesystem state into the matching transaction phase before honoring the deferred signal or failure. `cleanup_downloads()` owns DMG detachment and temporary-directory removal. The EXIT trap calls it after every early exit; the success path calls it once before launch and clears its state so the EXIT trap is idempotent. This preserves the required detach-before-launch order. It may print a bounded cleanup warning, but never dump command output or environment values.
 
 - [ ] **Step 5: Run focused tests and syntax validation**
 
@@ -402,7 +460,7 @@ git commit -m "feat: install verified Kopper releases"
 **Interfaces:**
 
 - Consumes: the exact-tag `install.sh`, `Kopper-<version>-universal.dmg`, and its checksum.
-- Produces: a draft release whose asset list is exactly those three files and a promotion gate that compares downloaded `install.sh` byte-for-byte with the tagged checkout.
+- Produces: a release job that independently requires repository immutable releases enabled before draft creation, a draft release whose asset list is exactly those three files, and a promotion gate that compares downloaded `install.sh` byte-for-byte with the tagged checkout, publishes only after validation, and then requires the exact published release to report immutable.
 - Final validator contract: `expectedNames` is `[options.artifact, options.checksum, "install.sh"]`.
 
 - [ ] **Step 1: Write failing release-contract tests**
@@ -420,6 +478,14 @@ it("publishes the syntax-checked installer from the exact tagged checkout", () =
   expect(createRelease).toContain('"$INSTALLER_PATH"');
 });
 
+it("refuses to create a draft unless repository immutable releases are enabled", () => {
+  const verify = step(release, "Verify repository immutable releases are enabled");
+  const createRelease = step(release, "Create draft GitHub Release");
+  expect(verify).toContain('gh api "repos/$GITHUB_REPOSITORY/immutable-releases"');
+  expect(verify).toContain('test "$immutable_releases_enabled" = "true"');
+  expect(release.indexOf(verify)).toBeLessThan(release.indexOf(createRelease));
+});
+
 it("downloads and compares the installer before promotion", () => {
   const inspect = step(promote, "Inspect draft and verify exact candidate assets");
   expect(inspect).toContain('--pattern "$INSTALLER"');
@@ -427,6 +493,14 @@ it("downloads and compares the installer before promotion", () => {
   expect(promote.indexOf(inspect)).toBeLessThan(
     promote.indexOf(step(promote, "Publish validated draft release")),
   );
+});
+
+it("fails promotion unless the published release reports immutable", () => {
+  const publish = step(promote, "Publish validated draft release");
+  const verify = step(promote, "Verify published release is immutable");
+  expect(verify).toContain('gh release view "$TAG" --json tagName,isDraft,isImmutable');
+  expect(verify).toContain('test "$published_immutable" = "true"');
+  expect(promote.indexOf(publish)).toBeLessThan(promote.indexOf(verify));
 });
 ```
 
@@ -446,9 +520,13 @@ Run:
 pnpm vitest run scripts/workflows.test.ts
 ```
 
-Expected: FAIL because the workflows currently publish and validate only the DMG and checksum.
+Expected: FAIL because the workflows currently publish and validate only the DMG and checksum, do not gate draft creation on the immutable-release setting, and do not verify published immutability.
 
-- [ ] **Step 3: Update draft release creation**
+- [ ] **Step 3: Gate draft creation on repository immutable releases**
+
+Before `Create draft GitHub Release`, query `GET /repos/$GITHUB_REPOSITORY/immutable-releases` with `gh api` and require `.enabled` to equal `true`. This independently enforces the repository-owner prerequisite at the final workflow boundary; it does not replace Task 6's required pre-tag `PUT` and `GET`.
+
+- [ ] **Step 4: Update draft release creation**
 
 Rename `Generate exact DMG checksum` to `Generate exact release assets`, change its `id` to `assets`, and add:
 
@@ -460,7 +538,7 @@ printf 'installer_path=install.sh\n' >> "$GITHUB_OUTPUT"
 
 Keep the existing versioned DMG/checksum outputs. In `Create draft GitHub Release`, bind all three outputs and pass all three quoted paths to `gh release create`. Do not copy the installer from another branch, URL, artifact job, or generated string.
 
-- [ ] **Step 4: Update promotion inspection**
+- [ ] **Step 5: Update promotion inspection**
 
 Have `Verify exact tag version and commit` output `installer=install.sh`. Pass it into the inspection step as `INSTALLER`, add the third `gh release download --pattern`, require exactly one downloaded installer, run `bash -n "$INSTALLER"`, and compare it to the checkout:
 
@@ -472,7 +550,7 @@ cmp "$INSTALLER" "$GITHUB_WORKSPACE/install.sh"
 
 Keep this inspection before final evidence validation and publication.
 
-- [ ] **Step 5: Update exact asset validation**
+- [ ] **Step 6: Update exact asset validation**
 
 Change the final validator to:
 
@@ -487,7 +565,11 @@ if (JSON.stringify(assetNames) !== JSON.stringify(expectedNames)) {
 
 No new command-line argument is needed because the installer asset name is a fixed public contract.
 
-- [ ] **Step 6: Run focused workflow and traceability gates**
+- [ ] **Step 7: Verify published release immutability**
+
+After `Publish validated draft release`, add `Verify published release is immutable`. Query the exact tag with `gh release view "$TAG" --json tagName,isDraft,isImmutable`; require the returned tag to equal `$TAG`, `isDraft` to equal `false`, and `isImmutable` to equal `true`. This final step is part of promotion success: a published but mutable release fails the workflow and must never be reported as successfully promoted.
+
+- [ ] **Step 8: Run focused workflow and traceability gates**
 
 Run:
 
@@ -498,7 +580,7 @@ pnpm validate:release-docs
 
 Expected: PASS; the current incomplete v0.1.0 final fixture still fails for its existing evidence reasons, not because its three-asset fixture is malformed.
 
-- [ ] **Step 7: Commit release integration**
+- [ ] **Step 9: Commit release integration**
 
 ```bash
 git add .github/workflows/release.yml .github/workflows/promote-release.yml scripts/workflows.test.ts scripts/validate-release-doc-traceability.mjs
@@ -571,7 +653,7 @@ Create `tests/manual/macos-installer.md` with an explicit clean-account procedur
 | INST-06 | The installed app launches normally and completes existing Accessibility onboarding without an override. |
 ```
 
-Include exact bounded commands for `sw_vers`, bundle metadata, `codesign`, `spctl`, `hdiutil info`, `find "$HOME/Applications" -maxdepth 1`, and before/after `shasum -a 256` of an inert test store. State that this procedure runs only after publication and supplements, rather than replaces, `tests/manual/macos-capture.md`.
+Include exact bounded commands for `sw_vers`, bundle metadata, `codesign`, `spctl`, a complete `hdiutil info -plist` conversion and exact expected-DMG evaluation whose exit status fails if any match exists, `find "$HOME/Applications" -maxdepth 1`, and before/after `shasum -a 256` of an inert test store. Bound mount evidence only after evaluating the complete structured state. State that this procedure runs only after publication and supplements, rather than replaces, `tests/manual/macos-capture.md`.
 
 - [ ] **Step 4: Add the installer acceptance template**
 
@@ -654,6 +736,7 @@ Do not run the canonical curl installer against `main` or an unsigned local arti
 
 - source implementation verification status;
 - whether `idandwon/kopper` exists publicly;
+- whether repository immutable releases are enabled and verified;
 - whether the protected `release` environment contains all five required Apple secrets;
 - whether an exact version tag has produced a draft signed release;
 - whether pre-promotion physical DMG acceptance is complete;
@@ -662,7 +745,7 @@ Do not run the canonical curl installer against `main` or an unsigned local arti
 
 No source-only result permits the statement “the installer is live.”
 
-### Task 6: Create the Public GitHub Origin
+### Task 6: User Creates and Secures the Public GitHub Origin
 
 **Files:**
 
@@ -672,7 +755,7 @@ No source-only result permits the statement “the installer is live.”
 **Interfaces:**
 
 - Consumes: a clean local `main` branch and authenticated GitHub CLI account `idandwon`.
-- Produces: public repository `https://github.com/idandwon/kopper` with local `origin` and pushed `main`.
+- Produces: public repository `https://github.com/idandwon/kopper` with local `origin`, pushed `main`, and immutable releases enabled before any release tag or tag-triggered draft.
 - Current verified state on 2026-08-23: `gh auth status` is logged in as `idandwon`; `idandwon/kopper` does not yet exist; the local repository has no remote.
 
 - [ ] **Step 1: Reconfirm exact publication state**
@@ -690,7 +773,7 @@ Expected before creation: clean `main`, no existing remote, authenticated accoun
 
 - [ ] **Step 2: Create and push the public repository**
 
-Run exactly once:
+The repository owner, not an implementation agent, runs exactly once after integrating the reviewed branch into clean local `main`:
 
 ```bash
 gh repo create idandwon/kopper --public --source=. --remote=origin --push
@@ -710,7 +793,24 @@ git ls-remote --heads origin main
 
 Expected: `nameWithOwner` is `idandwon/kopper`, visibility is `PUBLIC`, default branch is `main`, local origin is the same repository, and remote `main` resolves to the local pushed commit.
 
-- [ ] **Step 4: Create the protected release environment without adding credentials to source**
+- [ ] **Step 4: Enable and verify immutable releases before any release tag**
+
+The repository owner runs:
+
+```bash
+gh api --method PUT repos/idandwon/kopper/immutable-releases \
+  -H "X-GitHub-Api-Version: 2026-03-10"
+immutable_releases_enabled="$(
+  gh api repos/idandwon/kopper/immutable-releases \
+    -H "X-GitHub-Api-Version: 2026-03-10" \
+    --jq '.enabled'
+)"
+test "$immutable_releases_enabled" = "true"
+```
+
+The `PUT` must return successfully and the independent `GET` must report `enabled: true`. Stop before creating or pushing any release tag if either check fails. Draft-first, assets-first, then publish remains required because immutability is enforced after publication; promotion separately verifies the published release reports `isImmutable: true`.
+
+- [ ] **Step 5: Create the protected release environment without adding credentials to source**
 
 Run:
 
@@ -730,9 +830,9 @@ gh secret set CSC_KEY_PASSWORD --env release --repo idandwon/kopper
 
 This step requires the repository owner's secure Apple Developer and signing materials. If they are unavailable, stop after public source publication and report that signed releases and the canonical installer remain blocked.
 
-- [ ] **Step 5: Hand off to the existing protected release process**
+- [ ] **Step 6: Hand off to the existing protected release process**
 
-Do not create or push a version tag merely to make the URL return something. Follow `README.md` and `tests/manual/macos-capture.md` on an exact clean release commit: create the matching tag, allow `.github/workflows/release.yml` to produce the draft, complete the pre-promotion acceptance record, and run Promote Release only when every required gate passes.
+Do not create or push a version tag merely to make the URL return something, and do not create the first tag until Step 4 has verified immutable releases enabled. Follow `README.md` and `tests/manual/macos-capture.md` on an exact clean release commit: create the matching tag, allow `.github/workflows/release.yml` to produce the exact three-asset draft, complete the pre-promotion acceptance record, and run Promote Release only when every required gate passes. Promotion is successful only after its final `isImmutable: true` check passes.
 
 After publication, run `tests/manual/macos-installer.md` and save a completed copy of `docs/releases/installer-acceptance-template.md` for that exact release. A failed post-publication installer check requires correcting the source and issuing a new semantic version; never replace a versioned asset in place.
 
@@ -740,6 +840,6 @@ After publication, run `tests/manual/macos-installer.md` and save a completed co
 
 - Tasks 1-4 are source implementation and must use TDD.
 - Task 5 is the completion gate and produces evidence, not a commit.
-- Task 6 mutates GitHub and must run only after source review and verification pass.
+- Task 6 is an explicit repository-owner handoff that mutates GitHub and must run only after source review, integration, and verification pass; this source implementation task does not execute it.
 - The repository may be public before Apple credentials exist, but the README install command will return no published release until the protected release process succeeds.
 - The current `v0.1.0` acceptance record remains historical evidence. Do not rewrite earlier command results; append only new evidence from the exact new release commit.

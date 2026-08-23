@@ -76,6 +76,17 @@ jobs:
             printf 'installer_path=install.sh\n'
           } >> "$output"
 
+      - name: Verify repository immutable releases are enabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          immutable_releases_enabled="$(
+            gh api "repos/$GITHUB_REPOSITORY/immutable-releases" \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              --jq '.enabled'
+          )"
+          test "$immutable_releases_enabled" = "true"
+
       - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}

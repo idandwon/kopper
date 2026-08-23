@@ -35,10 +35,11 @@ The target must be exactly `~/Applications/Kopper.app`. Record bounded bundle me
 
 ```bash
 APP="$HOME/Applications/Kopper.app"
+VERSION="<published version without the v prefix>"
 test -d "$APP"
-/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist"
+test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")" = "$VERSION"
 /usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist"
+test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")" = "com.kopper.app"
 /usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist"
 codesign --verify --deep --strict "$APP"
 spctl --assess --type execute "$APP"
@@ -49,11 +50,55 @@ Expected metadata: the promoted version/build, identifier `com.kopper.app`, and 
 Confirm the installer detached its DMG and removed its bounded staging/rollback paths:
 
 ```bash
-hdiutil info | sed -n '1,20p'
-find "$HOME/Applications" -maxdepth 1 \( -name '.Kopper.app.install.*' -o -name '.Kopper.app.rollback.*' \) -print
+MOUNT_CHECK_DIRECTORY="$(mktemp -d "${TMPDIR:-/tmp}/kopper-mount-check.XXXXXX")"
+MOUNT_CHECK_SCRIPT="$MOUNT_CHECK_DIRECTORY/check-kopper-mounts.js"
+MOUNT_STATE_PLIST="$MOUNT_CHECK_DIRECTORY/hdiutil-info.plist"
+MOUNT_STATE_JSON="$MOUNT_CHECK_DIRECTORY/hdiutil-info.json"
+EXPECTED_DMG="Kopper-${VERSION}-universal.dmg"
+hdiutil info -plist > "$MOUNT_STATE_PLIST"
+plutil -convert json -o "$MOUNT_STATE_JSON" "$MOUNT_STATE_PLIST"
+cat > "$MOUNT_CHECK_SCRIPT" <<'JXA'
+function run(argv) {
+  const application = Application.currentApplication();
+  application.includeStandardAdditions = true;
+  const state = JSON.parse(application.read(Path(argv[0])));
+  const expectedDmg = argv[1];
+  if (!Array.isArray(state.images)) {
+    throw new Error("hdiutil returned no structured images array");
+  }
+
+  const matches = [];
+  for (const image of state.images) {
+    const imagePath = image["image-path"];
+    if (
+      typeof imagePath === "string" &&
+      imagePath.slice(imagePath.lastIndexOf("/") + 1) === expectedDmg
+    ) {
+      const mountPoints = (image["system-entities"] || [])
+        .map((entity) => entity["mount-point"])
+        .filter((mountPoint) => typeof mountPoint === "string");
+      matches.push({ imagePath, mountPoints });
+    }
+  }
+
+  if (matches.length > 0) {
+    const boundedMatches = matches.slice(0, 20);
+    throw new Error(
+      `found ${matches.length} mounted ${expectedDmg} image(s): ${JSON.stringify(boundedMatches)}`,
+    );
+  }
+  return `evaluated ${state.images.length} image(s); no exact ${expectedDmg} mount remains`;
+}
+JXA
+mount_check_status=0
+/usr/bin/osascript -l JavaScript "$MOUNT_CHECK_SCRIPT" "$MOUNT_STATE_JSON" "$EXPECTED_DMG" || mount_check_status=$?
+rm -rf "$MOUNT_CHECK_DIRECTORY"
+test "$mount_check_status" = "0"
+installer_artifact="$(find "$HOME/Applications" -maxdepth 1 \( -name '.Kopper.app.install.*' -o -name '.Kopper.app.rollback.*' \) -print -quit)"
+test -z "$installer_artifact"
 ```
 
-Expected: `hdiutil info` shows no Kopper DMG mount, and `find` produces no path.
+Expected: the structured check evaluates every `hdiutil` image before bounding failure evidence, exits 0 only when no exact versioned Kopper DMG remains mounted, and the final `test` proves no bounded staging or rollback path exists.
 
 ## Upgrade, running-process, and onboarding observations
 

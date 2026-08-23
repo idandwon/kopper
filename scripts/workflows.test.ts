@@ -114,6 +114,19 @@ describe("workflow security semantics", () => {
     expect(createRelease).not.toContain("--draft=false");
   });
 
+  it("refuses to create a draft unless repository immutable releases are enabled", () => {
+    const verify = step(release, "Verify repository immutable releases are enabled");
+    const createRelease = step(release, "Create draft GitHub Release");
+
+    expect(verify).toContain(
+      'gh api "repos/$GITHUB_REPOSITORY/immutable-releases"',
+    );
+    expect(verify).toContain("X-GitHub-Api-Version: 2026-03-10");
+    expect(verify).toContain("--jq '.enabled'");
+    expect(verify).toContain('test "$immutable_releases_enabled" = "true"');
+    expect(release.indexOf(verify)).toBeLessThan(release.indexOf(createRelease));
+  });
+
   it("publishes the syntax-checked installer from the exact tagged checkout", () => {
     const checksum = step(release, "Generate exact release assets");
     expect(checksum).toContain("bash -n install.sh");
@@ -149,6 +162,19 @@ describe("workflow security semantics", () => {
     expect(promote.indexOf(inspect)).toBeLessThan(
       promote.indexOf(step(promote, "Publish validated draft release")),
     );
+  });
+
+  it("fails promotion unless the published release reports immutable", () => {
+    const publish = step(promote, "Publish validated draft release");
+    const verify = step(promote, "Verify published release is immutable");
+
+    expect(verify).toContain(
+      'gh release view "$TAG" --json tagName,isDraft,isImmutable',
+    );
+    expect(verify).toContain('test "$published_tag" = "$TAG"');
+    expect(verify).toContain('test "$published_draft" = "false"');
+    expect(verify).toContain('test "$published_immutable" = "true"');
+    expect(promote.indexOf(publish)).toBeLessThan(promote.indexOf(verify));
   });
 
   it("runs nonfinal release-document validation in CI", () => {

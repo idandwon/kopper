@@ -120,3 +120,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.candidate.outputs.tag }}
         run: gh release edit "$TAG" --draft=false
+
+      - name: Verify published release is immutable
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.candidate.outputs.tag }}
+        run: |
+          release_state="$(
+            gh release view "$TAG" --json tagName,isDraft,isImmutable \
+              --jq '[.tagName, .isDraft, .isImmutable] | @tsv'
+          )"
+          IFS=$'\t' read -r published_tag published_draft published_immutable <<< "$release_state"
+          test "$published_tag" = "$TAG"
+          test "$published_draft" = "false"
+          test "$published_immutable" = "true"

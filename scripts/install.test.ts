@@ -25,11 +25,19 @@ type InstallerFailure =
   | "installed-codesign"
   | "launch"
   | "mounted-codesign"
+  | "mounted-publisher"
+  | "rollback-cleanup"
+  | "rollback-move"
   | "replacement-move"
   | "signal"
+  | "signal-after-install-move"
+  | "signal-after-rollback-move"
+  | "signal-during-rollback-cleanup"
   | "staged-gatekeeper";
 
 type InstallerFixtureOptions = {
+  bundleIdentifier?: string;
+  bundleVersion?: string;
   curlFails?: boolean;
   existingApp?: string;
   failure?: InstallerFailure;
@@ -37,6 +45,7 @@ type InstallerFixtureOptions = {
   macosVersion?: string;
   missingCommand?: string;
   mountedApps?: string[];
+  mountedAppType?: "directory" | "file" | "symlink";
   platform?: string;
   running?: boolean;
   userId?: string;
@@ -73,9 +82,13 @@ function createInstallerFixture(options: InstallerFixtureOptions = {}) {
   const configurationPath = join(directory, "configuration.json");
   const logPath = join(directory, "calls.jsonl");
   const sentinel = join(home, "sibling-sentinel.txt");
+  const storeDirectory = join(home, "Library", "Application Support", "Kopper");
+  const store = join(storeDirectory, "kopper.json");
   mkdirSync(bin);
   mkdirSync(home);
+  mkdirSync(storeDirectory, { recursive: true });
   writeFileSync(sentinel, "preserve-me");
+  writeFileSync(store, '{"schemaVersion":1,"notes":[]}\n');
   if (options.existingApp) {
     mkdirSync(target, { recursive: true });
     writeFileSync(join(target, "marker.txt"), options.existingApp);
@@ -83,6 +96,8 @@ function createInstallerFixture(options: InstallerFixtureOptions = {}) {
   writeFileSync(
     configurationPath,
     JSON.stringify({
+      bundleIdentifier: options.bundleIdentifier ?? "com.kopper.app",
+      bundleVersion: options.bundleVersion ?? "0.1.0",
       curlFails: options.curlFails ?? false,
       failure: options.failure ?? null,
       latestUrl:
@@ -90,6 +105,7 @@ function createInstallerFixture(options: InstallerFixtureOptions = {}) {
         "https://github.com/idandwon/kopper/releases/tag/v0.1.0",
       macosVersion: options.macosVersion ?? "14.0.0",
       mountedApps: options.mountedApps ?? ["Kopper.app"],
+      mountedAppType: options.mountedAppType ?? "directory",
       platform: options.platform ?? "Darwin",
       running: options.running ?? false,
       temporaryDirectory,
@@ -98,7 +114,7 @@ function createInstallerFixture(options: InstallerFixtureOptions = {}) {
   );
 
   const shim = `#!${process.execPath}
-const { appendFileSync, cpSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } = require("node:fs");
+const { appendFileSync, cpSync, mkdirSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } = require("node:fs");
 const { basename, dirname, join } = require("node:path");
 
 const configuration = JSON.parse(readFileSync(process.env.KOPPER_FIXTURE_CONFIGURATION, "utf8"));
@@ -115,6 +131,8 @@ if (command === "spctl") {
     : last.includes(".install.") ? "codesign-staged" : "codesign-installed";
 } else if (command === "hdiutil") {
   marker = args[0] === "attach" ? "hdiutil-attach" : "hdiutil-detach";
+} else if (command === "plutil") {
+  marker = args.includes("CFBundleIdentifier") ? "plutil-identifier" : "plutil-version";
 }
 appendFileSync(
   process.env.KOPPER_FIXTURE_LOG,
@@ -152,14 +170,24 @@ if (command === "uname") {
 } else if (command === "spctl") {
   if (configuration.failure === "dmg-gatekeeper" && marker === "spctl-dmg") process.exit(1);
   if (configuration.failure === "staged-gatekeeper" && marker === "spctl-staged") process.exit(1);
+  if (configuration.failure === "mounted-publisher" && marker === "spctl-mounted") process.exit(1);
 } else if (command === "hdiutil") {
   if (args[0] === "attach") {
     const mountPoint = args[args.indexOf("-mountpoint") + 1];
     mkdirSync(mountPoint, { recursive: true });
     for (const appName of configuration.mountedApps) {
       const app = join(mountPoint, appName);
-      mkdirSync(app, { recursive: true });
-      writeFileSync(join(app, "marker.txt"), "new-v0.1.0");
+      if (configuration.mountedAppType === "directory") {
+        mkdirSync(app, { recursive: true });
+        writeFileSync(join(app, "marker.txt"), "new-v0.1.0");
+      } else if (configuration.mountedAppType === "symlink") {
+        const payload = join(mountPoint, "KopperPayload");
+        mkdirSync(payload, { recursive: true });
+        writeFileSync(join(payload, "marker.txt"), "new-v0.1.0");
+        symlinkSync(payload, app);
+      } else {
+        writeFileSync(app, "not-an-application-directory");
+      }
     }
   } else {
     if (configuration.failure === "cleanup") {
@@ -176,6 +204,14 @@ if (command === "uname") {
     process.kill(process.ppid, "SIGTERM");
     process.exit(1);
   }
+} else if (command === "plutil") {
+  if (args.includes("CFBundleIdentifier")) {
+    process.stdout.write(configuration.bundleIdentifier + "\\n");
+  } else if (args.includes("CFBundleShortVersionString")) {
+    process.stdout.write(configuration.bundleVersion + "\\n");
+  } else {
+    process.exit(1);
+  }
 } else if (command === "ditto") {
   cpSync(args[0], args[1], { recursive: true });
 } else if (command === "pgrep") {
@@ -183,8 +219,31 @@ if (command === "uname") {
 } else if (command === "open") {
   if (configuration.failure === "launch") process.exit(1);
 } else if (command === "mv") {
+  if (configuration.failure === "rollback-move" && args[1].includes(".rollback.")) process.exit(1);
   if (configuration.failure === "replacement-move" && args[0].includes(".install.")) process.exit(1);
   renameSync(args[0], args[1]);
+  const signalAfterRollback = configuration.failure === "signal-after-rollback-move"
+    && args[1].includes(".rollback.");
+  const signalAfterInstall = configuration.failure === "signal-after-install-move"
+    && args[0].includes(".install.");
+  if (signalAfterRollback || signalAfterInstall) {
+    configuration.failure = null;
+    writeFileSync(process.env.KOPPER_FIXTURE_CONFIGURATION, JSON.stringify(configuration));
+    process.kill(process.ppid, "SIGTERM");
+    process.exit(1);
+  }
+} else if (command === "rm") {
+  if (configuration.failure === "rollback-cleanup" && last.includes(".rollback.")) {
+    process.exit(1);
+  }
+  if (configuration.failure === "signal-during-rollback-cleanup" && last.includes(".rollback.")) {
+    rmSync(join(last, "marker.txt"), { force: true });
+    configuration.failure = null;
+    writeFileSync(process.env.KOPPER_FIXTURE_CONFIGURATION, JSON.stringify(configuration));
+    process.kill(process.ppid, "SIGTERM");
+    process.exit(1);
+  }
+  rmSync(last, { recursive: true, force: true });
 }
 `;
 
@@ -197,6 +256,7 @@ if (command === "uname") {
     "shasum",
     "codesign",
     "spctl",
+    "plutil",
     "ditto",
     "open",
     "pgrep",
@@ -207,8 +267,21 @@ if (command === "uname") {
     writeFileSync(shimPath, shim);
     chmodSync(shimPath, 0o755);
   }
-  if (options.failure === "replacement-move") {
+  if (
+    options.failure === "replacement-move" ||
+    options.failure === "rollback-move" ||
+    options.failure === "signal-after-install-move" ||
+    options.failure === "signal-after-rollback-move"
+  ) {
     const shimPath = join(bin, "mv");
+    writeFileSync(shimPath, shim);
+    chmodSync(shimPath, 0o755);
+  }
+  if (
+    options.failure === "rollback-cleanup" ||
+    options.failure === "signal-during-rollback-cleanup"
+  ) {
+    const shimPath = join(bin, "rm");
     writeFileSync(shimPath, shim);
     chmodSync(shimPath, 0o755);
   }
@@ -252,6 +325,7 @@ if (command === "uname") {
         },
       }),
     sentinel: () => readFileSync(sentinel, "utf8"),
+    store: () => readFileSync(store, "utf8"),
     temporaryArtifacts: () => {
       const artifacts = [temporaryDirectory].filter(existsSync);
       if (existsSync(applications)) {
@@ -326,7 +400,7 @@ describe("public macOS installer preflight", () => {
   });
 });
 
-describe("verified transactional installation", () => {
+describe("verified transactional installation", { timeout: 30_000 }, () => {
   it("downloads exact versioned assets, verifies, installs, cleans up, and launches", () => {
     const fixture = createInstallerFixture();
     const result = fixture.run();
@@ -379,6 +453,39 @@ describe("verified transactional installation", () => {
     );
   });
 
+  it.each([
+    {
+      description: "is not a directory",
+      options: { mountedAppType: "file" as const },
+    },
+    {
+      description: "is a directory symlink instead of a real directory",
+      options: { mountedAppType: "symlink" as const },
+    },
+    {
+      description: "has the wrong bundle identifier",
+      options: { bundleIdentifier: "com.example.not-kopper" },
+    },
+    {
+      description: "has a version that does not match the resolved release",
+      options: { bundleVersion: "9.9.9" },
+    },
+    {
+      description: "is rejected by Apple publisher assessment",
+      options: { failure: "mounted-publisher" as const },
+    },
+  ])("rejects a mounted Kopper.app that $description", ({ options }) => {
+    const fixture = createInstallerFixture({ existingApp: "old", ...options });
+    const result = fixture.run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      "The Kopper application on the disk image failed verification.",
+    );
+    expect(fixture.installedMarker()).toBe("old");
+    expect(fixture.temporaryArtifacts()).toEqual([]);
+  });
+
   it("leaves the existing application untouched when verification fails", () => {
     for (const failure of [
       "checksum",
@@ -406,6 +513,52 @@ describe("verified transactional installation", () => {
       expect(fixture.temporaryArtifacts(), failure).toEqual([]);
     }
   }, 30_000);
+
+  it("successfully upgrades an existing app and removes its rollback backup", () => {
+    const fixture = createInstallerFixture({ existingApp: "old" });
+    const result = fixture.run();
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("Kopper installed successfully.");
+    expect(fixture.installedMarker()).toBe("new-v0.1.0");
+    expect(fixture.callsInOrder()).toContain("open");
+    expect(fixture.temporaryArtifacts()).toEqual([]);
+    expect(fixture.sentinel()).toBe("preserve-me");
+    expect(fixture.store()).toBe('{"schemaVersion":1,"notes":[]}\n');
+  });
+
+  it.each([
+    "rollback-move",
+    "signal-after-rollback-move",
+    "signal-after-install-move",
+  ] as const)("restores the complete previous app after %s", (failure) => {
+    const fixture = createInstallerFixture({ failure, existingApp: "old" });
+    const result = fixture.run();
+
+    expect(result.status).toBe(1);
+    expect(fixture.installedMarker()).toBe("old");
+    expect(fixture.temporaryArtifacts()).toEqual([]);
+    expect(fixture.sentinel()).toBe("preserve-me");
+  });
+
+  it.each(["rollback-cleanup", "signal-during-rollback-cleanup"] as const)(
+    "retains the verified new app after committed upgrade failure %s",
+    (failure) => {
+      const fixture = createInstallerFixture({ failure, existingApp: "old" });
+      const result = fixture.run();
+
+      expect(result.status).toBe(1);
+      expect(fixture.installedMarker()).toBe("new-v0.1.0");
+      expect(fixture.callsInOrder()).toContain("open");
+      expect(fixture.sentinel()).toBe("preserve-me");
+      const artifacts = fixture.temporaryArtifacts();
+      expect(artifacts.length).toBeLessThanOrEqual(1);
+      expect(artifacts.every((path) => path.includes(".Kopper.app.rollback."))).toBe(
+        true,
+      );
+    },
+    30_000,
+  );
 
   it("refuses to replace a running Kopper process", () => {
     const fixture = createInstallerFixture({ running: true, existingApp: "old" });

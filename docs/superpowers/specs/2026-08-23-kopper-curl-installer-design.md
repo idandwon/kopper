@@ -27,7 +27,7 @@ This approach is preferred over:
 
 1. Provide one copyable installation command for macOS users.
 2. Require no Git, Node.js, pnpm, Homebrew, `sudo`, or package-manager setup on the destination Mac.
-3. Install only a checksum-valid, Developer ID-signed, notarized Kopper release.
+3. Install only a checksum-valid, Developer ID-signed, notarized Kopper release with exact Kopper bundle identity.
 4. Support rerunning the same command to upgrade an existing installation.
 5. Preserve the existing document, preferences, themes, and Accessibility onboarding behavior.
 6. Fail without damaging a working installation.
@@ -54,10 +54,12 @@ Every promoted release contains exactly these installer-facing assets for versio
 
 `install.sh` is uploaded from the exact tagged revision being released. It is not fetched from mutable `main` during installation.
 
+Repository release immutability must be enabled and verified on `idandwon/kopper` before the first release tag is pushed or any tag-triggered draft is created. This is a release-owner prerequisite: use the current `2026-03-10` REST API version to enable it through `PUT /repos/idandwon/kopper/immutable-releases`, then require `GET /repos/idandwon/kopper/immutable-releases` to report `enabled: true`. Releases remain draft and mutable while assets are assembled; only the complete validated draft is published. After publication, promotion must require the exact release to report `isImmutable: true` or fail without claiming release success.
+
 The existing draft-and-promote boundary remains authoritative:
 
-1. `.github/workflows/release.yml` builds, signs, notarizes, verifies, and uploads the DMG, checksum, and tagged installer as a draft GitHub Release.
-2. `.github/workflows/promote-release.yml` requires and verifies the exact three assets before publishing the draft.
+1. `.github/workflows/release.yml` builds, signs, notarizes, and verifies the release assets, independently requires the repository immutable-release setting to report enabled, then uploads the DMG, checksum, and tagged installer as a draft GitHub Release.
+2. `.github/workflows/promote-release.yml` requires and verifies the exact three assets before publishing the draft, then verifies that the published exact-tag release is immutable.
 3. GitHub's `/releases/latest` route exposes the installer only after promotion; draft and prerelease candidates are not installable through the canonical command.
 
 The existing protected Apple credentials, exact tag/version checks, acceptance evidence, and artifact verification remain unchanged except where asset-set validation must include `install.sh`.
@@ -82,22 +84,22 @@ The script performs these steps in order:
 
 1. Enable strict shell behavior and register cleanup for all temporary resources.
 2. Confirm the host is macOS 14 or newer and that the script is not running as root.
-3. Confirm required built-in commands are available: `curl`, `hdiutil`, `shasum`, `codesign`, `spctl`, `ditto`, `open`, `pgrep`, `mktemp`, and `sw_vers`.
+3. Confirm required built-in commands are available: `curl`, `hdiutil`, `shasum`, `codesign`, `spctl`, `plutil`, `ditto`, `open`, `pgrep`, `mktemp`, and `sw_vers`.
 4. Resolve `https://github.com/idandwon/kopper/releases/latest`, capture its final redirect, and validate that its basename is an exact `v<major>.<minor>.<patch>` tag.
 5. Derive the versioned DMG and checksum filenames from that validated tag.
 6. Download both assets from the exact tag-specific GitHub Release URL into a newly created temporary directory.
 7. Verify the downloaded DMG against its published SHA-256 checksum.
 8. Ask Gatekeeper to assess the DMG as a primary-signature distribution artifact.
 9. Mount the DMG read-only and without opening Finder, using a dedicated temporary mount point.
-10. Require exactly one expected `Kopper.app` at the DMG root, verify its deep code signature, and ask Gatekeeper to assess it as executable code.
+10. Require exactly one real, non-symlink `Kopper.app` directory at the DMG root; require `CFBundleIdentifier` to equal `com.kopper.app` and `CFBundleShortVersionString` to equal the resolved release version; verify its deep code signature; and ask Gatekeeper to assess its publisher as executable code.
 11. Refuse to continue if Kopper is currently running and tell the user to quit it and rerun the command.
 12. Copy the verified application to a staging path inside `~/Applications`.
 13. Verify the staged application before replacing any existing installation.
-14. Move an existing `Kopper.app` to a private rollback path, move the staged application into place, and restore the previous application if final installation fails.
-15. Remove the rollback copy only after the installed application passes final signature verification.
-16. Unmount the DMG, remove temporary resources, and launch the installed application.
+14. Move an existing `Kopper.app` to a private rollback path, move the staged application into place, and restore the previous application if final verification, cleanup, or launch fails before commit. Signal handling defers exit across each rename/state transition so cleanup observes a coherent phase.
+15. Verify the installed application, unmount the DMG, remove temporary resources, and launch it.
+16. Mark the transaction committed only after the verified new application launches successfully. From that point onward, cleanup never deletes the new application or restores the backup; rollback removal is idempotent and a failure may leave only the bounded private rollback path.
 
-The installer never evaluates downloaded text, executes a binary from the mounted DMG, or follows an unvalidated release tag or asset name.
+The installer never evaluates downloaded text, executes a binary from the mounted DMG, or follows an unvalidated release tag or asset name. The product decision is not to embed or require an Apple Team ID: exact immutable-release provenance and checksum validation identify the distributed asset, while bundle ID/version, `codesign`, and Gatekeeper validate the mounted application.
 
 ## 8. User Data and Permissions
 
@@ -139,7 +141,7 @@ Every failure exits nonzero with one actionable message. Required cases are:
 - Kopper already running;
 - failure to mount, stage, replace, verify, restore, unmount, or launch.
 
-Cleanup always attempts to detach a mounted DMG and remove temporary files. A failed upgrade retains or restores the previously installed application. Error reporting must not dump environment variables, HTTP credentials, or unrelated filesystem contents.
+Cleanup always attempts to detach a mounted DMG and remove temporary files. Before commit, a failed upgrade retains or restores the previously installed application. After commit, cleanup retains the verified new application and may report or leave only its bounded private rollback artifact. Error reporting must not dump environment variables, HTTP credentials, or unrelated filesystem contents.
 
 ## 10. Testing and Verification
 
@@ -149,7 +151,10 @@ Automated tests execute the script against temporary directories and controlled 
 
 - successful first installation;
 - successful replacement of an existing installation;
+- exact mounted bundle directory, identifier, release-version, and Apple publisher assessment;
 - rollback after replacement failure;
+- signals immediately after both replacement renames;
+- backup-cleanup failure and interruption after commit;
 - unsupported platform and macOS version;
 - root execution refusal;
 - malformed release tag;
@@ -168,8 +173,10 @@ Automated tests execute the script against temporary directories and controlled 
 Existing workflow tests verify that:
 
 - the release workflow uploads `install.sh` from the tagged checkout;
+- the release workflow refuses to create a draft unless the repository immutable-release setting reports enabled;
 - the draft contains exactly the required DMG, checksum, and installer assets;
-- promotion rejects a missing or unexpected installer asset; and
+- promotion rejects a missing or unexpected installer asset;
+- promotion verifies that the published release reports `isImmutable: true`; and
 - the installer is not exposed through the canonical latest-release URL before promotion.
 
 ### 10.3 Physical acceptance
@@ -202,4 +209,4 @@ It must not document Gatekeeper bypasses, quarantine removal, or unsigned public
 
 ## 12. Repository and Ownership
 
-The canonical public repository and release origin is `https://github.com/idandwon/kopper`. The installer refuses alternate or caller-provided artifact origins in this version. Supporting forks, mirrors, enterprise update channels, or configurable repositories requires a separate design.
+The canonical public repository and release origin is `https://github.com/idandwon/kopper`. The repository owner creates that external public repository, enables and verifies immutable releases before any release tag, and provisions the protected release environment; source implementation work does not perform those external mutations. The installer refuses alternate or caller-provided artifact origins in this version. Supporting forks, mirrors, enterprise update channels, or configurable repositories requires a separate design.

@@ -5,6 +5,7 @@ readonly KOPPER_REPOSITORY="idandwon/kopper"
 readonly KOPPER_RELEASES_URL="https://github.com/${KOPPER_REPOSITORY}/releases"
 readonly KOPPER_INSTALL_DIRECTORY="${HOME}/Applications"
 readonly KOPPER_TARGET="${KOPPER_INSTALL_DIRECTORY}/Kopper.app"
+readonly KOPPER_BUNDLE_IDENTIFIER="com.kopper.app"
 
 fail() {
   printf 'Kopper installer: %s\n' "$1" >&2
@@ -26,7 +27,7 @@ macos_version="$(sw_vers -productVersion)"
 [[ "$(version_major "$macos_version")" =~ ^[0-9]+$ ]] || fail "Could not determine the macOS version."
 (( $(version_major "$macos_version") >= 14 )) || fail "Kopper requires macOS 14 or newer."
 
-for command_name in curl hdiutil shasum codesign spctl ditto open pgrep mktemp sw_vers; do
+for command_name in curl hdiutil shasum codesign spctl plutil ditto open pgrep mktemp sw_vers; do
   require_command "$command_name"
 done
 
@@ -49,10 +50,25 @@ mount_point="${temporary_directory}/mount"
 staged_target=""
 rollback_target=""
 mounted=0
-installed_new=0
+transaction_phase="unmodified"
+transaction_updating=0
+signal_pending=0
 
 verify_app() {
   local app_path="$1"
+  local bundle_identifier=""
+  local bundle_version=""
+
+  [[ -d "$app_path" && ! -L "$app_path" ]] || return 1
+  bundle_identifier="$(
+    plutil -extract CFBundleIdentifier raw -o - "${app_path}/Contents/Info.plist"
+  )" || return 1
+  [[ "$bundle_identifier" == "$KOPPER_BUNDLE_IDENTIFIER" ]] || return 1
+  bundle_version="$(
+    plutil -extract CFBundleShortVersionString raw -o - "${app_path}/Contents/Info.plist"
+  )" || return 1
+  [[ "$bundle_version" == "$version" ]] || return 1
+
   codesign --verify --deep --strict "$app_path" >/dev/null 2>&1 &&
     spctl --assess --type execute "$app_path" >/dev/null 2>&1
 }
@@ -79,6 +95,27 @@ cleanup_downloads() {
   return "$cleanup_status"
 }
 
+handle_signal() {
+  if [[ "$transaction_updating" == "1" ]]; then
+    signal_pending=1
+    return 0
+  fi
+
+  exit 1
+}
+
+begin_transaction_update() {
+  transaction_updating=1
+}
+
+finish_transaction_update() {
+  transaction_updating=0
+  if [[ "$signal_pending" == "1" ]]; then
+    signal_pending=0
+    exit 1
+  fi
+}
+
 installer_cleanup() {
   local original_status=$?
   local final_status=$original_status
@@ -88,13 +125,9 @@ installer_cleanup() {
     rm -rf "$staged_target" || final_status=1
   fi
 
-  if [[ "$original_status" != "0" ]]; then
-    if [[ "$installed_new" == "1" && -e "$KOPPER_TARGET" ]]; then
-      if rm -rf "$KOPPER_TARGET"; then
-        installed_new=0
-      else
-        final_status=1
-      fi
+  if [[ "$original_status" != "0" && "$transaction_phase" != "committed" ]]; then
+    if [[ "$transaction_phase" == "new-installed" && -e "$KOPPER_TARGET" ]]; then
+      rm -rf "$KOPPER_TARGET" || final_status=1
     fi
 
     if [[ -n "$rollback_target" && -e "$rollback_target" ]]; then
@@ -108,6 +141,14 @@ installer_cleanup() {
     fi
   fi
 
+  if [[ "$transaction_phase" == "committed" && -n "$rollback_target" && -e "$rollback_target" ]]; then
+    if rm -rf "$rollback_target"; then
+      rollback_target=""
+    else
+      final_status=1
+    fi
+  fi
+
   if ! cleanup_downloads; then
     printf 'Kopper installer: Could not completely clean up installer files.\n' >&2
     final_status=1
@@ -117,7 +158,7 @@ installer_cleanup() {
 }
 
 trap installer_cleanup EXIT
-trap 'exit 1' HUP INT TERM
+trap handle_signal HUP INT TERM
 
 printf 'Downloading Kopper %s...\n' "$tag"
 curl -fL --retry 3 --proto '=https' --tlsv1.2 \
@@ -174,15 +215,54 @@ ditto "$mounted_app" "$staged_target" || fail "Could not stage Kopper."
 verify_app "$staged_target" || fail "The staged Kopper application failed verification."
 
 if [[ -e "$KOPPER_TARGET" ]]; then
-  mv "$KOPPER_TARGET" "$rollback_target" \
-    || fail "Could not prepare the existing Kopper installation for upgrade."
+  begin_transaction_update
+  if mv "$KOPPER_TARGET" "$rollback_target"; then
+    transaction_phase="rollback-ready"
+  else
+    if [[ ! -e "$KOPPER_TARGET" && -e "$rollback_target" ]]; then
+      transaction_phase="rollback-ready"
+    fi
+    finish_transaction_update
+    fail "Could not prepare the existing Kopper installation for upgrade."
+  fi
+  finish_transaction_update
 fi
-mv "$staged_target" "$KOPPER_TARGET" || fail "Could not install Kopper."
-installed_new=1
+
+begin_transaction_update
+if mv "$staged_target" "$KOPPER_TARGET"; then
+  staged_target=""
+  transaction_phase="new-installed"
+else
+  if [[ ! -e "$staged_target" && -e "$KOPPER_TARGET" ]]; then
+    staged_target=""
+    transaction_phase="new-installed"
+  fi
+  finish_transaction_update
+  fail "Could not install Kopper."
+fi
+finish_transaction_update
+
 verify_app "$KOPPER_TARGET" || fail "The installed Kopper application failed verification."
 cleanup_downloads || fail "Could not clean up the Kopper disk image."
-open "$KOPPER_TARGET" || fail "Kopper was installed but could not be launched."
 
-rm -rf "$rollback_target"
-rollback_target=""
+begin_transaction_update
+if open "$KOPPER_TARGET"; then
+  transaction_phase="committed"
+else
+  finish_transaction_update
+  fail "Kopper was installed but could not be launched."
+fi
+finish_transaction_update
+
+if [[ -n "$rollback_target" && -e "$rollback_target" ]]; then
+  begin_transaction_update
+  if rm -rf "$rollback_target"; then
+    rollback_target=""
+  else
+    finish_transaction_update
+    fail "Kopper was installed, but the previous application backup could not be removed."
+  fi
+  finish_transaction_update
+fi
+
 printf 'Kopper installed successfully.\n'
