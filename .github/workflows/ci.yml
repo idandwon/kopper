@@ -35,6 +35,9 @@ jobs:
       - name: Install dependencies from lockfile
         run: pnpm install --frozen-lockfile
 
+      - name: Validate public installer syntax
+        run: pnpm verify:installer
+
       - name: Run tests
         run: pnpm test
 

@@ -11,6 +11,7 @@
     "typecheck": "tsc -b --pretty false",
     "test": "vitest run",
     "test:watch": "vitest",
+    "verify:installer": "bash -n install.sh",
     "test:e2e": "playwright test",
     "audit:deps": "pnpm audit --prod --audit-level high",
     "audit:source": "node scripts/verify-package.mjs --source",
