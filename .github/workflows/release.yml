@@ -59,27 +59,32 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
         run: pnpm package:release
 
-      - name: Generate exact DMG checksum
-        id: checksum
+      - name: Generate exact release assets
+        id: assets
         run: |
           version="$(node -p "require('./package.json').version")"
           dmg_name="Kopper-${version}-universal.dmg"
           test -f "release/$dmg_name"
+          test -f install.sh
+          bash -n install.sh
           (cd release && shasum -a 256 "$dmg_name" > "$dmg_name.sha256")
           checksum_name="${dmg_name}.sha256"
           output="$GITHUB_OUTPUT"
           printf 'dmg_path=release/%s\n' "$dmg_name" >> "$output"
           printf 'checksum_path=release/%s\n' "$checksum_name" >> "$output"
+          printf 'installer_path=install.sh\n' >> "$output"
 
       - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          DMG_PATH: ${{ steps.checksum.outputs.dmg_path }}
-          CHECKSUM_PATH: ${{ steps.checksum.outputs.checksum_path }}
+          DMG_PATH: ${{ steps.assets.outputs.dmg_path }}
+          CHECKSUM_PATH: ${{ steps.assets.outputs.checksum_path }}
+          INSTALLER_PATH: ${{ steps.assets.outputs.installer_path }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
             "$DMG_PATH" \
             "$CHECKSUM_PATH" \
+            "$INSTALLER_PATH" \
             --verify-tag \
             --draft \
             --title "$GITHUB_REF_NAME" \

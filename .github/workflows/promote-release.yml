@@ -57,12 +57,14 @@ jobs:
           test "$(git describe --tags --exact-match HEAD)" = "$INPUT_TAG"
           artifact="Kopper-${version}-universal.dmg"
           checksum="${artifact}.sha256"
+          installer="install.sh"
           {
             printf 'version=%s\n' "$version"
             printf 'tag=%s\n' "$INPUT_TAG"
             printf 'commit=%s\n' "$commit"
             printf 'artifact=%s\n' "$artifact"
             printf 'checksum=%s\n' "$checksum"
+            printf 'installer=%s\n' "$installer"
           } >> "$GITHUB_OUTPUT"
 
       - name: Inspect draft and verify exact candidate assets
@@ -72,6 +74,7 @@ jobs:
           TAG: ${{ steps.candidate.outputs.tag }}
           ARTIFACT: ${{ steps.candidate.outputs.artifact }}
           CHECKSUM: ${{ steps.candidate.outputs.checksum }}
+          INSTALLER: ${{ steps.candidate.outputs.installer }}
         run: |
           release_json="$RUNNER_TEMP/kopper-release.json"
           download_directory="$RUNNER_TEMP/kopper-release-assets"
@@ -81,10 +84,15 @@ jobs:
           gh release download "$TAG" \
             --dir "$download_directory" \
             --pattern "$ARTIFACT" \
-            --pattern "$CHECKSUM"
+            --pattern "$CHECKSUM" \
+            --pattern "$INSTALLER"
           cd "$download_directory"
           test -f "$ARTIFACT"
           test -f "$CHECKSUM"
+          test -f "$INSTALLER"
+          test "$(find . -maxdepth 1 -type f -name "$INSTALLER" | wc -l | tr -d ' ')" = "1"
+          bash -n "$INSTALLER"
+          cmp "$INSTALLER" "$GITHUB_WORKSPACE/install.sh"
           test "$(wc -l < "$CHECKSUM" | tr -d ' ')" = "1"
           expected_line="$(cat "$CHECKSUM")"
           checksum_pattern="^[0-9a-f]{64}[[:space:]][[:space:]]${ARTIFACT}$"

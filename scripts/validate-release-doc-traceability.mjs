@@ -318,9 +318,11 @@ if (options.final && versionedTables && versionedRelativePath) {
     const assetNames = Array.isArray(release.assets)
       ? release.assets.map((asset) => asset?.name).sort()
       : [];
-    const expectedNames = [options.artifact, options.checksum].sort();
+    const expectedNames = [options.artifact, options.checksum, "install.sh"].sort();
     if (JSON.stringify(assetNames) !== JSON.stringify(expectedNames)) {
-      errors.push("GitHub Release assets do not exactly match the DMG and checksum evidence.");
+      errors.push(
+        "GitHub Release assets do not exactly match the DMG, checksum, and installer evidence.",
+      );
     }
   } catch {
     errors.push("GitHub Release draft metadata could not be read.");

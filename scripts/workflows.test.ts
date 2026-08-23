@@ -114,6 +114,17 @@ describe("workflow security semantics", () => {
     expect(createRelease).not.toContain("--draft=false");
   });
 
+  it("publishes the syntax-checked installer from the exact tagged checkout", () => {
+    const checksum = step(release, "Generate exact release assets");
+    expect(checksum).toContain("bash -n install.sh");
+    expect(checksum).toContain("installer_path=install.sh");
+    const createRelease = step(release, "Create draft GitHub Release");
+    expect(createRelease).toContain(
+      "INSTALLER_PATH: ${{ steps.assets.outputs.installer_path }}",
+    );
+    expect(createRelease).toContain('"$INSTALLER_PATH"');
+  });
+
   it("promotes only after exact-tag final evidence validation", () => {
     expect(promote).toContain("workflow_dispatch:");
     expect(promote).toContain("environment: release");
@@ -131,10 +142,22 @@ describe("workflow security semantics", () => {
     expect(promote.indexOf(validation)).toBeLessThan(promote.indexOf(publish));
   });
 
+  it("downloads and compares the installer before promotion", () => {
+    const inspect = step(promote, "Inspect draft and verify exact candidate assets");
+    expect(inspect).toContain('--pattern "$INSTALLER"');
+    expect(inspect).toContain('cmp "$INSTALLER" "$GITHUB_WORKSPACE/install.sh"');
+    expect(promote.indexOf(inspect)).toBeLessThan(
+      promote.indexOf(step(promote, "Publish validated draft release")),
+    );
+  });
+
   it("runs nonfinal release-document validation in CI", () => {
     const validation = step(ci, "Validate release documentation traceability");
     expect(validation).toContain("run: pnpm validate:release-docs");
     expect(validation).not.toContain("--final");
+    expect(ci.indexOf(step(ci, "Validate public installer syntax"))).toBeLessThan(
+      ci.indexOf(step(ci, "Run tests")),
+    );
   });
 
   it("passes nonfinal trace validation and rejects the current incomplete v0.1.0 draft for final promotion", () => {
@@ -155,6 +178,7 @@ describe("workflow security semantics", () => {
         assets: [
           { name: "Kopper-0.1.0-universal.dmg" },
           { name: "Kopper-0.1.0-universal.dmg.sha256" },
+          { name: "install.sh" },
         ],
       }),
     );
@@ -225,7 +249,63 @@ describe("workflow security semantics", () => {
       expect(result.stderr).toContain("Final checksum must be named Kopper-0.1.0-universal.dmg.sha256.");
       expect(result.stderr).toContain("Final artifact SHA-256 must be 64 lowercase hexadecimal characters.");
       expect(result.stderr).toContain("GitHub Release must still be a draft before promotion.");
-      expect(result.stderr).toContain("GitHub Release assets do not exactly match the DMG and checksum evidence.");
+      expect(result.stderr).toContain("GitHub Release assets do not exactly match the DMG, checksum, and installer evidence.");
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    [
+      "is missing the installer",
+      [
+        { name: "Kopper-0.1.0-universal.dmg" },
+        { name: "Kopper-0.1.0-universal.dmg.sha256" },
+      ],
+    ],
+    [
+      "contains an unexpected fourth asset",
+      [
+        { name: "Kopper-0.1.0-universal.dmg" },
+        { name: "Kopper-0.1.0-universal.dmg.sha256" },
+        { name: "install.sh" },
+        { name: "release-notes.txt" },
+      ],
+    ],
+  ])("rejects a final release whose asset list %s", (_description, assets) => {
+    const directory = mkdtempSync(join(tmpdir(), "kopper-release-json-"));
+    const releaseJson = join(directory, "release.json");
+    writeFileSync(
+      releaseJson,
+      JSON.stringify({ isDraft: true, tagName: "v0.1.0", assets }),
+    );
+    try {
+      const result = spawnSync(
+        "node",
+        [
+          "scripts/validate-release-doc-traceability.mjs",
+          "--final",
+          "--version",
+          "0.1.0",
+          "--tag",
+          "v0.1.0",
+          "--commit",
+          "b98857d81d77421d4261536f71ce55321f2c7ac1",
+          "--artifact",
+          "Kopper-0.1.0-universal.dmg",
+          "--checksum",
+          "Kopper-0.1.0-universal.dmg.sha256",
+          "--artifact-sha256",
+          "a".repeat(64),
+          "--release-json",
+          releaseJson,
+        ],
+        { cwd: new URL("..", import.meta.url), encoding: "utf8" },
+      );
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "GitHub Release assets do not exactly match the DMG, checksum, and installer evidence.",
+      );
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
