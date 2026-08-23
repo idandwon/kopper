@@ -4,13 +4,15 @@ Kopper is a local-first macOS capture queue for collecting selected text and org
 
 ## Install
 
-Kopper requires macOS 14 Sonoma or newer. Install the latest signed and notarized release with:
+Kopper is currently an **unsigned friends beta** for macOS 14 Sonoma or newer. Install the latest release with:
 
 ```bash
 curl -fsSL https://github.com/idandwon/kopper/releases/latest/download/install.sh | bash
 ```
 
-Kopper is installed for your account at `~/Applications/Kopper.app` and opens automatically. Complete the in-app Accessibility onboarding if you want global selection capture.
+The installer verifies the immutable GitHub Release checksum and Kopper's bundle identity, then installs to `~/Applications/Kopper.app`. Apple has not signed or notarized this beta, so macOS may block the first launch. If it does, open **System Settings → Privacy & Security**, find Kopper, and choose **Open Anyway** once.
+
+No `sudo`, `xattr`, Gatekeeper disablement, Node.js, or Homebrew is needed. The SHA-256 check protects the download against corruption or replacement within the immutable release; it does not make the app Apple-verified.
 
 To upgrade, quit Kopper and run the same command again. To uninstall the application, move `~/Applications/Kopper.app` to Trash. Your local notes remain at `~/Library/Application Support/Kopper/kopper.json` unless you deliberately remove that file.
 
@@ -62,29 +64,17 @@ The unsigned package is for local verification only. It is not a distributable r
 
 ## Releases
 
-Credentialed releases run in the protected GitHub `release` environment. Configure these environment secrets by name:
+Unsigned friends-beta releases use the protected GitHub `release` environment but require no repository or environment secrets. The package version and pushed tag must match exactly: version `<version>` requires tag `v<version>`.
 
-- `APPLE_API_KEY_P8`: contents of the App Store Connect API private key file
-- `APPLE_API_KEY_ID`: App Store Connect API key identifier
-- `APPLE_API_ISSUER`: App Store Connect API issuer identifier
-- `CSC_LINK`: Developer ID Application signing certificate
-- `CSC_KEY_PASSWORD`: signing certificate password
-
-Do not put release credentials in repository files, command arguments, or logs.
-
-The package version and pushed tag must match exactly: a package version of `<version>` requires tag `v<version>`. After updating and committing `package.json`, create and push the matching tag:
+After updating and committing `package.json`, create and push the matching tag:
 
 ```bash
 git tag "v$(node -p 'require("./package.json").version')"
 git push origin "v$(node -p 'require("./package.json").version')"
 ```
 
-On a clean, exactly tagged, credentialed macOS release runner, the release gate is:
+Before creating the first release tag, the repository owner must enable GitHub immutable releases and verify the repository setting reports enabled.
 
-```bash
-pnpm package:release
-```
+The tag-triggered **Release** workflow runs the complete test, type, build, E2E, dependency-audit, and source-audit gates; explicitly disables signing and notarization; verifies the universal application package; and creates a draft containing exactly the DMG, SHA-256 file, and tagged `install.sh`.
 
-Before creating the first release tag, the repository owner must enable GitHub immutable releases and verify the repository setting reports enabled. The tag-triggered release workflow then signs and notarizes the universal DMG, creates its SHA-256 checksum, and uploads the DMG, checksum, and exact tagged `install.sh` to a **draft GitHub Release**. That draft is an acceptance candidate, not a published release. The unsigned development package above is non-distributable.
-
-Promotion is a separate manual action in the protected `release` environment. Run the **Promote Release** workflow with the exact candidate tag only after the versioned acceptance record is complete for the same tag, version, commit, DMG, and checksum. The promotion workflow verifies the draft and final evidence before changing the release to non-draft, then requires the exact published release to report immutable; any required `Fail` or `Not run` status, or a missing immutable result, prevents the workflow from reporting successful promotion.
+Inspect and physically test that draft with `tests/manual/macos-installer.md`. Only after that evidence is complete should an authorized reviewer approve and run **Promote Release** for the exact tag. Publication is irreversible for that tag because immutable releases are enabled; a failed published candidate requires a new version and tag.

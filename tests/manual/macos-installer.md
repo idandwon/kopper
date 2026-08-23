@@ -1,53 +1,90 @@
-# Post-publication macOS installer acceptance procedure
+# Unsigned friends-beta macOS installer acceptance procedure
 
-This procedure is a **post-publication** physical check for the public installer at `releases/latest`. It supplements, rather than replaces, [`tests/manual/macos-capture.md`](macos-capture.md), which remains the pre-promotion DMG acceptance gate. Do not use this procedure to approve promotion: the `latest` URL is unavailable until the release is published.
+This procedure records physical acceptance for an unsigned friends beta. Use a clean macOS 14 Sonoma or newer standard account with no previous Kopper application, data, Accessibility grant, login item, or running process. `UNSIGNED-01` through `UNSIGNED-03` are pre-promotion evidence against the exact draft; `UNSIGNED-04` through `UNSIGNED-06` are required post-publication installer checks on a second clean account. The canonical `releases/latest` URL cannot resolve a draft release.
 
-Run it on a physical Mac running macOS 14 or newer, from a newly created local standard account with no prior Kopper installation, data, Accessibility grant, login item, or running process. Do not install Git, Node.js, pnpm, Homebrew, or use `sudo`, a Gatekeeper bypass, quarantine removal, or an override. Record results in `docs/releases/installer-acceptance-template.md` for the exact published release.
+Do not use `sudo`, `xattr`, Gatekeeper disablement, quarantine removal, or another shell security bypass. Because Apple has not signed or notarized this beta, if macOS blocks first launch, use the one-time **System Settings → Privacy & Security → Open Anyway** path for Kopper. Record whether the launch was direct or needed that documented action.
 
-## Evidence rules and setup
+## Evidence rules
 
-Record the published release URL, installer URL, exact tag, version, full commit SHA, tester, physical Mac model, architecture, macOS product/build version, and UTC start/end bounds. For every command, retain the command, exit status, UTC time, and at most 20 relevant output lines. Redact account names and home-directory prefixes; never include credentials, environment dumps, complete logs, or note contents beyond the inert fixture below. Preserve all failures and append retests rather than replacing observations.
+Record the draft release URL and workflow URL, then the published release URL when applicable; also record the exact tag, version, full commit SHA, tester, physical Mac model, architecture, macOS product/build version, and UTC start/end bounds. For every command, retain the command, exit status, UTC time, and at most 20 relevant output lines. Redact account names and home-directory prefixes; never include credentials, environment dumps, complete logs, or note contents beyond the inert fixture below. Preserve every failure and append retests rather than replacing observations.
 
-Confirm the operating system before installation:
+Confirm the operating system before each account's relevant procedure:
 
 ```bash
 sw_vers
 ```
 
-Create an inert existing-store fixture before installing. This verifies that installation and upgrade do not modify local notes without printing their contents:
+## Pre-promotion draft acceptance
+
+Run this exact procedure in the first clean account. It downloads the three exact draft assets, but deliberately does **not** run the draft `install.sh`: its fixed `releases/latest` origin cannot address an unpublished draft.
+
+```bash
+TAG="v0.1.0"
+VERSION="${TAG#v}"
+ASSET_DIRECTORY="$(mktemp -d "${TMPDIR:-/tmp}/kopper-draft.XXXXXX")"
+MOUNT_POINT="$(mktemp -d "${TMPDIR:-/tmp}/kopper-mount.XXXXXX")"
+STORE="$HOME/Library/Application Support/Kopper/kopper.json"
+TARGET="$HOME/Applications/Kopper.app"
+
+gh release download "$TAG" --repo idandwon/kopper --dir "$ASSET_DIRECTORY"
+test "$(find "$ASSET_DIRECTORY" -maxdepth 1 -type f | wc -l | tr -d ' ')" = "3"
+test -f "$ASSET_DIRECTORY/Kopper-${VERSION}-universal.dmg"
+test -f "$ASSET_DIRECTORY/Kopper-${VERSION}-universal.dmg.sha256"
+test -f "$ASSET_DIRECTORY/install.sh"
+bash -n "$ASSET_DIRECTORY/install.sh"
+(cd "$ASSET_DIRECTORY" && shasum -a 256 -c "Kopper-${VERSION}-universal.dmg.sha256")
+
+mkdir -p "$(dirname "$STORE")" "$HOME/Applications"
+printf '%s\n' '{"schemaVersion":1,"notes":[]}' > "$STORE"
+STORE_BEFORE="$(shasum -a 256 "$STORE" | awk '{print $1}')"
+test ! -e "$TARGET"
+hdiutil attach -readonly -nobrowse -mountpoint "$MOUNT_POINT" \
+  "$ASSET_DIRECTORY/Kopper-${VERSION}-universal.dmg"
+APP="$MOUNT_POINT/Kopper.app"
+test -d "$APP"
+test ! -L "$APP"
+test "$(find "$MOUNT_POINT" -maxdepth 1 -type d -name '*.app' | wc -l | tr -d ' ')" = "1"
+test "$(plutil -extract CFBundleIdentifier raw -o - "$APP/Contents/Info.plist")" = "com.kopper.app"
+test "$(plutil -extract CFBundleShortVersionString raw -o - "$APP/Contents/Info.plist")" = "$VERSION"
+test "$(plutil -extract LSMinimumSystemVersion raw -o - "$APP/Contents/Info.plist")" = "14.0"
+lipo -archs "$APP/Contents/MacOS/Kopper"
+lipo -archs "$APP/Contents/Resources/app.asar.unpacked/node_modules/uiohook-napi/build/Release/uiohook_napi.node"
+ditto "$APP" "$TARGET"
+hdiutil detach "$MOUNT_POINT"
+test ! -e "$MOUNT_POINT" || rmdir "$MOUNT_POINT"
+test "$(shasum -a 256 "$STORE" | awk '{print $1}')" = "$STORE_BEFORE"
+open "$TARGET" || true
+```
+
+Both `lipo` outputs must contain exactly `arm64` and `x86_64`. Exercise first launch through Finder: open `~/Applications/Kopper.app`; if macOS blocks it, open **System Settings → Privacy & Security** and choose **Open Anyway** once for Kopper. Record the direct or Open Anyway result and never use a shell security bypass.
+
+After evidence capture, remove only the exact `ASSET_DIRECTORY` and the clean-account `TARGET`. Never remove the store unless the tester created it solely as this inert fixture and records that cleanup. Do not remove a mount point until `hdiutil detach "$MOUNT_POINT"` has succeeded.
+
+## Post-publication canonical-installer acceptance
+
+After explicit approval promotes the exact draft, use a second clean standard account. This is the first point at which `releases/latest` can resolve the immutable release. Create the inert existing-store fixture before installing and retain its SHA-256 value:
 
 ```bash
 STORE="$HOME/Library/Application Support/Kopper/kopper.json"
 mkdir -p "$(dirname "$STORE")"
 printf '%s\n' '{"schemaVersion":1,"notes":[]}' > "$STORE"
-shasum -a 256 "$STORE"
-```
-
-Run the canonical command exactly once:
-
-```bash
+STORE_BEFORE="$(shasum -a 256 "$STORE" | awk '{print $1}')"
 curl -fsSL https://github.com/idandwon/kopper/releases/latest/download/install.sh | bash
 ```
 
-## Installed bundle and security checks
-
-The target must be exactly `~/Applications/Kopper.app`. Record bounded bundle metadata and security assessment against that target only:
+Set the exact published version before inspecting the installed bundle:
 
 ```bash
 APP="$HOME/Applications/Kopper.app"
 VERSION="<published version without the v prefix>"
 test -d "$APP"
-test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")" = "$VERSION"
-/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist"
-test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")" = "com.kopper.app"
-/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist"
-codesign --verify --deep --strict "$APP"
-spctl --assess --type execute "$APP"
+test ! -L "$APP"
+test "$(plutil -extract CFBundleIdentifier raw -o - "$APP/Contents/Info.plist")" = "com.kopper.app"
+test "$(plutil -extract CFBundleShortVersionString raw -o - "$APP/Contents/Info.plist")" = "$VERSION"
+test "$(plutil -extract LSMinimumSystemVersion raw -o - "$APP/Contents/Info.plist")" = "14.0"
 ```
 
-Expected metadata: the promoted version/build, identifier `com.kopper.app`, and minimum system version `14.0`. Both security commands must exit 0.
-
-Confirm the installer detached its DMG and removed its bounded staging/rollback paths:
+The canonical installer must leave no exact versioned Kopper DMG mounted and no staging or rollback artifact. This structured check examines every `hdiutil` image before it bounds reported matches:
 
 ```bash
 MOUNT_CHECK_DIRECTORY="$(mktemp -d "${TMPDIR:-/tmp}/kopper-mount-check.XXXXXX")"
@@ -98,36 +135,32 @@ installer_artifact="$(find "$HOME/Applications" -maxdepth 1 \( -name '.Kopper.ap
 test -z "$installer_artifact"
 ```
 
-Expected: the structured check evaluates every `hdiutil` image before bounding failure evidence, exits 0 only when no exact versioned Kopper DMG remains mounted, and the final `test` proves no bounded staging or rollback path exists.
-
-## Upgrade, running-process, and onboarding observations
-
-Before the repeated install, preserve a bounded comparison copy of the installed bundle. While Kopper is running, rerun the canonical command. It must fail without changing the installed bundle. Quit Kopper, rerun the same command, and confirm it succeeds:
+While Kopper is running, rerun the canonical installer. It must refuse without changing the installed app. Quit Kopper, rerun the same command, and confirm the upgrade succeeds and preserves the inert store hash:
 
 ```bash
 BEFORE_APP="$HOME/.Kopper.app.before-repeated-install"
 rm -rf "$BEFORE_APP"
 ditto "$APP" "$BEFORE_APP"
-curl -fsSL https://github.com/idandwon/kopper/releases/latest/download/install.sh | bash
+running_install_status=0
+curl -fsSL https://github.com/idandwon/kopper/releases/latest/download/install.sh | bash || running_install_status=$?
+test "$running_install_status" != "0"
 diff -qr "$BEFORE_APP" "$APP" | sed -n '1,20p'
 rm -rf "$BEFORE_APP"
+
+# Quit Kopper before the next command.
+curl -fsSL https://github.com/idandwon/kopper/releases/latest/download/install.sh | bash
+test "$(shasum -a 256 "$STORE" | awk '{print $1}')" = "$STORE_BEFORE"
 ```
 
-Expected: the running-app installer invocation fails, and the bounded `diff` output is empty. After quitting Kopper, rerun the canonical command and confirm it succeeds. Then compare the inert fixture with its pre-install hash:
-
-```bash
-shasum -a 256 "$STORE"
-```
-
-The before and after SHA-256 values must be identical. Launch the installed app normally and complete the existing Accessibility onboarding without an override.
+The first installer invocation above must exit nonzero while Kopper is running; retain that exit status rather than relying on shell `set -e`. The successful post-quit invocation must leave the transaction clean. If the installed app is blocked on first launch, use the documented **Open Anyway** action once; do not use a shell security bypass.
 
 ## Required observations
 
 | ID | Required observation |
 | --- | --- |
-| INST-01 | The canonical curl command exits 0 on macOS 14+ without Git, Node.js, pnpm, Homebrew, sudo, a Gatekeeper bypass, or quarantine removal. |
-| INST-02 | The installed target is exactly `~/Applications/Kopper.app`; bundle version, identifier `com.kopper.app`, and minimum system version `14.0` match the promoted release. |
-| INST-03 | `codesign --verify --deep --strict` and `spctl --assess --type execute` accept the installed application. |
-| INST-04 | After installation, no Kopper DMG remains mounted and no `.Kopper.app.install.*` or `.Kopper.app.rollback.*` path remains. |
-| INST-05 | Running Kopper makes a repeated install fail without changing the installed bundle; after quitting, rerunning succeeds and preserves the SHA-256 of an inert `kopper.json` fixture. |
-| INST-06 | The installed app launches normally and completes existing Accessibility onboarding without an override. |
+| UNSIGNED-01 | The exact draft contains only the versioned universal DMG, its matching SHA-256 file, and the tagged `install.sh`; checksum verification succeeds. |
+| UNSIGNED-02 | The root-level real `Kopper.app` reports the exact version, bundle identifier `com.kopper.app`, minimum macOS `14.0`, and both `arm64` and `x86_64` runtime architectures. |
+| UNSIGNED-03 | A manual draft installation to `~/Applications/Kopper.app` preserves the inert `kopper.json` hash and first launch either opens directly or succeeds after one System Settings → Privacy & Security → Open Anyway approval; no shell security bypass is used. |
+| UNSIGNED-04 | After publication, the canonical installer leaves exactly `~/Applications/Kopper.app`, no mounted Kopper DMG, and no `.Kopper.app.install.*` or `.Kopper.app.rollback.*` artifact. |
+| UNSIGNED-05 | After publication, running-process refusal and a subsequent quit-and-upgrade preserve the app transaction and the inert `kopper.json` SHA-256. |
+| UNSIGNED-06 | After immutable publication, the canonical curl command exits 0 on a second clean macOS 14+ standard account and prints the unsigned-beta approval guidance. |

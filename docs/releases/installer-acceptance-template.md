@@ -1,21 +1,28 @@
-# Kopper v<version> post-publication installer acceptance
+# Kopper v<version> unsigned friends-beta installer acceptance
 
 > **Acceptance status: Incomplete — Not run**
 >
-> This record is post-publication evidence for the public `releases/latest` installer. It supplements and never replaces the pre-promotion DMG gate in `docs/releases/acceptance-template.md` and `tests/manual/macos-capture.md`.
+> This template records unsigned friends-beta acceptance. It is not evidence until copied to a versioned record and filled with bounded observations.
 
 Procedure: [`tests/manual/macos-installer.md`](../../tests/manual/macos-installer.md)
+
+`UNSIGNED-01` through `UNSIGNED-03` are pre-promotion evidence against the exact draft. `UNSIGNED-04` through `UNSIGNED-06` are required post-publication installer checks on a second clean account. This template never changes the 91-row signed-release traceability record.
 
 ## Release and physical-Mac metadata
 
 | Field | Value |
 | --- | --- |
+| Draft release URL/run ID | Not run — `<draft URL and workflow run URL>` |
 | Published release URL | Not run — `<release URL>` |
-| Published release immutable | Not run — exact tag must report `isImmutable: true` |
+| Published release immutable | Not run — exact tag must report `isImmutable: true` after promotion |
 | Exact release tag | Not run — `v<version>` |
 | Exact package version | Not run — `<version>` |
 | Full release commit SHA | Not run — `<40-character SHA>` |
+| Exact three asset names | Not run |
+| DMG SHA-256 | Not run — `<64 lowercase hexadecimal characters>` |
 | Public installer URL | Not run — `https://github.com/idandwon/kopper/releases/latest/download/install.sh` |
+| First-launch result | Not run — `direct` or `Open Anyway` |
+| Security bypass used | Not run — must be `No` |
 | Physical Mac model | Not run — bounded `/usr/sbin/sysctl -n hw.model` output |
 | Machine architecture | Not run — bounded `uname -m` output |
 | macOS version/build | Not run — bounded `sw_vers` output; must be macOS 14+ |
@@ -29,18 +36,19 @@ Procedure: [`tests/manual/macos-installer.md`](../../tests/manual/macos-installe
 - Record the exact command, UTC time, exit status, and at most 20 relevant output lines; redact account names and home-directory prefixes.
 - `Not run` must name its blocker and next action. A `Fail` includes intermittent observations.
 - Preserve failed evidence. Append every retest below; never replace an earlier observation or change a failure into a pass without retaining both records.
-- This document is an after-publication acceptance record only. It is not a promotion input and does not alter the 91-row pre-promotion traceability contract.
+- The pre-promotion draft test never runs the draft `install.sh`; its fixed `releases/latest` origin cannot address a draft. The post-publication checks use the canonical curl installer only after the exact release is immutable.
+- Do not use `sudo`, `xattr`, Gatekeeper disablement, quarantine removal, or another shell security bypass. If macOS blocks the unsigned beta, record the one-time **System Settings → Privacy & Security → Open Anyway** result.
 
-## Installer acceptance evidence
+## Unsigned friends-beta acceptance evidence
 
 | ID | Required observation | Status | Evidence/blocker |
 | --- | --- | --- | --- |
-| INST-01 | The canonical curl command exits 0 on macOS 14+ without Git, Node.js, pnpm, Homebrew, sudo, a Gatekeeper bypass, or quarantine removal. | Not run | Not run — run the published installer on a clean macOS 14+ standard account. |
-| INST-02 | The installed target is exactly `~/Applications/Kopper.app`; bundle version, identifier `com.kopper.app`, and minimum system version `14.0` match the promoted release. | Not run | Not run — record bounded PlistBuddy output from the installed app. |
-| INST-03 | `codesign --verify --deep --strict` and `spctl --assess --type execute` accept the installed application. | Not run | Not run — record bounded command output and exit statuses. |
-| INST-04 | After installation, no Kopper DMG remains mounted and no `.Kopper.app.install.*` or `.Kopper.app.rollback.*` path remains. | Not run | Not run — record the complete structured `hdiutil info -plist` evaluation result and exact artifact `find` result. |
-| INST-05 | Running Kopper makes a repeated install fail without changing the installed bundle; after quitting, rerunning succeeds and preserves the SHA-256 of an inert `kopper.json` fixture. | Not run | Not run — retain before/after store hashes and both installer observations. |
-| INST-06 | The installed app launches normally and completes existing Accessibility onboarding without an override. | Not run | Not run — record physical onboarding observation. |
+| UNSIGNED-01 | The exact draft contains only the versioned universal DMG, its matching SHA-256 file, and the tagged `install.sh`; checksum verification succeeds. | Not run | Not run — create the draft and inspect its exact three assets. |
+| UNSIGNED-02 | The root-level real `Kopper.app` reports the exact version, bundle identifier `com.kopper.app`, minimum macOS `14.0`, and both `arm64` and `x86_64` runtime architectures. | Not run | Not run — mount the draft DMG read-only and record bounded metadata and both `lipo` outputs. |
+| UNSIGNED-03 | A manual draft installation to `~/Applications/Kopper.app` preserves the inert `kopper.json` hash and first launch either opens directly or succeeds after one System Settings → Privacy & Security → Open Anyway approval; no shell security bypass is used. | Not run | Not run — run the manual draft procedure on a clean account and record the first-launch result. |
+| UNSIGNED-04 | After publication, the canonical installer leaves exactly `~/Applications/Kopper.app`, no mounted Kopper DMG, and no `.Kopper.app.install.*` or `.Kopper.app.rollback.*` artifact. | Not run | Not run — promote only after approved draft evidence, then inspect the clean second account. |
+| UNSIGNED-05 | After publication, running-process refusal and a subsequent quit-and-upgrade preserve the app transaction and the inert `kopper.json` SHA-256. | Not run | Not run — retain before/after store hashes and both installer observations. |
+| UNSIGNED-06 | After immutable publication, the canonical curl command exits 0 on a second clean macOS 14+ standard account and prints the unsigned-beta approval guidance. | Not run | Not run — record the immutable result and canonical installer output. |
 
 ## Retest evidence
 
