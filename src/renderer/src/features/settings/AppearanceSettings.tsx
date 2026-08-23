@@ -217,7 +217,6 @@ export function AppearanceSettings() {
                         aria-label={`Actions for ${theme.name}`}
                         disabled={busy}
                       >
-                        <span aria-hidden="true">•••</span>
                         Actions
                       </Button>
                     </DropdownMenuTrigger>

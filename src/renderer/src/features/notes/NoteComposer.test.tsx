@@ -72,20 +72,23 @@ afterEach(() => {
 });
 
 describe("NoteComposer", () => {
-  it("renders one section-aware composer surface", () => {
+  it("renders one compact composer without a visible add control", () => {
     render(<NoteComposer />);
 
     const composer = screen.getByRole("textbox", {
       name: "Add a note or prompt",
     });
-    expect(composer).toHaveAttribute(
-      "placeholder",
-      "Add a note or prompt (Inbox)",
-    );
+    expect(composer).toHaveAttribute("placeholder", "Add a note or prompt");
+    expect(composer).toHaveAttribute("rows", "1");
     expect(composer).toHaveAttribute("data-slot", "textarea");
+    expect(composer).toHaveClass(
+      "min-h-10",
+      "max-h-36",
+      "[field-sizing:content]",
+    );
     expect(composer.closest("[data-composer-surface]")).toBeInTheDocument();
     expect(screen.queryByText("Inbox")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Add note" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Add note" })).not.toBeInTheDocument();
   });
 
   it("initializes from a valid persisted draft and saves typing after 250ms", async () => {
@@ -114,7 +117,7 @@ describe("NoteComposer", () => {
     });
   });
 
-  it("adds on Cmd+Enter, then clears the draft only after the add is acknowledged", async () => {
+  it("adds on Enter, then clears the draft only after the add is acknowledged", async () => {
     let resolveAdd: ((result: boolean) => void) | undefined;
     execute
       .mockImplementationOnce(
@@ -131,7 +134,7 @@ describe("NoteComposer", () => {
     fireEvent.change(composer, { target: { value: "New note" } });
     composer.focus();
 
-    fireEvent.keyDown(composer, { key: "Enter", metaKey: true });
+    fireEvent.keyDown(composer, { key: "Enter" });
     expect(execute).toHaveBeenCalledWith({
       type: "note.add",
       sectionId: "inbox",
@@ -155,7 +158,7 @@ describe("NoteComposer", () => {
     fireEvent.change(composer, { target: { value: "Keep me" } });
 
     await act(async () =>
-      fireEvent.keyDown(composer, { key: "Enter", metaKey: true }),
+      fireEvent.keyDown(composer, { key: "Enter" }),
     );
 
     expect(composer).toHaveValue("Keep me");
@@ -183,7 +186,7 @@ describe("NoteComposer", () => {
     });
 
     await act(async () =>
-      fireEvent.keyDown(composer, { key: "Enter", metaKey: true }),
+      fireEvent.keyDown(composer, { key: "Enter" }),
     );
 
     expect(execute).toHaveBeenNthCalledWith(1, {
@@ -193,9 +196,7 @@ describe("NoteComposer", () => {
     });
     expect(execute).toHaveBeenNthCalledWith(2, { type: "draft.clear" });
     expect(composer).toHaveValue("Persisted note");
-    expect(screen.getByRole("button", { name: "Add note" })).toBeDisabled();
-
-    fireEvent.keyDown(composer, { key: "Enter", metaKey: true });
+    fireEvent.keyDown(composer, { key: "Enter" });
     expect(execute).toHaveBeenCalledTimes(2);
 
     mockedUseKopperDocument.mockReturnValue({
@@ -206,10 +207,15 @@ describe("NoteComposer", () => {
 
     expect(composer).toHaveValue("");
     fireEvent.change(composer, { target: { value: "Another note" } });
-    expect(screen.getByRole("button", { name: "Add note" })).toBeEnabled();
+    fireEvent.keyDown(composer, { key: "Enter" });
+    expect(execute).toHaveBeenNthCalledWith(3, {
+      type: "note.add",
+      sectionId: "inbox",
+      body: "Another note",
+    });
   });
 
-  it("allows Enter to insert a newline and prevents whitespace-only submission", async () => {
+  it("uses Shift+Enter for a newline and prevents whitespace-only submission", async () => {
     vi.useRealTimers();
     const user = userEvent.setup();
     render(<NoteComposer />);
@@ -217,15 +223,39 @@ describe("NoteComposer", () => {
       name: "Add a note or prompt",
     });
 
-    await user.type(composer, "First{enter}Second");
+    await user.type(composer, "First{Shift>}{Enter}{/Shift}Second");
     expect(composer).toHaveValue("First\nSecond");
 
     await user.clear(composer);
     await user.type(composer, "   ");
-    await user.keyboard("{Meta>}{Enter}{/Meta}");
+    await user.keyboard("{Enter}");
     expect(execute).not.toHaveBeenCalledWith(
       expect.objectContaining({ type: "note.add" }),
     );
+  });
+
+  it("keeps Cmd/Ctrl+Enter aliases and ignores Enter during IME composition", () => {
+    render(<NoteComposer />);
+    const composer = screen.getByRole("textbox", {
+      name: "Add a note or prompt",
+    });
+    fireEvent.change(composer, { target: { value: "Composed note" } });
+
+    fireEvent.keyDown(composer, {
+      key: "Enter",
+      metaKey: true,
+      isComposing: true,
+    });
+    expect(execute).not.toHaveBeenCalledWith(
+      expect.objectContaining({ type: "note.add" }),
+    );
+
+    fireEvent.keyDown(composer, { key: "Enter", ctrlKey: true });
+    expect(execute).toHaveBeenCalledWith({
+      type: "note.add",
+      sectionId: "inbox",
+      body: "Composed note",
+    });
   });
 
   it("flushes a changed non-empty draft once on unmount without waiting", () => {
@@ -418,7 +448,7 @@ describe("NoteComposer", () => {
 
     expect(screen.getByRole("textbox")).toHaveAttribute(
       "placeholder",
-      "Add a note or prompt (Later)",
+      "Add a note or prompt",
     );
   });
 
@@ -461,7 +491,7 @@ describe("NoteComposer", () => {
 
       expect(screen.getByRole("textbox")).toHaveAttribute(
         "placeholder",
-        "Add a note or prompt (Inbox)",
+        "Add a note or prompt",
       );
       expect(screen.getByRole("textbox")).toHaveValue(value);
     },

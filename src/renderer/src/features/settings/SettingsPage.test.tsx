@@ -69,6 +69,26 @@ afterEach(() => {
 });
 
 describe("SettingsPage", () => {
+  it("uses a compact icon-only Back control with an accessible tooltip", async () => {
+    const user = userEvent.setup();
+    render(
+      <SettingsPage
+        activeTab="shortcuts"
+        captureUnavailable={false}
+        changeTab={vi.fn()}
+        closeSettings={vi.fn()}
+      />,
+    );
+
+    const back = screen.getByRole("button", { name: "Back to notes" });
+    expect(back).toHaveClass("size-8");
+    expect(back).not.toHaveTextContent("Back");
+    await user.hover(back);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "Back to notes",
+    );
+  });
+
   it("renders the active tab in one settings scroll owner and changes tabs", async () => {
     const user = userEvent.setup();
     const changeTab = vi.fn();

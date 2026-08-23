@@ -141,6 +141,38 @@ describe("selectionReducer", () => {
     ).toEqual({ focusedId: null, anchorId: null, selectedIds: ["one"] });
   });
 
+  it("selects every displayed note and keeps a visible focused note", () => {
+    expect(
+      reduce(
+        {
+          focusedId: "three",
+          anchorId: "one",
+          selectedIds: ["one"],
+        },
+        { type: "select-all", displayedIds: ["two", "three", "four"] },
+      ),
+    ).toEqual({
+      focusedId: "three",
+      anchorId: "two",
+      selectedIds: ["two", "three", "four"],
+    });
+  });
+
+  it("focuses the first displayed note when selecting all and clears an empty projection", () => {
+    const selected = reduce(initialSelectionState, {
+      type: "select-all",
+      displayedIds: ["two", "four"],
+    });
+    expect(selected).toEqual({
+      focusedId: "two",
+      anchorId: "two",
+      selectedIds: ["two", "four"],
+    });
+    expect(
+      reduce(selected, { type: "select-all", displayedIds: [] }),
+    ).toEqual(initialSelectionState);
+  });
+
   it("selects an unselected note for its context menu but preserves a selected batch", () => {
     const state: SelectionState = {
       focusedId: "one",

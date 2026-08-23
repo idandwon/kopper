@@ -93,6 +93,7 @@ interface NoteCollectionProps {
   query: string;
   view: NoteProjectionView;
   captureHighlightedNoteId: string | null;
+  selectAllRequest: number;
 }
 
 export function NoteCollection({
@@ -100,6 +101,7 @@ export function NoteCollection({
   query,
   view,
   captureHighlightedNoteId,
+  selectAllRequest,
 }: NoteCollectionProps) {
   const [selection, dispatchSelection] = useReducer(
     selectionReducer,
@@ -119,6 +121,7 @@ export function NoteCollection({
     [projections],
   );
   const previousDisplayedIdsRef = useRef(displayedIds);
+  const previousSelectAllRequestRef = useRef(selectAllRequest);
   const activeElement = globalThis.document.activeElement;
   const focusedNoteElement =
     activeElement instanceof HTMLElement
@@ -174,6 +177,12 @@ export function NoteCollection({
   }, [displayedIds, fallbackFocusedId]);
 
   useEffect(() => {
+    if (selectAllRequest === previousSelectAllRequestRef.current) return;
+    previousSelectAllRequestRef.current = selectAllRequest;
+    dispatchSelection({ type: "select-all", displayedIds });
+  }, [displayedIds, selectAllRequest]);
+
+  useEffect(() => {
     if (visibleSelection.focusedId === null) return;
     const focusedCard = Array.from(
       globalThis.document.querySelectorAll<HTMLElement>("[data-note-id]"),
@@ -195,7 +204,7 @@ export function NoteCollection({
       className="min-h-0 min-w-0 flex-1"
       aria-label="Notes by section"
     >
-      <div className="space-y-5 px-4 pt-1 pb-4 pl-5">
+      <div className="space-y-5 px-4 pt-1 pb-4">
         {selectedCount > 1 ? (
           <p
             role="status"

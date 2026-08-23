@@ -1,14 +1,5 @@
 import type { ReactNode } from "react";
 
-function LifecycleRail() {
-  return (
-    <div
-      className="absolute inset-y-0 left-0 w-1 bg-[linear-gradient(to_bottom,var(--capture),var(--completed))]"
-      aria-hidden="true"
-    />
-  );
-}
-
 export function PanelShell({ children }: { children: ReactNode }) {
   return (
     <main
@@ -20,8 +11,6 @@ export function PanelShell({ children }: { children: ReactNode }) {
         aria-hidden="true"
         className="kopper-panel-drag-region"
       />
-      <LifecycleRail />
-      <span className="sr-only">Lifecycle: captured to completed</span>
       {children}
     </main>
   );

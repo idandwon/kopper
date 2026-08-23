@@ -32,7 +32,7 @@ function focusedOwnerKeepsShortcut(element: Element | null): boolean {
     element instanceof HTMLTextAreaElement ||
     textInput ||
     isEditableContent(element) ||
-    element.closest("[role=dialog]") !== null
+    element.closest("[role=dialog], [role=menu]") !== null
   );
 }
 
@@ -40,6 +40,7 @@ interface PanelShortcutsProps {
   disabled: boolean;
   enabled: boolean;
   focusSearch(): void;
+  selectAllNotes(): void;
   undo(): void;
 }
 
@@ -47,10 +48,23 @@ export function PanelShortcuts({
   disabled,
   enabled,
   focusSearch,
+  selectAllNotes,
   undo,
 }: PanelShortcutsProps) {
-  const actionsRef = useRef({ disabled, enabled, focusSearch, undo });
-  actionsRef.current = { disabled, enabled, focusSearch, undo };
+  const actionsRef = useRef({
+    disabled,
+    enabled,
+    focusSearch,
+    selectAllNotes,
+    undo,
+  });
+  actionsRef.current = {
+    disabled,
+    enabled,
+    focusSearch,
+    selectAllNotes,
+    undo,
+  };
 
   useEffect(() => {
     const routePanelShortcut = (event: KeyboardEvent) => {
@@ -63,6 +77,13 @@ export function PanelShortcuts({
       if (!commandPressed || modifiedByOption || focusedOwnerKeepsCommand) return;
 
       const key = event.key.toLocaleLowerCase();
+      const selectAllRequested = key === "a" && !event.shiftKey;
+      if (selectAllRequested) {
+        event.preventDefault();
+        actionsRef.current.selectAllNotes();
+        return;
+      }
+
       const searchRequested = key === "k" && !event.shiftKey;
       if (searchRequested) {
         event.preventDefault();

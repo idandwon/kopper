@@ -37,9 +37,11 @@ async function addSection(page: Page, name: string): Promise<void> {
 }
 
 async function addNote(page: Page, body: string): Promise<void> {
-  await page.getByLabel("Add a note or prompt").fill(body);
-  await page.getByRole("button", { name: "Add note" }).click();
+  const composer = page.getByLabel("Add a note or prompt");
+  await composer.fill(body);
+  await composer.press("Enter");
   await expect(page.getByRole("option", { name: `Note: ${body}` })).toBeVisible();
+  await expect(composer).toHaveValue("");
 }
 
 async function openNoteMenu(page: Page, body: string): Promise<void> {
@@ -90,6 +92,38 @@ async function expectEllipsisInsideViewport(locator: Locator): Promise<void> {
   expect(geometry.left).toBeGreaterThanOrEqual(0);
   expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth);
 }
+
+test("submits with Enter, keeps Shift+Enter lines, and selects the visible notes", async ({
+  kopper,
+}) => {
+  const page = await kopper.launchKopper();
+  await continueWithoutCaptureIfNeeded(page);
+  const composer = page.getByLabel("Add a note or prompt");
+
+  await composer.fill("First line");
+  await composer.press("Shift+Enter");
+  await composer.pressSequentially("Second line");
+  await expect(composer).toHaveValue("First line\nSecond line");
+  await composer.press("Enter");
+  await expect(
+    page.getByRole("option", { name: "Note: First line\nSecond line" }),
+  ).toBeVisible();
+  await expect(composer).toHaveValue("");
+
+  await addNote(page, "Another note");
+  const active = page.getByRole("button", { name: "Active notes" });
+  await active.focus();
+  await active.press("Meta+a");
+  await expect(page.getByText("2 selected · ⌘C copy · Space done")).toBeVisible();
+
+  await page
+    .getByRole("option", { name: "Note: Another note" })
+    .click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Copy as list" }).click();
+  await expect.poll(() => kopper.readClipboardText()).toBe(
+    "1. First line\n   Second line\n2. Another note",
+  );
+});
 
 test("contains long spaced and unbroken section names across every minimum-size surface", async ({
   kopper,
@@ -265,7 +299,12 @@ test("isolates a complete document journey and persists only acknowledged state"
   await expectSurfaceContained(editor, "editor");
   await editor.close();
 
-  await page.getByRole("button", { name: "Research", exact: true }).click();
+  const research = page.getByRole("button", {
+    name: "Research",
+    exact: true,
+  });
+  await research.click();
+  await expect(research).toHaveAttribute("aria-current", "true");
   await addNote(page, "Gamma reference");
 
   await page.getByRole("button", { name: "Manage Research" }).click();
@@ -296,7 +335,7 @@ test("isolates a complete document journey and persists only acknowledged state"
   await beta.click({ button: "right" });
   await page.getByRole("menuitem", { name: "Copy as list" }).click();
   await expect.poll(() => kopper.readClipboardText()).toBe(
-    "- Alpha finding\n- Beta decision",
+    "1. Alpha finding\n2. Beta decision",
   );
 
   await beta.click({ button: "right" });

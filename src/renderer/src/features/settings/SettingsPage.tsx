@@ -3,6 +3,12 @@ import { useEffect, useRef } from "react";
 import { Button } from "../../components/ui/button";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../../components/ui/tooltip";
+import {
   Tabs,
   TabsContent,
   TabsList,
@@ -79,20 +85,38 @@ export function SettingsPage({
       onValueChange={selectTab}
       className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
-      <header className="min-w-0 shrink-0 border-b border-border px-4 pt-4 pl-5">
+      <header className="min-w-0 shrink-0 border-b border-border px-4 pt-4">
         <div className="mb-3 flex min-w-0 items-center gap-3">
-          <Button
-            type="button"
-            size="sm"
-            variant="ghost"
-            ref={backButtonRef}
-            autoFocus
-            aria-label="Back to notes"
-            onClick={closeSettings}
-          >
-            <span aria-hidden="true">←</span>
-            Back
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon-sm"
+                  variant="ghost"
+                  className="size-8"
+                  ref={backButtonRef}
+                  autoFocus
+                  aria-label="Back to notes"
+                  onClick={closeSettings}
+                >
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.75"
+                    aria-hidden="true"
+                    className="size-4"
+                  >
+                    <path d="m12.5 4.5-5.5 5.5 5.5 5.5" />
+                  </svg>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Back to notes</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <div className="min-w-0">
             <h1 className="m-0 text-base font-semibold">Settings</h1>
             <p className="m-0 break-words text-xs text-muted-foreground">
@@ -112,7 +136,7 @@ export function SettingsPage({
         className="min-h-0 flex-1"
         aria-label="Settings content"
       >
-        <div className="min-w-0 px-4 py-4 pl-5">
+        <div className="min-w-0 px-4 py-4">
           <TabsContent
             value="shortcuts"
             forceMount

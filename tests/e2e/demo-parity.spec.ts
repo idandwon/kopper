@@ -179,12 +179,12 @@ test("matches the keyboard-first prompt, copy, complete, and restore loop", asyn
   const composer = page.getByRole("textbox", { name: "Add a note or prompt" });
 
   await composer.fill("How should configuration migrations work?");
-  await composer.press("Meta+Enter");
+  await composer.press("Enter");
   await expect(composer).toHaveValue("");
   await expect(composer).toBeFocused();
 
   await composer.fill("Should plugins own their configuration schema?");
-  await composer.press("Meta+Enter");
+  await composer.press("Enter");
   await expect(composer).toHaveValue("");
   await expect(composer).toBeFocused();
 
@@ -200,7 +200,7 @@ test("matches the keyboard-first prompt, copy, complete, and restore loop", asyn
 
   await second.press("Shift+Meta+C");
   await expect.poll(() => kopper.readClipboardText()).toBe(
-    "- How should configuration migrations work?\n- Should plugins own their configuration schema?",
+    "1. How should configuration migrations work?\n2. Should plugins own their configuration schema?",
   );
 
   await second.press("Space");

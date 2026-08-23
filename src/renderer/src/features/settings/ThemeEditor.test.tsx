@@ -95,6 +95,30 @@ describe("ThemeEditor", () => {
     expect(
       dialog.querySelectorAll('[data-scroll-owner="theme-editor"]'),
     ).toHaveLength(1);
+    for (const heading of screen.getAllByRole("heading", { level: 3 })) {
+      expect(heading).not.toHaveClass("sticky");
+      expect(heading).not.toHaveClass("z-10");
+    }
+  });
+
+  it("keeps one truncated status row above a nonwrapping action row", () => {
+    renderEditor();
+    const footer = globalThis.document.querySelector(
+      "[data-theme-editor-footer]",
+    );
+    const actions = globalThis.document.querySelector(
+      "[data-theme-editor-actions]",
+    );
+
+    expect(footer).toHaveClass("grid");
+    expect(screen.getByRole("status")).toHaveClass("truncate");
+    expect(actions).toHaveClass("flex-nowrap");
+    expect(actions).toContainElement(
+      screen.getByRole("button", { name: "Reset all" }),
+    );
+    expect(actions).toContainElement(
+      screen.getByRole("button", { name: "Save theme" }),
+    );
   });
 
   it("keeps invalid partial text editable, previews valid mode edits immediately, and validates at 150ms", async () => {

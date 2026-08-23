@@ -233,7 +233,7 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
 
   const rows = useMemo(() => TOKEN_GROUPS.map((group) => (
     <section key={group.name} aria-labelledby={`theme-group-${group.name.toLowerCase()}`}>
-      <h3 id={`theme-group-${group.name.toLowerCase()}`} className="sticky top-0 z-10 m-0 border-y border-border bg-background px-1 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{group.name}</h3>
+      <h3 id={`theme-group-${group.name.toLowerCase()}`} className="m-0 border-y border-border bg-background px-1 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{group.name}</h3>
       <div className="divide-y divide-border">
         {group.tokens.map((token) => {
           const value = raw[mode][token];
@@ -369,25 +369,26 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
               </TabsContent>
             </ScrollArea>
           </Tabs>
-          <div className="flex min-w-0 shrink-0 flex-wrap items-start justify-between gap-3 border-t border-border pt-3">
-            <div className="min-w-0 flex-1">
-              <p
-                role="status"
-                aria-live="polite"
-                className="m-0 break-words text-[11px] text-muted-foreground"
-              >
-                {validating ? "Validating…" : validation.message}
-              </p>
-              {message === null ? null : (
-                <p
-                  role="alert"
-                  className="m-0 break-words text-[11px] text-destructive"
-                >
-                  {message}
-                </p>
-              )}
-            </div>
-            <DialogFooter className="flex-wrap">
+          <div
+            data-theme-editor-footer="true"
+            className="grid min-w-0 shrink-0 gap-2 border-t border-border pt-3"
+          >
+            <p
+              role={message === null ? "status" : "alert"}
+              aria-live="polite"
+              title={
+                message ?? (validating ? "Validating…" : validation.message)
+              }
+              className={message === null
+                ? "m-0 h-4 truncate text-[11px] text-muted-foreground"
+                : "m-0 h-4 truncate text-[11px] text-destructive"}
+            >
+              {message ?? (validating ? "Validating…" : validation.message)}
+            </p>
+            <DialogFooter
+              data-theme-editor-actions="true"
+              className="flex-nowrap"
+            >
               <Button
                 type="button"
                 size="sm"

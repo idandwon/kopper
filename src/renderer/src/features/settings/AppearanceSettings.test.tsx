@@ -74,9 +74,11 @@ describe("AppearanceSettings", () => {
     expect(row).not.toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Activate Night Workshop" }));
     expect(execute).toHaveBeenCalledWith({ type: "appearance.setActiveTheme", themeId: "builtin:night-workshop" });
-    await userEvent.click(
-      screen.getByRole("button", { name: "Actions for Night Workshop" }),
-    );
+    const actions = screen.getByRole("button", {
+      name: "Actions for Night Workshop",
+    });
+    expect(actions).toHaveTextContent(/^Actions$/);
+    await userEvent.click(actions);
     expect(
       screen.getByRole("menuitem", { name: "Customize" }),
     ).toBeInTheDocument();

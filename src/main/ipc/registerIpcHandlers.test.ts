@@ -228,7 +228,7 @@ describe("registerIpcHandlers", () => {
         "markdown-list",
       ),
     ).resolves.toEqual({ ok: true, value: { copiedCount: 2 } });
-    expect(clipboard.writeText).toHaveBeenCalledWith("- Second\n- First");
+    expect(clipboard.writeText).toHaveBeenCalledWith("1. Second\n2. First");
 
     for (const args of [
       [[], "plain"],

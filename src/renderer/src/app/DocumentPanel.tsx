@@ -41,7 +41,7 @@ function DocumentError({ error, disabled, retry }: DocumentErrorProps) {
   return (
     <div
       role="alert"
-      className="mx-4 mb-2 ml-5 flex items-center gap-3 rounded-lg border border-destructive bg-card p-3 text-sm text-card-foreground"
+      className="mx-4 mb-2 flex items-center gap-3 rounded-lg border border-destructive bg-card p-3 text-sm text-card-foreground"
     >
       <p className="m-0 min-w-0 flex-1">{error.message}</p>
       {error.retryable ? (
@@ -85,7 +85,7 @@ function CaptureAccessPanel({
     <section
       aria-label="Capture access"
       aria-busy={busy}
-      className="mx-4 mb-2 ml-5 grid gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground"
+      className="mx-4 mb-2 grid gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground"
     >
       <p role="status" aria-live="polite">
         {statusMessage}
@@ -133,6 +133,7 @@ export function DocumentPanel({
   const [view, setView] = useState<NoteProjectionView>("active");
   const [route, setRoute] = useState<PanelRoute>({ page: "notes" });
   const [settingsFocusRequest, setSettingsFocusRequest] = useState(0);
+  const [selectAllRequest, setSelectAllRequest] = useState(0);
   const [captureHighlightedNoteId, setCaptureHighlightedNoteId] = useState<
     string | null
   >(null);
@@ -193,6 +194,10 @@ export function DocumentPanel({
     void undo();
   };
 
+  const selectAllNotes = () => {
+    setSelectAllRequest((request) => request + 1);
+  };
+
   return (
     <PanelFeedbackProvider>
       <NotePresentationProvider>
@@ -231,6 +236,7 @@ export function DocumentPanel({
                   query={query}
                   view={view}
                   captureHighlightedNoteId={captureHighlightedNoteId}
+                  selectAllRequest={selectAllRequest}
                 />
 
                 {view === "active" ? <NoteComposer /> : null}
@@ -250,6 +256,7 @@ export function DocumentPanel({
                 disabled={busy}
                 enabled={route.page === "notes"}
                 focusSearch={focusSearch}
+                selectAllNotes={selectAllNotes}
                 undo={undoLastAction}
               />
             </PanelShell>

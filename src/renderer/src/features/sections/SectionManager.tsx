@@ -44,6 +44,7 @@ import {
 } from "../../components/ui/tooltip";
 import { useKopperDocument } from "../../app/DocumentProvider";
 import { useNotesSurfaceOverlay } from "../notes/NotesSurfaceVisibility";
+import { VerticalOverflowIcon } from "../panel/PanelIcons";
 
 function orderedSections(sections: Section[]): Section[] {
   return [...sections].sort((left, right) => left.order - right.order);
@@ -126,7 +127,7 @@ export function SectionManager({ section }: SectionManagerProps) {
                   size="icon-xs"
                   aria-label={`Manage ${section.title}`}
                 >
-                  •••
+                  <VerticalOverflowIcon className="size-3" />
                 </Button>
               </DropdownMenuTrigger>
             </TooltipTrigger>

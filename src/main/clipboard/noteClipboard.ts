@@ -30,11 +30,13 @@ export function formatNotesForClipboard(
 ): string {
   if (mode === "plain") return notes.map(({ body }) => body).join("\n\n");
   return notes
-    .map(({ body }) => {
+    .map(({ body }, index) => {
       const [firstLine = "", ...continuationLines] = body.split("\n");
+      const marker = `${index + 1}. `;
+      const continuationIndent = " ".repeat(marker.length);
       return [
-        `- ${firstLine}`,
-        ...continuationLines.map((line) => `  ${line}`),
+        `${marker}${firstLine}`,
+        ...continuationLines.map((line) => `${continuationIndent}${line}`),
       ].join("\n");
     })
     .join("\n");

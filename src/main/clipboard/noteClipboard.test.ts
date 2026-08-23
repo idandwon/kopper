@@ -70,13 +70,24 @@ describe("note clipboard", () => {
     ).toBe("First line\n\nCompleted body");
   });
 
-  it("formats every note as a Markdown list item with indented continuation lines", () => {
+  it("formats every note as a numbered Markdown item with aligned continuation lines", () => {
     expect(
       formatNotesForClipboard(
         [note("0", "First\ncontinues"), note("1", "Second\nline two")],
         "markdown-list",
       ),
-    ).toBe("- First\n  continues\n- Second\n  line two");
+    ).toBe("1. First\n   continues\n2. Second\n   line two");
+  });
+
+  it("aligns continuation lines after a two-digit ordered marker", () => {
+    const notes = Array.from({ length: 10 }, (_, index) =>
+      note(String(index), index === 9 ? "Tenth\ncontinues" : `Item ${index + 1}`),
+    );
+
+    expect(formatNotesForClipboard(notes, "markdown-list").split("\n").slice(-2)).toEqual([
+      "10. Tenth",
+      "    continues",
+    ]);
   });
 
   it("resolves IDs from the current snapshot in the exact supplied order", () => {

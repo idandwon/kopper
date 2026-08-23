@@ -94,19 +94,9 @@ export function useNoteDraft() {
     await execute({ type: "draft.clear" });
   };
 
-  const sectionTitle =
-    document.sections.find((section) => section.id === sectionId)?.title ??
-    "Active section";
-  const submissionBlocked =
-    body.trim().length === 0 ||
-    pendingAction !== null ||
-    awaitingDraftClear !== null;
-
   return {
     body,
     changeBody: setBody,
-    sectionTitle,
-    submissionBlocked,
     submit,
   };
 }

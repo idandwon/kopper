@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 
 import type { Page } from "@playwright/test";
 
+import { createEmptyDocument } from "../../src/shared/domain/document";
+
 import {
   continueWithoutCaptureIfNeeded,
   expect,
@@ -115,6 +117,64 @@ async function openThemeActions(page: Page, themeName: string): Promise<void> {
   await page.getByRole("button", { name: `Actions for ${themeName}` }).click();
   await expectOverlayContained(page, page.getByRole("menu"));
 }
+
+test("contains non-sticky theme headings above a compact footer at 340x480", async ({
+  kopper,
+}) => {
+  const initial = createEmptyDocument(new Date("2026-08-16T12:00:00.000Z"));
+  initial.appearance.mode = "light";
+  const page = await kopper.launchKopper(initial);
+  await continueWithoutCaptureIfNeeded(page);
+  await setSurfaceSize(page, 340, 480);
+  await openAppearance(page);
+  await openThemeActions(page, "Oxide Ledger");
+  await page.getByRole("menuitem", { name: "Customize" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Customize theme" });
+  await expectOverlayContained(page, dialog);
+  const geometry = await dialog.evaluate((element) => {
+    const tokenOwner = element.querySelector<HTMLElement>(
+      '[data-scroll-owner="theme-editor"]',
+    );
+    const footer = element.querySelector<HTMLElement>(
+      "[data-theme-editor-footer]",
+    );
+    const actionRow = element.querySelector<HTMLElement>(
+      "[data-theme-editor-actions]",
+    );
+    if (tokenOwner === null || footer === null || actionRow === null) return null;
+    const tokenBounds = tokenOwner.getBoundingClientRect();
+    const footerBounds = footer.getBoundingClientRect();
+    const actionTops = Array.from(actionRow.children).map(
+      (child) => child.getBoundingClientRect().top,
+    );
+    const headings = Array.from(element.querySelectorAll<HTMLElement>("h3"));
+    return {
+      footerHeight: footerBounds.height,
+      tokenBottom: tokenBounds.bottom,
+      footerTop: footerBounds.top,
+      actionTops,
+      headingPositions: headings.map((heading) => ({
+        position: getComputedStyle(heading).position,
+        zIndex: getComputedStyle(heading).zIndex,
+      })),
+    };
+  });
+
+  expect(geometry).not.toBeNull();
+  if (geometry === null) return;
+  expect(geometry.footerHeight).toBeLessThanOrEqual(72);
+  expect(geometry.tokenBottom).toBeLessThanOrEqual(geometry.footerTop);
+  expect(new Set(geometry.actionTops.map((top) => Math.round(top))).size).toBe(1);
+  expect(geometry.headingPositions).toEqual(
+    geometry.headingPositions.map(() => ({ position: "static", zIndex: "auto" })),
+  );
+  await page.mouse.move(1, 240);
+  await expect(page).toHaveScreenshot(
+    "oxide-ledger-theme-editor-light-340x480.png",
+    { animations: "disabled", caret: "hide", maxDiffPixelRatio: 0.01 },
+  );
+});
 
 test("persists modes, presets, edited custom theme, and imported preview decisions", async ({
   kopper,

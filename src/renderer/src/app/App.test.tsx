@@ -307,13 +307,23 @@ describe("Oxide Ledger App", () => {
     expect(onboardingMock.mounts).toBe(0);
   });
 
-  it("renders the interactive active panel and lifecycle rail", async () => {
+  it("renders the interactive active panel without a lifecycle rail", async () => {
     const user = userEvent.setup();
     render(<App />);
 
     expect(
       screen.getByRole("searchbox", { name: "Search notes" }),
     ).toBeVisible();
+    expect(
+      screen
+        .getByRole("button", { name: "Panel menu" })
+        .querySelector('[data-icon="vertical-overflow"]'),
+    ).toBeInTheDocument();
+    expect(
+      screen
+        .getByRole("button", { name: "Manage Inbox" })
+        .querySelector('[data-icon="vertical-overflow"]'),
+    ).toBeInTheDocument();
     const lifecycleGroup = screen.getByRole("group", {
       name: "Note lifecycle view",
     });
@@ -323,6 +333,8 @@ describe("Oxide Ledger App", () => {
     });
     expect(lifecycleGroup).toHaveAttribute("data-slot", "toggle-group");
     expect(activeView).toHaveAttribute("data-slot", "toggle-group-item");
+    expect(activeView).toHaveClass("px-3");
+    expect(completedView).toHaveClass("px-3");
     expect(activeView).toHaveAttribute("aria-pressed", "true");
     expect(completedView).toHaveAttribute("aria-pressed", "false");
     await user.click(activeView);
@@ -345,8 +357,11 @@ describe("Oxide Ledger App", () => {
       screen.queryByRole("button", { name: "Add section" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.getByText("Lifecycle: captured to completed"),
-    ).toBeInTheDocument();
+      screen.queryByText("Lifecycle: captured to completed"),
+    ).not.toBeInTheDocument();
+    expect(
+      globalThis.document.querySelector("[data-lifecycle-rail]"),
+    ).not.toBeInTheDocument();
     expect(
       globalThis.document.querySelector("[data-panel-drag-region]"),
     ).toHaveAttribute("aria-hidden", "true");
@@ -615,6 +630,85 @@ describe("Oxide Ledger App", () => {
     expect(screen.getByText("2 selected · ⌘C copy · Space done")).toBeVisible();
   });
 
+  it("selects only the filtered current view on repeated Cmd+A and Ctrl+A", () => {
+    const activeDocument: KopperDocument = {
+      ...document,
+      notes: [
+        { ...document.notes[0], body: "Match active one" },
+        {
+          ...document.notes[0],
+          id: "active-2",
+          body: "Match active two",
+          order: 1,
+        },
+        {
+          ...document.notes[0],
+          id: "active-hidden",
+          body: "Hidden active",
+          order: 2,
+        },
+        { ...document.notes[1], body: "Match completed" },
+        {
+          ...document.notes[1],
+          id: "completed-hidden",
+          body: "Hidden completed",
+          order: 2,
+        },
+      ],
+    };
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({ document: activeDocument }),
+    );
+    render(<App />);
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search notes" }), {
+      target: { value: "Match" },
+    });
+    const activeToggle = screen.getByRole("button", { name: "Active notes" });
+    activeToggle.focus();
+    fireEvent.keyDown(window, { key: "a", metaKey: true });
+
+    const firstActive = screen.getByRole("option", {
+      name: "Note: Match active one",
+    });
+    const secondActive = screen.getByRole("option", {
+      name: "Note: Match active two",
+    });
+    expect(firstActive).toHaveAttribute("aria-selected", "true");
+    expect(secondActive).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByText("Hidden active")).not.toBeInTheDocument();
+
+    fireEvent.click(firstActive);
+    expect(secondActive).toHaveAttribute("aria-selected", "false");
+    activeToggle.focus();
+    fireEvent.keyDown(window, { key: "A", ctrlKey: true });
+    expect(secondActive).toHaveAttribute("aria-selected", "true");
+
+    const completedToggle = screen.getByRole("button", {
+      name: "Completed notes",
+    });
+    fireEvent.click(completedToggle);
+    completedToggle.focus();
+    fireEvent.keyDown(window, { key: "a", metaKey: true });
+    expect(
+      screen.getByRole("option", { name: "Note: Match completed" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(screen.queryByText("Hidden completed")).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search notes" }), {
+      target: { value: "No result" },
+    });
+    completedToggle.focus();
+    fireEvent.keyDown(window, { key: "a", metaKey: true });
+    expect(screen.queryByRole("option")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search notes" }), {
+      target: { value: "Match" },
+    });
+    expect(
+      screen.getByRole("option", { name: "Note: Match completed" }),
+    ).toHaveAttribute("aria-selected", "false");
+  });
+
   it("restores focus to the nearest card when the focused card is completed or deleted", () => {
     const activeNotes = [
       document.notes[0],
@@ -844,7 +938,9 @@ describe("Oxide Ledger App", () => {
     const undoMenuItem = screen.getByRole("menuitem", { name: "Undo" });
     expect(undoMenuItem).toBeVisible();
     expect(undoMenuItem).toHaveTextContent("⌘Z");
-    expect(screen.getByRole("menuitem", { name: "Pin panel" })).toBeVisible();
+    expect(
+      screen.queryByRole("menuitem", { name: "Pin panel" }),
+    ).not.toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Settings…" })).toBeVisible();
 
     await user.click(undoMenuItem);
@@ -855,8 +951,11 @@ describe("Oxide Ledger App", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "Panel menu" }));
-    await user.click(screen.getByRole("menuitem", { name: "Pin panel" }));
+    const pin = screen.getByRole("button", { name: "Pin panel" });
+    expect(pin).toHaveClass("size-10");
+    expect(pin).toHaveAttribute("aria-pressed", "false");
+    await user.click(pin);
+    expect(setPinned).toHaveBeenCalledWith(true);
 
     const status = globalThis.document.querySelector('[data-slot="toast"]');
     expect(status).toHaveAttribute("role", "status");
@@ -874,8 +973,7 @@ describe("Oxide Ledger App", () => {
         retryable: true,
       },
     });
-    await user.click(screen.getByRole("button", { name: "Panel menu" }));
-    await user.click(screen.getByRole("menuitem", { name: "Pin panel" }));
+    await user.click(pin);
 
     expect(
       globalThis.document.querySelector('[data-slot="toast"][role="status"]'),
@@ -886,6 +984,60 @@ describe("Oxide Ledger App", () => {
     expect(
       globalThis.document.querySelectorAll('[data-slot="toast"]'),
     ).toHaveLength(1);
+  });
+
+  it("exposes persisted pinned state and requests an acknowledged unpin", async () => {
+    const user = userEvent.setup();
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({
+        document: {
+          ...document,
+          window: { ...document.window, pinned: true },
+        },
+      }),
+    );
+    setPinned.mockResolvedValueOnce({
+      ok: true,
+      value: { ...document, window: { ...document.window, pinned: false } },
+    });
+    render(<App />);
+
+    const pin = screen.getByRole("button", { name: "Unpin panel" });
+    expect(pin).toHaveAttribute("aria-pressed", "true");
+    expect(pin.querySelector('[data-icon="pin"]')).toBeInTheDocument();
+    await user.click(pin);
+
+    expect(setPinned).toHaveBeenCalledWith(false);
+    expect(
+      globalThis.document.querySelector('[data-slot="toast"][role="status"]'),
+    ).toHaveTextContent("Panel unpinned.");
+  });
+
+  it("disables pin while its native acknowledgement is pending", async () => {
+    let acknowledgePin: (() => void) | undefined;
+    setPinned.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          acknowledgePin = () =>
+            resolve({
+              ok: true,
+              value: {
+                ...document,
+                window: { ...document.window, pinned: true },
+              },
+            });
+        }),
+    );
+    render(<App />);
+    const pin = screen.getByRole("button", { name: "Pin panel" });
+
+    fireEvent.click(pin);
+    fireEvent.click(pin);
+
+    expect(pin).toBeDisabled();
+    expect(setPinned).toHaveBeenCalledOnce();
+    await act(async () => acknowledgePin?.());
+    expect(pin).toBeEnabled();
   });
 
   it("renders a persistent structured error with Retry only when retryable", async () => {

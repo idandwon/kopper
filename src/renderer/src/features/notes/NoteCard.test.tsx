@@ -61,7 +61,7 @@ describe("NoteCard", () => {
     expect(lifecycle).toBeVisible();
     expect(lifecycle).toHaveAttribute("data-slot", "button");
     expect(lifecycle).toHaveClass("rounded-full");
-    expect(screen.getByText("⌘C Copy")).toBeVisible();
+    expect(screen.queryByText("⌘C Copy")).not.toBeInTheDocument();
 
     rerender(<NoteCard {...props({ focused: true, selected: false })} />);
     expect(card).toHaveAttribute("aria-selected", "false");
@@ -144,6 +144,15 @@ describe("NoteCard", () => {
       additive: false,
       extend: true,
     });
+  });
+
+  it("opens inline editing when the note body is double-clicked", () => {
+    const onAction = vi.fn<NoteCardProps["onAction"]>();
+    render(<NoteCard {...props({ onAction })} />);
+
+    fireEvent.doubleClick(screen.getByText("First body"));
+
+    expect(onAction).toHaveBeenCalledWith({ type: "edit", noteId: "one" });
   });
 
   it("supports completion, deletion, copying, merging, and focus movement shortcuts", () => {

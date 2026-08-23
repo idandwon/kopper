@@ -66,7 +66,9 @@ describe("AccessibilityOnboarding", () => {
     expect(
       screen.getByRole("button", { name: "Continue without capture" }),
     ).toBeVisible();
-    expect(screen.getByText("Lifecycle: captured to completed")).toBeVisible();
+    expect(
+      screen.queryByText("Lifecycle: captured to completed"),
+    ).not.toBeInTheDocument();
     expect(
       globalThis.document.querySelector("[data-panel-drag-region]"),
     ).toHaveAttribute("aria-hidden", "true");

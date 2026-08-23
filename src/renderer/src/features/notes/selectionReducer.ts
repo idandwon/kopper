@@ -20,6 +20,7 @@ export type SelectionAction =
       sourceId?: string;
     }
   | { type: "context"; id: string; displayedIds: string[] }
+  | { type: "select-all"; displayedIds: string[] }
   | {
       type: "reconcile";
       displayedIds: string[];
@@ -137,6 +138,20 @@ export function selectionReducer(
             anchorId: action.id,
             selectedIds: [action.id],
           };
+
+    case "select-all": {
+      if (action.displayedIds.length === 0) return initialSelectionState;
+      const firstId = action.displayedIds[0];
+      return {
+        focusedId:
+          state.focusedId !== null &&
+          action.displayedIds.includes(state.focusedId)
+            ? state.focusedId
+            : firstId,
+        anchorId: firstId,
+        selectedIds: [...action.displayedIds],
+      };
+    }
 
     case "reconcile": {
       const visible = new Set(action.displayedIds);
