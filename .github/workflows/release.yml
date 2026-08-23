@@ -70,9 +70,11 @@ jobs:
           (cd release && shasum -a 256 "$dmg_name" > "$dmg_name.sha256")
           checksum_name="${dmg_name}.sha256"
           output="$GITHUB_OUTPUT"
-          printf 'dmg_path=release/%s\n' "$dmg_name" >> "$output"
-          printf 'checksum_path=release/%s\n' "$checksum_name" >> "$output"
-          printf 'installer_path=install.sh\n' >> "$output"
+          {
+            printf 'dmg_path=release/%s\n' "$dmg_name"
+            printf 'checksum_path=release/%s\n' "$checksum_name"
+            printf 'installer_path=install.sh\n'
+          } >> "$output"
 
       - name: Create draft GitHub Release
         env:
