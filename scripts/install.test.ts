@@ -21,19 +21,14 @@ type InstallerFailure =
   | "checksum-name"
   | "cleanup"
   | "dmg-download"
-  | "dmg-gatekeeper"
-  | "installed-codesign"
   | "launch"
-  | "mounted-codesign"
-  | "mounted-publisher"
   | "rollback-cleanup"
   | "rollback-move"
   | "replacement-move"
   | "signal"
   | "signal-after-install-move"
   | "signal-after-rollback-move"
-  | "signal-during-rollback-cleanup"
-  | "staged-gatekeeper";
+  | "signal-during-rollback-cleanup";
 
 type InstallerFixtureOptions = {
   bundleIdentifier?: string;
@@ -122,14 +117,7 @@ const command = basename(process.argv[1]);
 const args = process.argv.slice(2);
 const last = args.at(-1) || "";
 let marker = command;
-if (command === "spctl") {
-  marker = args.includes("open") ? "spctl-dmg"
-    : last.includes("/mount/") ? "spctl-mounted"
-    : last.includes(".install.") ? "spctl-staged" : "spctl-installed";
-} else if (command === "codesign") {
-  marker = last.includes("/mount/") ? "codesign-mounted"
-    : last.includes(".install.") ? "codesign-staged" : "codesign-installed";
-} else if (command === "hdiutil") {
+if (command === "hdiutil") {
   marker = args[0] === "attach" ? "hdiutil-attach" : "hdiutil-detach";
 } else if (command === "plutil") {
   marker = args.includes("CFBundleIdentifier") ? "plutil-identifier" : "plutil-version";
@@ -167,10 +155,6 @@ if (command === "uname") {
   process.stdout.write(configuration.temporaryDirectory + "\\n");
 } else if (command === "shasum") {
   if (configuration.failure === "checksum") process.exit(1);
-} else if (command === "spctl") {
-  if (configuration.failure === "dmg-gatekeeper" && marker === "spctl-dmg") process.exit(1);
-  if (configuration.failure === "staged-gatekeeper" && marker === "spctl-staged") process.exit(1);
-  if (configuration.failure === "mounted-publisher" && marker === "spctl-mounted") process.exit(1);
 } else if (command === "hdiutil") {
   if (args[0] === "attach") {
     const mountPoint = args[args.indexOf("-mountpoint") + 1];
@@ -197,14 +181,15 @@ if (command === "uname") {
     }
     rmSync(last, { recursive: true, force: true });
   }
-} else if (command === "codesign") {
-  if (configuration.failure === "mounted-codesign" && marker === "codesign-mounted") process.exit(1);
-  if (configuration.failure === "installed-codesign" && marker === "codesign-installed") process.exit(1);
-  if (configuration.failure === "signal" && marker === "codesign-staged") {
+} else if (command === "plutil") {
+  if (
+    configuration.failure === "signal" &&
+    last.includes(".install.") &&
+    args.includes("CFBundleShortVersionString")
+  ) {
     process.kill(process.ppid, "SIGTERM");
     process.exit(1);
   }
-} else if (command === "plutil") {
   if (args.includes("CFBundleIdentifier")) {
     process.stdout.write(configuration.bundleIdentifier + "\\n");
   } else if (args.includes("CFBundleShortVersionString")) {
@@ -248,44 +233,25 @@ if (command === "uname") {
 `;
 
   for (const command of [
-    "uname",
-    "sw_vers",
-    "id",
     "curl",
-    "hdiutil",
-    "shasum",
-    "codesign",
-    "spctl",
-    "plutil",
     "ditto",
+    "hdiutil",
+    "id",
+    "mktemp",
+    "mv",
     "open",
     "pgrep",
-    "mktemp",
+    "plutil",
+    "rm",
+    "shasum",
+    "sw_vers",
+    "uname",
   ]) {
     if (command === options.missingCommand) continue;
     const shimPath = join(bin, command);
     writeFileSync(shimPath, shim);
     chmodSync(shimPath, 0o755);
   }
-  if (
-    options.failure === "replacement-move" ||
-    options.failure === "rollback-move" ||
-    options.failure === "signal-after-install-move" ||
-    options.failure === "signal-after-rollback-move"
-  ) {
-    const shimPath = join(bin, "mv");
-    writeFileSync(shimPath, shim);
-    chmodSync(shimPath, 0o755);
-  }
-  if (
-    options.failure === "rollback-cleanup" ||
-    options.failure === "signal-during-rollback-cleanup"
-  ) {
-    const shimPath = join(bin, "rm");
-    writeFileSync(shimPath, shim);
-    chmodSync(shimPath, 0o755);
-  }
-
   const calls = (): InstallerCall[] => {
     try {
       return readFileSync(logPath, "utf8")
@@ -406,7 +372,11 @@ describe("verified transactional installation", { timeout: 30_000 }, () => {
     const result = fixture.run();
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("Kopper installed successfully.");
+    expect(result.stdout).toContain("Verifying Kopper download and application identity...");
+    expect(result.stdout).toContain("Kopper installed at");
+    expect(result.stdout).toContain("System Settings → Privacy & Security → Open Anyway");
+    expect(fixture.calls().map(({ command }) => command)).not.toContain("codesign");
+    expect(fixture.calls().map(({ command }) => command)).not.toContain("spctl");
     expect(fixture.installedMarker()).toBe("new-v0.1.0");
     expect(fixture.hasMountedImage()).toBe(false);
     expect(fixture.temporaryArtifacts()).toEqual([]);
@@ -429,15 +399,15 @@ describe("verified transactional installation", { timeout: 30_000 }, () => {
     }
     expectCallSubsequence(fixture.callsInOrder(), [
       "shasum",
-      "spctl-dmg",
       "hdiutil-attach",
-      "codesign-mounted",
-      "spctl-mounted",
+      "plutil-identifier",
+      "plutil-version",
       "ditto",
-      "codesign-staged",
-      "spctl-staged",
-      "codesign-installed",
-      "spctl-installed",
+      "plutil-identifier",
+      "plutil-version",
+      "mv",
+      "plutil-identifier",
+      "plutil-version",
       "hdiutil-detach",
       "open",
     ]);
@@ -454,44 +424,24 @@ describe("verified transactional installation", { timeout: 30_000 }, () => {
   });
 
   it.each([
-    {
-      description: "is not a directory",
-      options: { mountedAppType: "file" as const },
-    },
-    {
-      description: "is a directory symlink instead of a real directory",
-      options: { mountedAppType: "symlink" as const },
-    },
-    {
-      description: "has the wrong bundle identifier",
-      options: { bundleIdentifier: "com.example.not-kopper" },
-    },
-    {
-      description: "has a version that does not match the resolved release",
-      options: { bundleVersion: "9.9.9" },
-    },
-    {
-      description: "is rejected by Apple publisher assessment",
-      options: { failure: "mounted-publisher" as const },
-    },
-  ])("rejects a mounted Kopper.app that $description", ({ options }) => {
+    ["a non-directory app", { mountedAppType: "file" as const }],
+    ["a symlink app", { mountedAppType: "symlink" as const }],
+    ["a wrong bundle identifier", { bundleIdentifier: "com.attacker.app" }],
+    ["a wrong bundle version", { bundleVersion: "9.9.9" }],
+    ["multiple root applications", { mountedApps: ["Kopper.app", "Other.app"] }],
+  ])("rejects %s before replacing an existing app", (_description, options) => {
     const fixture = createInstallerFixture({ existingApp: "old", ...options });
     const result = fixture.run();
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain(
-      "The Kopper application on the disk image failed verification.",
-    );
     expect(fixture.installedMarker()).toBe("old");
+    expect(fixture.store()).toContain('"notes":[]');
     expect(fixture.temporaryArtifacts()).toEqual([]);
   });
 
   it("leaves the existing application untouched when verification fails", () => {
     for (const failure of [
       "checksum",
-      "dmg-gatekeeper",
-      "mounted-codesign",
-      "staged-gatekeeper",
     ] as const) {
       const fixture = createInstallerFixture({ failure, existingApp: "old" });
       expect(fixture.run().status, failure).toBe(1);
@@ -503,9 +453,7 @@ describe("verified transactional installation", { timeout: 30_000 }, () => {
   it("restores the previous application when replacement or final operations fail", () => {
     for (const failure of [
       "replacement-move",
-      "installed-codesign",
       "cleanup",
-      "launch",
     ] as const) {
       const fixture = createInstallerFixture({ failure, existingApp: "old" });
       expect(fixture.run().status, failure).toBe(1);
@@ -519,12 +467,25 @@ describe("verified transactional installation", { timeout: 30_000 }, () => {
     const result = fixture.run();
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("Kopper installed successfully.");
+    expect(result.stdout).toContain("Kopper installed at");
     expect(fixture.installedMarker()).toBe("new-v0.1.0");
     expect(fixture.callsInOrder()).toContain("open");
     expect(fixture.temporaryArtifacts()).toEqual([]);
     expect(fixture.sentinel()).toBe("preserve-me");
     expect(fixture.store()).toBe('{"schemaVersion":1,"notes":[]}\n');
+  });
+
+  it("keeps a verified upgrade when macOS blocks the best-effort first launch", () => {
+    const fixture = createInstallerFixture({ existingApp: "old", failure: "launch" });
+    const result = fixture.run();
+
+    expect(result.status).toBe(0);
+    expect(fixture.installedMarker()).toBe("new-v0.1.0");
+    expect(fixture.store()).toContain('"notes":[]');
+    expect(fixture.temporaryArtifacts()).toEqual([]);
+    expect(result.stdout).toContain("Kopper installed at");
+    expect(result.stdout).toContain("System Settings → Privacy & Security → Open Anyway");
+    expect(result.stderr).toContain("could not be opened automatically");
   });
 
   it.each([
@@ -595,7 +556,6 @@ describe("verified transactional installation", { timeout: 30_000 }, () => {
 
   it.each([
     { mountedApps: [], description: "zero" },
-    { mountedApps: ["Kopper.app", "Other.app"], description: "multiple" },
     { mountedApps: ["Other.app"], description: "wrongly named" },
   ])("rejects $description root-level application bundles", ({ mountedApps }) => {
     const fixture = createInstallerFixture({ existingApp: "old", mountedApps });

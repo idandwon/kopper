@@ -27,7 +27,7 @@ macos_version="$(sw_vers -productVersion)"
 [[ "$(version_major "$macos_version")" =~ ^[0-9]+$ ]] || fail "Could not determine the macOS version."
 (( $(version_major "$macos_version") >= 14 )) || fail "Kopper requires macOS 14 or newer."
 
-for command_name in curl hdiutil shasum codesign spctl plutil ditto open pgrep mktemp sw_vers; do
+for command_name in curl hdiutil shasum plutil ditto open pgrep mktemp sw_vers; do
   require_command "$command_name"
 done
 
@@ -54,7 +54,7 @@ transaction_phase="unmodified"
 transaction_updating=0
 signal_pending=0
 
-verify_app() {
+verify_app_identity() {
   local app_path="$1"
   local bundle_identifier=""
   local bundle_version=""
@@ -67,10 +67,7 @@ verify_app() {
   bundle_version="$(
     plutil -extract CFBundleShortVersionString raw -o - "${app_path}/Contents/Info.plist"
   )" || return 1
-  [[ "$bundle_version" == "$version" ]] || return 1
-
-  codesign --verify --deep --strict "$app_path" >/dev/null 2>&1 &&
-    spctl --assess --type execute "$app_path" >/dev/null 2>&1
+  [[ "$bundle_version" == "$version" ]]
 }
 
 cleanup_downloads() {
@@ -168,7 +165,7 @@ curl -fL --retry 3 --proto '=https' --tlsv1.2 \
   -o "${temporary_directory}/${checksum_name}" "${asset_base}/${checksum_name}" \
   || fail "Could not download ${checksum_name}."
 
-printf 'Verifying checksum and Apple signature...\n'
+printf 'Verifying Kopper download and application identity...\n'
 checksum_lines=()
 while IFS= read -r checksum_line || [[ -n "$checksum_line" ]]; do
   checksum_lines+=("$checksum_line")
@@ -184,10 +181,6 @@ checksum_hash="${checksum_lines[0]%% *}"
   shasum -a 256 -c "$checksum_name"
 ) >/dev/null || fail "The Kopper download checksum did not match."
 
-spctl --assess --type open --context context:primary-signature \
-  "${temporary_directory}/${dmg_name}" >/dev/null 2>&1 \
-  || fail "Gatekeeper rejected the Kopper disk image."
-
 mkdir -p "$mount_point"
 hdiutil attach -readonly -nobrowse -mountpoint "$mount_point" \
   "${temporary_directory}/${dmg_name}" >/dev/null \
@@ -202,7 +195,7 @@ shopt -u nullglob
 mounted_app="${mounted_apps[0]}"
 [[ "${mounted_app##*/}" == "Kopper.app" ]] \
   || fail "The Kopper disk image does not contain exactly one Kopper.app application."
-verify_app "$mounted_app" \
+verify_app_identity "$mounted_app" \
   || fail "The Kopper application on the disk image failed verification."
 
 pgrep -x Kopper >/dev/null 2>&1 &&
@@ -212,7 +205,7 @@ mkdir -p "$KOPPER_INSTALL_DIRECTORY"
 staged_target="${KOPPER_INSTALL_DIRECTORY}/.Kopper.app.install.$$"
 rollback_target="${KOPPER_INSTALL_DIRECTORY}/.Kopper.app.rollback.$$"
 ditto "$mounted_app" "$staged_target" || fail "Could not stage Kopper."
-verify_app "$staged_target" || fail "The staged Kopper application failed verification."
+verify_app_identity "$staged_target" || fail "The staged Kopper application failed verification."
 
 if [[ -e "$KOPPER_TARGET" ]]; then
   begin_transaction_update
@@ -242,17 +235,16 @@ else
 fi
 finish_transaction_update
 
-verify_app "$KOPPER_TARGET" || fail "The installed Kopper application failed verification."
+verify_app_identity "$KOPPER_TARGET" || fail "The installed Kopper application failed verification."
 cleanup_downloads || fail "Could not clean up the Kopper disk image."
 
 begin_transaction_update
-if open "$KOPPER_TARGET"; then
-  transaction_phase="committed"
-else
-  finish_transaction_update
-  fail "Kopper was installed but could not be launched."
-fi
+transaction_phase="committed"
 finish_transaction_update
+
+if ! open "$KOPPER_TARGET"; then
+  printf 'Kopper installer: Kopper was installed but could not be opened automatically.\n' >&2
+fi
 
 if [[ -n "$rollback_target" && -e "$rollback_target" ]]; then
   begin_transaction_update
@@ -265,4 +257,5 @@ if [[ -n "$rollback_target" && -e "$rollback_target" ]]; then
   finish_transaction_update
 fi
 
-printf 'Kopper installed successfully.\n'
+printf 'Kopper installed at %s.\n' "$KOPPER_TARGET"
+printf 'Kopper is an unsigned friends beta. If macOS blocks the first launch, open System Settings → Privacy & Security → Open Anyway for Kopper.\n'
