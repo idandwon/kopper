@@ -1,7 +1,7 @@
 # Kopper Public macOS Installer Design
 
 **Date:** 2026-08-23
-**Status:** Approved in design review; awaiting written-spec review
+**Status:** Approved
 
 ## 1. Purpose
 
