@@ -18,7 +18,7 @@
     "icons": "node scripts/build-icons.mjs",
     "package:dir": "pnpm package:unsigned",
     "package:unsigned": "pnpm build && electron-builder --mac dir --universal -c.mac.identity=null -c.mac.notarize=false",
-    "package:beta": "pnpm build && electron-builder --mac dmg --universal -c.mac.identity=null -c.mac.notarize=false",
+    "package:beta": "pnpm build && electron-builder --mac dmg --universal --publish never -c.mac.identity=null -c.mac.notarize=false",
     "verify:package": "node scripts/verify-package.mjs",
     "validate:release-docs": "node scripts/validate-release-doc-traceability.mjs"
   },
