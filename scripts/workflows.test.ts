@@ -5,6 +5,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -46,12 +47,29 @@ function job(workflow: string, name: string) {
 
 function releaseAssetArguments(workflow: string) {
   const create = step(workflow, "Create draft GitHub Release");
-  const command = create.slice(create.indexOf('gh release create "$GITHUB_REF_NAME"'));
-  return command
-    .slice(command.indexOf("\n") + 1, command.indexOf("--verify-tag"))
-    .split("\n")
-    .map((line) => line.trim().replace(/ \\$/u, ""))
-    .filter(Boolean);
+  const marker = 'gh release create "$GITHUB_REF_NAME"';
+  const commandStart = create.indexOf(marker);
+  expect(
+    commandStart,
+    "missing gh release create command",
+  ).toBeGreaterThanOrEqual(0);
+  const argumentsStart = commandStart + marker.length;
+  const flagsStart = create.indexOf("--verify-tag", argumentsStart);
+  expect(flagsStart, "missing gh release create flags").toBeGreaterThan(
+    argumentsStart,
+  );
+  const positionalArguments = create.slice(argumentsStart, flagsStart);
+  return (
+    positionalArguments.match(/"(?:[^"\\]|\\.)*"|'[^']*'|[^\s\\]+/gu) ?? []
+  );
+}
+
+function expectExactReleaseAssetArguments(workflow: string) {
+  expect(releaseAssetArguments(workflow)).toEqual([
+    '"$DMG_PATH"',
+    '"$CHECKSUM_PATH"',
+    '"$INSTALLER_PATH"',
+  ]);
 }
 
 function embeddedNodeScript(workflow: string, stepName: string, marker: string) {
@@ -72,6 +90,11 @@ interface CandidateFixtureOptions {
   assetDmg?: string;
   assetInstaller?: string;
   checkedOutCommit?: string;
+  downloadedAssetMutation?:
+    | "extra-file"
+    | "installer-directory"
+    | "installer-symlink"
+    | "missing-installer";
   expectedCommit?: string;
   expectedDmgSha256?: string;
   expectedReleaseDraft?: "true" | "false";
@@ -102,6 +125,23 @@ function runCandidateValidator(options: CandidateFixtureOptions = {}) {
     join(assetDirectory, installer),
     options.assetInstaller ?? "#!/bin/bash\nexit 0\n",
   );
+
+  switch (options.downloadedAssetMutation) {
+    case "extra-file":
+      writeFileSync(join(assetDirectory, "release-notes.txt"), "unexpected\n");
+      break;
+    case "installer-directory":
+      rmSync(join(assetDirectory, installer));
+      mkdirSync(join(assetDirectory, installer));
+      break;
+    case "installer-symlink":
+      rmSync(join(assetDirectory, installer));
+      symlinkSync(artifact, join(assetDirectory, installer));
+      break;
+    case "missing-installer":
+      rmSync(join(assetDirectory, installer));
+      break;
+  }
 
   const releaseJson = join(directory, "release.json");
   writeFileSync(
@@ -280,13 +320,18 @@ describe("workflow security semantics", () => {
   it("creates a draft from only the three staged asset arguments", () => {
     const createRelease = step(release, "Create draft GitHub Release");
     expect(createRelease).toContain('gh release create "$GITHUB_REF_NAME"');
-    expect(releaseAssetArguments(release)).toEqual([
-      '"$DMG_PATH"',
-      '"$CHECKSUM_PATH"',
-      '"$INSTALLER_PATH"',
-    ]);
+    expectExactReleaseAssetArguments(release);
     expect(createRelease).toContain("--draft");
     expect(createRelease).not.toContain("--draft=false");
+  });
+
+  it("rejects a fourth asset on the release-create command line", () => {
+    const mutated = release.replace(
+      'gh release create "$GITHUB_REF_NAME" \\',
+      'gh release create "$GITHUB_REF_NAME" "release-notes.txt" \\',
+    );
+
+    expect(() => expectExactReleaseAssetArguments(mutated)).toThrow();
   });
 
   it("publishes the staged installer only after matching the event Git object", () => {
@@ -421,6 +466,23 @@ describe("workflow security semantics", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain(message);
   });
+
+  it.each([
+    ["a missing downloaded asset", "missing-installer"],
+    ["an extra downloaded asset", "extra-file"],
+    ["a downloaded directory asset", "installer-directory"],
+    ["a downloaded symlink asset", "installer-symlink"],
+  ] as const)(
+    "rejects %s while the release metadata stays exact",
+    (_description, downloadedAssetMutation) => {
+      const result = runCandidateValidator({ downloadedAssetMutation });
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        "downloaded candidate does not contain the exact asset set",
+      );
+    },
+  );
 
   it.each([
     ["expected commit", { expectedCommit: "A".repeat(40) }],

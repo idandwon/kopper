@@ -11,8 +11,10 @@ Record the draft release URL and workflow URL, then the published release URL wh
 Confirm the operating system before each account's relevant procedure:
 
 ```bash
+bash <<'BASH'
 set -euo pipefail
 sw_vers
+BASH
 ```
 
 ## Pre-promotion draft acceptance
@@ -20,6 +22,7 @@ sw_vers
 Run this exact procedure in the first clean account. It downloads the three exact draft assets, but deliberately does **not** run the draft `install.sh`: its fixed `releases/latest` origin cannot address an unpublished draft. The temporary cleanup trap accepts only the two `mktemp` paths with the expected bounded prefixes and never removes a mounted directory.
 
 ```bash
+bash <<'BASH'
 set -euo pipefail
 
 TAG="v0.1.0"
@@ -27,25 +30,13 @@ VERSION="${TAG#v}"
 TEMP_ROOT="${TMPDIR:-/tmp}"
 TEMP_ROOT="${TEMP_ROOT%/}"
 test -d "$TEMP_ROOT"
-ASSET_DIRECTORY="$(mktemp -d "$TEMP_ROOT/kopper-draft.XXXXXX")"
-MOUNT_POINT="$(mktemp -d "$TEMP_ROOT/kopper-mount.XXXXXX")"
-STORE="$HOME/Library/Application Support/Kopper/kopper.json"
-TARGET="$HOME/Applications/Kopper.app"
+ASSET_DIRECTORY=""
+MOUNT_POINT=""
 mounted=0
-
-case "$ASSET_DIRECTORY" in
-  "$TEMP_ROOT"/kopper-draft.*) ;;
-  *) echo "Unexpected draft asset path." >&2; exit 1 ;;
-esac
-case "$MOUNT_POINT" in
-  "$TEMP_ROOT"/kopper-mount.*) ;;
-  *) echo "Unexpected mount path." >&2; exit 1 ;;
-esac
-
 cleanup() {
   cleanup_status=$?
   trap - EXIT HUP INT TERM
-  if [[ "$mounted" = "1" ]]; then
+  if [[ -n "$MOUNT_POINT" && "$mounted" = "1" ]]; then
     if hdiutil detach "$MOUNT_POINT"; then
       mounted=0
     else
@@ -53,19 +44,39 @@ cleanup() {
     fi
   fi
   if [[ "$mounted" = "0" ]]; then
-    if [[ -d "$MOUNT_POINT" ]]; then
-      rmdir -- "$MOUNT_POINT" 2>/dev/null || true
-    fi
+    case "$MOUNT_POINT" in
+      "$TEMP_ROOT"/kopper-mount.*)
+        if [[ -d "$MOUNT_POINT" ]]; then
+          rmdir -- "$MOUNT_POINT" 2>/dev/null || true
+        fi
+        ;;
+      "") ;;
+      *) echo "Cleanup preserved an unexpected mount path." >&2 ;;
+    esac
     if [[ -d "$ASSET_DIRECTORY" ]]; then
       rm -rf -- "$ASSET_DIRECTORY"
     fi
   fi
   exit "$cleanup_status"
 }
+
+ASSET_DIRECTORY="$(mktemp -d "$TEMP_ROOT/kopper-draft.XXXXXX")"
+case "$ASSET_DIRECTORY" in
+  "$TEMP_ROOT"/kopper-draft.*) ;;
+  *) echo "Unexpected draft asset path." >&2; exit 1 ;;
+esac
 trap cleanup EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+MOUNT_POINT="$(mktemp -d "$TEMP_ROOT/kopper-mount.XXXXXX")"
+case "$MOUNT_POINT" in
+  "$TEMP_ROOT"/kopper-mount.*) ;;
+  *) echo "Unexpected mount path." >&2; exit 1 ;;
+esac
+STORE="$HOME/Library/Application Support/Kopper/kopper.json"
+TARGET="$HOME/Applications/Kopper.app"
 
 test ! -e "$STORE"
 test ! -e "$TARGET"
@@ -133,6 +144,7 @@ else
   launch_status=$?
 fi
 printf 'Initial open command exit status: %s\n' "$launch_status"
+BASH
 ```
 
 The two architecture assertions must print exactly `arm64 x86_64`. The `open` status is evidence, but even status 0 does not prove the visible Gatekeeper result. Complete the observation through Finder: open `~/Applications/Kopper.app`; if macOS blocks it, open **System Settings → Privacy & Security** and choose **Open Anyway** once for Kopper. Record the direct or Open Anyway result and never use a shell security bypass.
@@ -144,6 +156,7 @@ The trap removes only the validated temporary paths after detaching the image. I
 After explicit approval promotes the exact draft, use a second clean standard account. This is the first point at which `releases/latest` can resolve the immutable release. The following self-contained block proves the application and store are both absent before creating the inert store fixture, propagates either side of a pipeline failure, records the installer status, and validates the installed bundle:
 
 ```bash
+bash <<'BASH'
 set -euo pipefail
 
 TAG="v0.1.0"
@@ -183,11 +196,13 @@ assert_exact_architectures() {
 }
 assert_exact_architectures "$APP/Contents/MacOS/Kopper"
 assert_exact_architectures "$APP/Contents/Resources/app.asar.unpacked/node_modules/uiohook-napi/build/Release/uiohook_napi.node"
+BASH
 ```
 
 The canonical installer must leave no exact versioned Kopper DMG mounted and no staging or rollback artifact. This structured check examines every `hdiutil` image before it bounds reported matches; its trap removes only the validated `mktemp` directory:
 
 ```bash
+bash <<'BASH'
 set -euo pipefail
 
 TAG="v0.1.0"
@@ -196,11 +211,7 @@ EXPECTED_DMG="Kopper-${VERSION}-universal.dmg"
 TEMP_ROOT="${TMPDIR:-/tmp}"
 TEMP_ROOT="${TEMP_ROOT%/}"
 test -d "$TEMP_ROOT"
-MOUNT_CHECK_DIRECTORY="$(mktemp -d "$TEMP_ROOT/kopper-mount-check.XXXXXX")"
-case "$MOUNT_CHECK_DIRECTORY" in
-  "$TEMP_ROOT"/kopper-mount-check.*) ;;
-  *) echo "Unexpected mount-check path." >&2; exit 1 ;;
-esac
+MOUNT_CHECK_DIRECTORY=""
 cleanup_mount_check() {
   cleanup_status=$?
   trap - EXIT HUP INT TERM
@@ -209,6 +220,12 @@ cleanup_mount_check() {
   fi
   exit "$cleanup_status"
 }
+
+MOUNT_CHECK_DIRECTORY="$(mktemp -d "$TEMP_ROOT/kopper-mount-check.XXXXXX")"
+case "$MOUNT_CHECK_DIRECTORY" in
+  "$TEMP_ROOT"/kopper-mount-check.*) ;;
+  *) echo "Unexpected mount-check path." >&2; exit 1 ;;
+esac
 trap cleanup_mount_check EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
@@ -268,11 +285,13 @@ done < <(
     -print0
 )
 test "${#installer_artifacts[@]}" -eq 0
+BASH
 ```
 
 Launch Kopper and, while it is running, execute this refusal block. It records the expected nonzero pipeline status, proves the application bytes did not change, and uses only a validated temporary snapshot directory:
 
 ```bash
+bash <<'BASH'
 set -euo pipefail
 
 APP="$HOME/Applications/Kopper.app"
@@ -281,11 +300,7 @@ test ! -L "$APP"
 TEMP_ROOT="${TMPDIR:-/tmp}"
 TEMP_ROOT="${TEMP_ROOT%/}"
 test -d "$TEMP_ROOT"
-SNAPSHOT_DIRECTORY="$(mktemp -d "$TEMP_ROOT/kopper-running-refusal.XXXXXX")"
-case "$SNAPSHOT_DIRECTORY" in
-  "$TEMP_ROOT"/kopper-running-refusal.*) ;;
-  *) echo "Unexpected refusal snapshot path." >&2; exit 1 ;;
-esac
+SNAPSHOT_DIRECTORY=""
 cleanup_snapshot() {
   cleanup_status=$?
   trap - EXIT HUP INT TERM
@@ -294,6 +309,12 @@ cleanup_snapshot() {
   fi
   exit "$cleanup_status"
 }
+
+SNAPSHOT_DIRECTORY="$(mktemp -d "$TEMP_ROOT/kopper-running-refusal.XXXXXX")"
+case "$SNAPSHOT_DIRECTORY" in
+  "$TEMP_ROOT"/kopper-running-refusal.*) ;;
+  *) echo "Unexpected refusal snapshot path." >&2; exit 1 ;;
+esac
 trap cleanup_snapshot EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
@@ -316,11 +337,13 @@ else
 fi
 sed -n '1,20p' "$DIFF_OUTPUT"
 test "$diff_status" -eq 0
+BASH
 ```
 
 Quit Kopper, then execute the successful upgrade as a separate self-contained block. It records and asserts the expected zero status and preserves the inert store hash:
 
 ```bash
+bash <<'BASH'
 set -euo pipefail
 
 APP="$HOME/Applications/Kopper.app"
@@ -339,6 +362,7 @@ test "$upgrade_status" -eq 0
 test -d "$APP"
 test ! -L "$APP"
 test "$(shasum -a 256 "$STORE" | awk '{print $1}')" = "$STORE_BEFORE"
+BASH
 ```
 
 If the installed app is blocked on first launch, use the documented **Open Anyway** action once; do not use a shell security bypass. Retain the printed initial-launch, canonical-install, structured-mount, running-refusal, and post-quit statuses in the bounded evidence.

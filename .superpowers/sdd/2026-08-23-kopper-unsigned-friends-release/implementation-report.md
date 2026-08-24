@@ -20,7 +20,7 @@ Implemented the approved unsigned friends-beta installer and release path plus t
 - A fresh `publish_draft` job has `contents: write` plus `environment: release`. It uses pinned official actions and trusted inline shell/Node only, validates exact regular files/checksum/installer bytes against `git show "$GITHUB_SHA:install.sh"`, rechecks the remote tag, and creates the draft without executing candidate code.
 - Manual promotion requires `tag`, `expected_commit`, and `expected_dmg_sha256`. It validates exact format, checkout/tag/package/remote identity, draft state, assets, installer bytes, checksum, and DMG hash; rechecks the remote tag immediately before publication; then freshly downloads and validates the same asset set/hash together with `isImmutable: true`.
 - Package verification rejects a bundle whose `CFBundleShortVersionString` differs from the exact repository package version.
-- The six physical acceptance Bash blocks are self-contained and strict, validate clean-account preconditions, use bounded temporary cleanup, assert exact app/architecture sets, and explicitly capture launch/install/refusal statuses without hiding `curl | bash` failures.
+- Each of the six physical acceptance Bash fences launches its own explicit `bash <<'BASH'` child process, so variables, functions, options, and traps cannot leak between pasted blocks and successful completion runs that child's `EXIT` cleanup. Blocks that allocate temporary paths arm cleanup immediately after the first path is validated. The blocks also validate clean-account preconditions, use bounded cleanup, assert exact app/architecture sets, and explicitly capture launch/install/refusal statuses without hiding `curl | bash` failures.
 
 ## TDD evidence
 
@@ -45,6 +45,15 @@ Implemented the approved unsigned friends-beta installer and release path plus t
 | `pnpm audit:deps` | Exit 0: no known vulnerabilities found. |
 | `pnpm audit:source` | Exit 0: 105 source files checked, no failures. |
 | `git diff --check 0d6070ac7b3741cdad4cc6d5886caa305524dc29..HEAD` | Exit 0 with no output after the final-review source commit. |
+
+## Additional authorized residual pass
+
+The scoped re-review found two remaining test/documentation gaps and authorized only these corrections:
+
+- Workflow RED: `pnpm exec vitest run scripts/workflows.test.ts` exited 1 with exactly 5 failed and 34 passed. The first-line fourth release asset was discarded by the parser, while missing, extra, directory, and symlink download mutations were not yet applied to the physical fixture.
+- Workflow GREEN: the release-create parser now examines positional content on the command's first line as well as continuation lines. The executable candidate fixture can independently mutate the downloaded filesystem while leaving release JSON metadata exact. The same focused command exits 0 with 39 of 39 tests passing.
+- Manual procedure: all six executable fences now invoke isolated child Bash processes. The three blocks that allocate temporary paths define cleanup first and install the `EXIT` trap immediately after the first allocation passes its prefix validation, so successful pasted blocks run cleanup on child-process exit.
+- Fresh residual verification: workflow tests passed 39/39; release-document traceability passed with 91 canonical rows in 2 records; actionlint exited 0; all six isolated fences passed `bash -n`; and the full suite passed 68 files and 819 tests.
 
 ## Self-review and remaining concerns
 
