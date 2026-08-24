@@ -275,6 +275,10 @@ describe("workflow security semantics", () => {
     expect(packageJson.scripts["package:beta"]).toContain("--publish never");
   });
 
+  it("omits automatic-updater configuration from friends-beta packages", () => {
+    expect(packageJson.scripts["package:beta"]).toContain("-c.publish=null");
+  });
+
   it("isolates candidate execution from the protected draft publisher", () => {
     const build = job(release, "build_candidate");
     const publish = job(release, "publish_draft");
