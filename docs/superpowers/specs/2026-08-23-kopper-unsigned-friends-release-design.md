@@ -44,23 +44,18 @@ The repository's immutable-release setting remains enabled. Release creation rem
 
 No Apple credential or signing secret is read by the unsigned release path. Existing credentialed release code may be removed if it has no remaining caller; it must not remain as the documented or default path.
 
+Draft acceptance records two immutable promotion inputs: the exact 40-character lowercase release commit SHA and the exact 64-character lowercase DMG SHA-256. Manual promotion requires both values in addition to the exact tag and rejects any later commit, tag movement, or asset replacement.
+
 ## 4. Packaging and Publication
 
-The tag-triggered workflow runs on macOS and:
+The tag-triggered workflow uses two isolated macOS jobs:
 
-1. checks out the exact pushed tag;
-2. installs locked dependencies;
-3. validates tag/package-version equality;
-4. runs the existing test, type, build, E2E, dependency-audit, and source-audit gates;
-5. builds the universal DMG with signing identity disabled and notarization disabled;
-6. verifies package metadata, architectures, bundle identifier, and minimum macOS version without requiring an Apple signature or notarization ticket;
-7. creates the exact SHA-256 file;
-8. syntax-checks and uploads the exact tagged `install.sh`;
-9. creates a draft GitHub Release with exactly the three required assets.
+1. An unprivileged build job with only `contents: read` checks out the exact event commit, installs locked dependencies, validates tag/package-version equality, runs the existing test, type, build, E2E, dependency-audit, and source-audit gates, builds with signing identity and notarization disabled, verifies package metadata including exact bundle version and architectures, creates the SHA-256 file, syntax-checks the tagged installer, and uploads one staged directory containing exactly the three release assets.
+2. A fresh protected draft-publication job with `contents: write` and the `release` environment downloads that workflow artifact. It runs no dependency install, package script, or repository script. Trusted inline workflow logic checks the exact regular-file set and checksum, compares `install.sh` byte-for-byte with `git show "$GITHUB_SHA:install.sh"`, confirms the remote tag still resolves to `GITHUB_SHA`, and only then creates the draft.
 
-The release environment may remain as an operational boundary, but it requires no secrets for this path.
+The release environment requires no secrets for this path.
 
-Promotion downloads and revalidates the exact three assets, compares `install.sh` byte-for-byte with the tagged checkout, validates the checksum, publishes the draft, and verifies `isImmutable: true`. Signed/notarized acceptance rows must not block an explicitly unsigned beta. The unsigned beta contract gets its own focused acceptance evidence instead of falsely marking Apple-signing checks as passed.
+Promotion accepts required `tag`, `expected_commit`, and `expected_dmg_sha256` inputs. It runs no Corepack, dependency install, package script, or repository script. Trusted inline workflow logic validates the input formats, exact package/tag/commit equality, current remote tag, exact draft assets, installer bytes from the accepted Git object, checksum, and downloaded DMG digest before publication. It rechecks the remote tag immediately before publishing, then freshly re-downloads and revalidates the exact asset set, installer, accepted DMG digest, draft state, and `isImmutable: true`. Signed/notarized acceptance rows must not block an explicitly unsigned beta. The unsigned beta contract gets its own focused acceptance evidence instead of falsely marking Apple-signing checks as passed.
 
 ## 5. Installer Behavior
 

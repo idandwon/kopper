@@ -4,7 +4,7 @@
 
 **Goal:** Publish a checksum-verified, unsigned universal Kopper DMG that friends can install from `idandwon/kopper` with the existing one-line curl command and approve once through macOS Open Anyway when required.
 
-**Architecture:** Keep the existing fixed-origin, transactional installer and GitHub immutable-release controls, but replace Apple trust checks with strict product-identity checks and make first launch best-effort after transaction commit. The tag workflow builds an explicitly unsigned/unnotarized universal DMG and creates an exact three-asset draft; a separate manually approved workflow revalidates and immutably publishes that draft.
+**Architecture:** Keep the existing fixed-origin, transactional installer and GitHub immutable-release controls, but replace Apple trust checks with strict product-identity checks and make first launch best-effort after transaction commit. The tag workflow isolates candidate execution in a `contents: read` build job, then a fresh protected `contents: write` job uses only trusted inline validation to create the exact three-asset draft. A separate manually approved workflow binds publication to the accepted commit and DMG hash, executes no repository/package code, and revalidates the immutable release after publication.
 
 **Tech Stack:** Bash, Electron 38, electron-builder, Node.js 24, TypeScript, Vitest, Playwright, GitHub Actions, GitHub CLI.
 
@@ -20,10 +20,21 @@
 - Accept only exact `v<major>.<minor>.<patch>` tags, bundle identifier `com.kopper.app`, and a bundle version equal to the release version.
 - Each release has exactly `Kopper-<version>-universal.dmg`, `Kopper-<version>-universal.dmg.sha256`, and `install.sh`.
 - Keep draft-first publication, byte-for-byte tagged installer comparison, SHA-256 validation, and post-publication `isImmutable: true` enforcement.
+- Record the accepted exact 40-character lowercase commit SHA and 64-character lowercase DMG SHA-256 during draft acceptance; require both as manual-promotion inputs.
+- Candidate code may execute only in the unprivileged tag-build job. The protected draft-publication and promotion jobs may run pinned official actions and trusted inline workflow shell/Node only, never Corepack, dependency installs, package scripts, or repository scripts.
 - Preserve transactional upgrade rollback through installed-bundle verification and cleanup; commit before attempting first launch.
 - `open` is best-effort after commit: its failure must leave the new app installed, clean bounded artifacts, print Open Anyway guidance, and return success.
 - Preserve the existing 91-row signed-release traceability record as historical evidence; do not relabel unrun signing or notarization checks as passed.
 - Do not publish an immutable release without a fresh explicit user approval after the draft and physical unsigned-beta evidence have been inspected.
+
+## Final-review release-boundary amendment
+
+This amendment is authoritative for Tasks 2, 3, 4, and 6. The earlier workflow and physical-command snippets in those tasks document the initial implementation sequence but are not current operational instructions.
+
+- `.github/workflows/release.yml` uses isolated `build_candidate` and `publish_draft` jobs. Only the build job executes candidate code, with `contents: read` and no release environment. The protected publisher downloads the exact staged workflow artifact, checks the event Git objects and remote tag, and creates the draft without executing repository code.
+- `.github/workflows/promote-release.yml` requires `tag`, `expected_commit`, and `expected_dmg_sha256`. Draft acceptance is the source of the latter two values.
+- Promotion validates formats and exact commit/tag/package/asset/installer/hash identity, rechecks the remote tag immediately before publication, then freshly downloads and validates the same asset set and hash together with `isImmutable: true`.
+- The executable physical procedure is `tests/manual/macos-installer.md`; every Bash block there is self-contained, strict, status-recording, and bounded in its temporary cleanup.
 
 ---
 
@@ -39,9 +50,10 @@
 - Modify `package.json`: replace the credentialed `package:release` entry with the self-contained `package:beta` unsigned universal-DMG command.
 - Delete `scripts/release.mjs`: remove the uncalled Apple-credentialed release orchestrator.
 - Delete `scripts/release.test.ts`: remove tests for the deleted credentialed orchestrator.
-- Modify `.github/workflows/release.yml`: run all release gates, build and verify the unsigned DMG, and create an exact three-asset draft without Apple secrets.
-- Modify `.github/workflows/promote-release.yml`: retain exact candidate verification and immutable publication while removing the incompatible signed-evidence gate.
-- Modify `scripts/workflows.test.ts`: assert unsigned build flags, absent Apple credentials, exact assets, draft-first behavior, and immutable promotion.
+- Modify `scripts/verify-package.mjs` and `scripts/verify-package.test.ts`: require `CFBundleShortVersionString` to equal the exact repository package version.
+- Modify `.github/workflows/release.yml`: run candidate gates with `contents: read`, upload an exact three-file artifact, and create the draft only from a fresh protected non-executing publication job.
+- Modify `.github/workflows/promote-release.yml`: require accepted commit/hash inputs and revalidate the exact candidate before and after immutable publication without executing candidate code.
+- Modify `scripts/workflows.test.ts`: execute positive/negative inline candidate-validation fixtures and assert job isolation, exact assets, accepted inputs, remote-tag checks, and immutable re-download.
 
 ### User and release documentation
 
@@ -258,7 +270,9 @@ git commit -m "feat: install unsigned Kopper beta safely"
 
 ---
 
-### Task 2: Replace the Credentialed Release Runner with an Unsigned Draft Workflow
+### Task 2: Historical initial unsigned-draft implementation sequence
+
+> Superseded by the final-review release-boundary amendment above. Retained only to explain the original RED/GREEN sequence; do not use the workflow snippets below as current implementation or operational instructions.
 
 **Files:**
 - Modify: `scripts/workflows.test.ts`
@@ -431,7 +445,9 @@ git commit -m "feat: build unsigned friends beta drafts"
 
 ---
 
-### Task 3: Decouple Promotion from Historical Signed-Release Evidence
+### Task 3: Historical initial promotion-decoupling sequence
+
+> Superseded by the final-review release-boundary amendment above. Retained only to explain the original RED/GREEN sequence; current promotion requires the accepted commit and DMG hash and executes the embedded trusted validator instead of the source-text-only checks below.
 
 **Files:**
 - Modify: `scripts/workflows.test.ts`
@@ -536,7 +552,9 @@ git commit -m "fix: promote inspected unsigned release drafts"
 
 ---
 
-### Task 4: Replace Active Release Documentation with Honest Unsigned-Beta Guidance
+### Task 4: Historical initial unsigned-beta documentation sequence
+
+> Superseded by the final-review release-boundary amendment above. The current copy is in `README.md`, and the only executable physical acceptance instructions are the strict blocks in `tests/manual/macos-installer.md`; do not execute the earlier sample block retained below.
 
 **Files:**
 - Modify: `README.md`
@@ -894,6 +912,7 @@ Expected: the tag points at the exact clean, CI-green package-version commit. Do
 
 ```bash
 release_sha="$(git rev-list -n 1 v0.1.0)"
+[[ "$release_sha" =~ ^[0-9a-f]{40}$ ]]
 release_run_id=""
 for attempt in {1..12}; do
   release_run_id="$(
@@ -910,16 +929,23 @@ gh release view v0.1.0 --repo idandwon/kopper \
   --json tagName,isDraft,isImmutable,assets,url
 draft_directory="$(mktemp -d "${TMPDIR:-/tmp}/kopper-v0.1.0-draft.XXXXXX")"
 gh release download v0.1.0 --repo idandwon/kopper --dir "$draft_directory"
-find "$draft_directory" -maxdepth 1 -type f -print
+test "$(find "$draft_directory" -mindepth 1 -maxdepth 1 -type f | wc -l | tr -d ' ')" = "3"
+test -f "$draft_directory/Kopper-0.1.0-universal.dmg"
+test -f "$draft_directory/Kopper-0.1.0-universal.dmg.sha256"
+test -f "$draft_directory/install.sh"
 (cd "$draft_directory" && shasum -a 256 -c Kopper-0.1.0-universal.dmg.sha256)
-cmp "$draft_directory/install.sh" install.sh
+release_dmg_sha256="$(shasum -a 256 "$draft_directory/Kopper-0.1.0-universal.dmg" | awk '{print $1}')"
+[[ "$release_dmg_sha256" =~ ^[0-9a-f]{64}$ ]]
+cmp "$draft_directory/install.sh" <(git show "$release_sha:install.sh")
+printf 'Accepted expected_commit=%s\n' "$release_sha"
+printf 'Accepted expected_dmg_sha256=%s\n' "$release_dmg_sha256"
 ```
 
 Expected: one draft with exactly the three required assets; checksum and installer comparison pass. Preserve the temporary directory until physical acceptance finishes, then move it to Trash or remove only that exact validated path.
 
 - [ ] **Step 6: Execute pre-promotion unsigned physical acceptance**
 
-Copy `docs/releases/installer-acceptance-template.md` to `docs/releases/v0.1.0-unsigned-beta-acceptance.md`. Run UNSIGNED-01 through UNSIGNED-03 from `tests/manual/macos-installer.md` on a clean macOS 14+ standard account using the downloaded draft DMG. Record exact release run, commit, asset names, checksum, machine/macOS bounds, direct-or-Open-Anyway launch result, and store-preservation evidence.
+Copy `docs/releases/installer-acceptance-template.md` to `docs/releases/v0.1.0-unsigned-beta-acceptance.md`. Run UNSIGNED-01 through UNSIGNED-03 from `tests/manual/macos-installer.md` on a clean macOS 14+ standard account using the downloaded draft DMG. Record exact release run, asset names, machine/macOS bounds, direct-or-Open-Anyway launch result, store-preservation evidence, and the accepted `expected_commit=$release_sha` and `expected_dmg_sha256=$release_dmg_sha256` values.
 
 Commit and push only the evidence record and implementation-report update:
 
@@ -934,20 +960,29 @@ The tag remains at the tested release source commit; the later evidence commit d
 
 - [ ] **Step 7: Stop and request explicit publication approval**
 
-Report the exact tag, release-source commit, workflow URL, draft URL, three assets, SHA-256, physical test machine/macOS, UNSIGNED-01 through UNSIGNED-03 results, and all remaining concerns. Ask for explicit approval to publish `v0.1.0` through **Promote Release**. Do not dispatch the promotion workflow in the same turn as this report.
+Report the exact tag, release-source commit, workflow URL, draft URL, three assets, SHA-256, physical test machine/macOS, UNSIGNED-01 through UNSIGNED-03 results, and all remaining concerns. State the exact `expected_commit` and `expected_dmg_sha256` values that approval will bind. Ask for explicit approval to publish `v0.1.0` through **Promote Release**. Do not dispatch the promotion workflow in the same turn as this report.
 
 - [ ] **Step 8: After fresh approval, publish and verify immutability**
 
 Only after the user explicitly approves the inspected draft:
 
 ```bash
-gh workflow run promote-release.yml --repo idandwon/kopper -f tag=v0.1.0
+promotion_tag="v0.1.0"
+expected_commit="<paste accepted 40-character lowercase commit from the acceptance record>"
+expected_dmg_sha256="<paste accepted 64-character lowercase DMG SHA-256 from the acceptance record>"
+[[ "$expected_commit" =~ ^[0-9a-f]{40}$ ]]
+[[ "$expected_dmg_sha256" =~ ^[0-9a-f]{64}$ ]]
+promotion_workflow_sha="$(git rev-parse origin/main)"
+gh workflow run promote-release.yml --repo idandwon/kopper \
+  -f tag="$promotion_tag" \
+  -f expected_commit="$expected_commit" \
+  -f expected_dmg_sha256="$expected_dmg_sha256"
 promotion_run_id=""
 for attempt in {1..12}; do
   promotion_run_id="$(
     gh run list --repo idandwon/kopper --workflow promote-release.yml \
       --json databaseId,headSha \
-      --jq ".[] | select(.headSha == \"$release_sha\") | .databaseId" | head -1
+      --jq ".[] | select(.headSha == \"$promotion_workflow_sha\") | .databaseId" | head -1
   )"
   test -z "$promotion_run_id" || break
   sleep 5

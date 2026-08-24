@@ -8,6 +8,14 @@ name: Promote Release
         description: Exact draft release tag to promote (for example v0.1.0)
         required: true
         type: string
+      expected_commit:
+        description: Exact accepted 40-character lowercase release commit SHA
+        required: true
+        type: string
+      expected_dmg_sha256:
+        description: Exact accepted 64-character lowercase DMG SHA-256
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -27,107 +35,294 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Set up Node.js 24
-        # actions/setup-node v4 => 49933ea5288caeca8642d1e84afbd3f7d6820020
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: 24
-
-      - name: Enable Corepack
-        run: corepack enable
-
-      - name: Install dependencies from lockfile
-        run: pnpm install --frozen-lockfile
-
       - name: Verify exact tag version and commit
         id: candidate
         env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          EXPECTED_DMG_SHA256: ${{ inputs.expected_dmg_sha256 }}
           INPUT_TAG: ${{ inputs.tag }}
         run: |
           if [[ ! "$INPUT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Promotion requires an exact v<major>.<minor>.<patch> tag." >&2
             exit 1
           fi
+          if [[ ! "$EXPECTED_COMMIT" =~ ^([0-9a-f]{40})$ ]]; then
+            echo "Promotion expected_commit format must be 40 lowercase hexadecimal characters." >&2
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_DMG_SHA256" =~ ^([0-9a-f]{64})$ ]]; then
+            echo "Promotion expected_dmg_sha256 format must be 64 lowercase hexadecimal characters." >&2
+            exit 1
+          fi
           version="${INPUT_TAG#v}"
-          package_version="$(node -p "require('./package.json').version")"
-          test "$package_version" = "$version"
-          commit="$(git rev-parse HEAD)"
-          tag_commit="$(git rev-list -n 1 "$INPUT_TAG")"
-          test "$commit" = "$tag_commit"
+          checked_out_commit="$(git rev-parse 'HEAD^{commit}')"
+          tag_commit="$(git rev-parse "${INPUT_TAG}^{commit}")"
+          test "$checked_out_commit" = "$EXPECTED_COMMIT"
+          test "$tag_commit" = "$EXPECTED_COMMIT"
           test "$(git describe --tags --exact-match HEAD)" = "$INPUT_TAG"
+          package_json="$RUNNER_TEMP/kopper-package.json"
+          git show "$EXPECTED_COMMIT:package.json" > "$package_json"
+          package_version="$(
+            node -e '
+              const { readFileSync } = require("node:fs");
+              const value = JSON.parse(readFileSync(process.argv[1], "utf8")).version;
+              if (typeof value !== "string") process.exit(1);
+              process.stdout.write(value);
+            ' "$package_json"
+          )"
+          test "$package_version" = "$version"
           artifact="Kopper-${version}-universal.dmg"
           checksum="${artifact}.sha256"
-          installer="install.sh"
           {
-            printf 'version=%s\n' "$version"
-            printf 'tag=%s\n' "$INPUT_TAG"
-            printf 'commit=%s\n' "$commit"
             printf 'artifact=%s\n' "$artifact"
+            printf 'checked_out_commit=%s\n' "$checked_out_commit"
             printf 'checksum=%s\n' "$checksum"
-            printf 'installer=%s\n' "$installer"
+            printf 'installer=install.sh\n'
+            printf 'package_version=%s\n' "$package_version"
+            printf 'tag_commit=%s\n' "$tag_commit"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Prepare trusted candidate validator
+        run: |
+          validator="$RUNNER_TEMP/validate-release-candidate.cjs"
+          umask 077
+          cat > "$validator" <<'VALIDATE_CANDIDATE'
+          const { createHash } = require("node:crypto");
+          const { readFileSync, readdirSync } = require("node:fs");
+          const { join } = require("node:path");
+
+          const [releasePath, assetDirectory, taggedInstallerPath] = process.argv.slice(2);
+          const {
+            CHECKED_OUT_COMMIT,
+            EXPECTED_COMMIT,
+            EXPECTED_DMG_SHA256,
+            EXPECTED_RELEASE_DRAFT,
+            INPUT_TAG,
+            PACKAGE_VERSION,
+            REMOTE_TAG_COMMIT,
+            REQUIRE_IMMUTABLE,
+            TAG_COMMIT,
+          } = process.env;
+          const errors = [];
+          const fail = (message) => errors.push(message);
+
+          if (!/^v[0-9]+\.[0-9]+\.[0-9]+$/.test(INPUT_TAG ?? "")) {
+            fail("input tag format is invalid");
+          }
+          if (!/^[0-9a-f]{40}$/.test(EXPECTED_COMMIT ?? "")) {
+            fail("expected commit format is invalid");
+          }
+          if (!/^[0-9a-f]{64}$/.test(EXPECTED_DMG_SHA256 ?? "")) {
+            fail("expected DMG SHA-256 format is invalid");
+          }
+          if (!["true", "false"].includes(EXPECTED_RELEASE_DRAFT ?? "")) {
+            fail("expected draft state format is invalid");
+          }
+          if (!["true", "false"].includes(REQUIRE_IMMUTABLE ?? "")) {
+            fail("required immutable state format is invalid");
+          }
+
+          const version = INPUT_TAG?.slice(1) ?? "";
+          const artifact = `Kopper-${version}-universal.dmg`;
+          const checksum = `${artifact}.sha256`;
+          const installer = "install.sh";
+          const expectedAssets = [artifact, checksum, installer].sort();
+          let release = {};
+          try {
+            release = JSON.parse(readFileSync(releasePath, "utf8"));
+          } catch {
+            fail("release metadata is not valid JSON");
+          }
+          const releaseAssets = Array.isArray(release.assets)
+            ? release.assets.map(({ name }) => name).sort()
+            : [];
+          if (release.tagName !== INPUT_TAG) fail("release tag does not match input tag");
+          if (release.isDraft !== (EXPECTED_RELEASE_DRAFT === "true")) {
+            fail("release draft state does not match the required draft state");
+          }
+          if (
+            REQUIRE_IMMUTABLE === "true" &&
+            release.isImmutable !== true
+          ) {
+            fail("published release is not immutable");
+          }
+          if (JSON.stringify(releaseAssets) !== JSON.stringify(expectedAssets)) {
+            fail("release metadata does not contain the exact asset set");
+          }
+
+          if (
+            CHECKED_OUT_COMMIT !== EXPECTED_COMMIT ||
+            TAG_COMMIT !== EXPECTED_COMMIT
+          ) {
+            fail("checked-out tag does not match the expected commit");
+          }
+          if (REMOTE_TAG_COMMIT !== EXPECTED_COMMIT) {
+            fail("remote tag does not match the expected commit");
+          }
+          if (PACKAGE_VERSION !== version) {
+            fail("package version does not match the exact tag version");
+          }
+
+          let entries = [];
+          try {
+            entries = readdirSync(assetDirectory, { withFileTypes: true });
+          } catch {
+            fail("downloaded asset directory cannot be read");
+          }
+          const downloadedAssets = entries.map((entry) => entry.name).sort();
+          if (
+            entries.some((entry) => !entry.isFile()) ||
+            JSON.stringify(downloadedAssets) !== JSON.stringify(expectedAssets)
+          ) {
+            fail("downloaded candidate does not contain the exact asset set");
+          }
+
+          try {
+            const dmg = readFileSync(join(assetDirectory, artifact));
+            const actualDmgSha256 = createHash("sha256").update(dmg).digest("hex");
+            const checksumLine = readFileSync(
+              join(assetDirectory, checksum),
+              "utf8",
+            );
+            const escapedArtifact = artifact.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+            const match = checksumLine.match(
+              new RegExp(`^([0-9a-f]{64})  ${escapedArtifact}\\n$`),
+            );
+            if (match === null || match[1] !== actualDmgSha256) {
+              fail("checksum file does not match the downloaded DMG");
+            }
+            if (
+              actualDmgSha256 !== EXPECTED_DMG_SHA256 ||
+              match?.[1] !== EXPECTED_DMG_SHA256
+            ) {
+              fail("downloaded candidate does not match the expected DMG SHA-256");
+            }
+            const downloadedInstaller = readFileSync(join(assetDirectory, installer));
+            const taggedInstaller = readFileSync(taggedInstallerPath);
+            if (!downloadedInstaller.equals(taggedInstaller)) {
+              fail("downloaded installer does not match the tagged installer");
+            }
+          } catch (error) {
+            fail(`candidate files cannot be validated: ${error.message}`);
+          }
+
+          if (errors.length > 0) {
+            throw new Error(errors.join("\n"));
+          }
+          VALIDATE_CANDIDATE
+          node --check "$validator"
 
       - name: Inspect draft and verify exact candidate assets
         env:
+          CHECKED_OUT_COMMIT: ${{ steps.candidate.outputs.checked_out_commit }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          EXPECTED_DMG_SHA256: ${{ inputs.expected_dmg_sha256 }}
+          EXPECTED_RELEASE_DRAFT: "true"
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.candidate.outputs.tag }}
+          INPUT_TAG: ${{ inputs.tag }}
+          PACKAGE_VERSION: ${{ steps.candidate.outputs.package_version }}
+          REQUIRE_IMMUTABLE: "false"
+          TAG_COMMIT: ${{ steps.candidate.outputs.tag_commit }}
           ARTIFACT: ${{ steps.candidate.outputs.artifact }}
           CHECKSUM: ${{ steps.candidate.outputs.checksum }}
           INSTALLER: ${{ steps.candidate.outputs.installer }}
         run: |
-          release_json="$RUNNER_TEMP/kopper-release.json"
-          download_directory="$RUNNER_TEMP/kopper-release-assets"
+          release_json="$RUNNER_TEMP/kopper-release-before.json"
+          download_directory="$RUNNER_TEMP/kopper-release-assets-before"
+          tagged_installer="$RUNNER_TEMP/kopper-tagged-install-before.sh"
           rm -rf -- "$download_directory"
           mkdir -p "$download_directory"
-          gh release view "$TAG" --json tagName,isDraft,assets > "$release_json"
-          node - "$release_json" "$TAG" "$ARTIFACT" "$CHECKSUM" "$INSTALLER" <<'NODE'
-          const { readFileSync } = require("node:fs");
-          const [releasePath, expectedTag, ...expectedAssets] = process.argv.slice(2);
-          const release = JSON.parse(readFileSync(releasePath, "utf8"));
-          const assetNames = release.assets.map(({ name }) => name).sort();
-          expectedAssets.sort();
-          if (
-            release.tagName !== expectedTag ||
-            release.isDraft !== true ||
-            JSON.stringify(assetNames) !== JSON.stringify(expectedAssets)
-          ) {
-            throw new Error("Draft release metadata or exact asset set did not match.");
-          }
-          NODE
-          gh release download "$TAG" \
+          gh release view "$INPUT_TAG" \
+            --json tagName,isDraft,isImmutable,assets > "$release_json"
+          gh release download "$INPUT_TAG" \
             --dir "$download_directory" \
             --pattern "$ARTIFACT" \
             --pattern "$CHECKSUM" \
             --pattern "$INSTALLER"
-          cd "$download_directory"
-          test -f "$ARTIFACT"
-          test -f "$CHECKSUM"
-          test -f "$INSTALLER"
-          test "$(find . -maxdepth 1 -type f -name "$INSTALLER" | wc -l | tr -d ' ')" = "1"
-          bash -n "$INSTALLER"
-          cmp "$INSTALLER" "$GITHUB_WORKSPACE/install.sh"
-          test "$(wc -l < "$CHECKSUM" | tr -d ' ')" = "1"
-          expected_line="$(cat "$CHECKSUM")"
-          checksum_pattern="^[0-9a-f]{64}[[:space:]][[:space:]]${ARTIFACT}$"
-          [[ "$expected_line" =~ $checksum_pattern ]]
-          shasum -a 256 -c "$CHECKSUM"
+          git show "$EXPECTED_COMMIT:install.sh" > "$tagged_installer"
+          bash -n "$download_directory/$INSTALLER"
+          remote_tag_refs="$(
+            git ls-remote origin \
+              "refs/tags/$INPUT_TAG" \
+              "refs/tags/$INPUT_TAG^{}"
+          )"
+          REMOTE_TAG_COMMIT="$(
+            printf '%s\n' "$remote_tag_refs" | awk -v tag="refs/tags/$INPUT_TAG" '
+              $2 == tag { direct = $1 }
+              $2 == tag "^{}" { peeled = $1 }
+              END { print peeled != "" ? peeled : direct }
+            '
+          )"
+          export REMOTE_TAG_COMMIT
+          node "$RUNNER_TEMP/validate-release-candidate.cjs" \
+            "$release_json" "$download_directory" "$tagged_installer"
+
+      - name: Recheck remote tag commit
+        env:
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          remote_tag_refs="$(
+            git ls-remote origin \
+              "refs/tags/$INPUT_TAG" \
+              "refs/tags/$INPUT_TAG^{}"
+          )"
+          remote_tag_commit="$(
+            printf '%s\n' "$remote_tag_refs" | awk -v tag="refs/tags/$INPUT_TAG" '
+              $2 == tag { direct = $1 }
+              $2 == tag "^{}" { peeled = $1 }
+              END { print peeled != "" ? peeled : direct }
+            '
+          )"
+          test "$remote_tag_commit" = "$EXPECTED_COMMIT"
 
       - name: Publish inspected unsigned draft
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.candidate.outputs.tag }}
+          TAG: ${{ inputs.tag }}
         run: gh release edit "$TAG" --draft=false
 
-      - name: Verify published release is immutable
+      - name: Redownload and verify immutable publication
         env:
+          CHECKED_OUT_COMMIT: ${{ steps.candidate.outputs.checked_out_commit }}
+          EXPECTED_COMMIT: ${{ inputs.expected_commit }}
+          EXPECTED_DMG_SHA256: ${{ inputs.expected_dmg_sha256 }}
+          EXPECTED_RELEASE_DRAFT: "false"
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.candidate.outputs.tag }}
+          INPUT_TAG: ${{ inputs.tag }}
+          PACKAGE_VERSION: ${{ steps.candidate.outputs.package_version }}
+          REQUIRE_IMMUTABLE: "true"
+          TAG_COMMIT: ${{ steps.candidate.outputs.tag_commit }}
+          ARTIFACT: ${{ steps.candidate.outputs.artifact }}
+          CHECKSUM: ${{ steps.candidate.outputs.checksum }}
+          INSTALLER: ${{ steps.candidate.outputs.installer }}
         run: |
-          release_state="$(
-            gh release view "$TAG" --json tagName,isDraft,isImmutable \
-              --jq '[.tagName, .isDraft, .isImmutable] | @tsv'
+          release_json="$RUNNER_TEMP/kopper-release-after.json"
+          download_directory="$RUNNER_TEMP/kopper-release-assets-after"
+          tagged_installer="$RUNNER_TEMP/kopper-tagged-install-after.sh"
+          rm -rf -- "$download_directory"
+          mkdir -p "$download_directory"
+          gh release view "$INPUT_TAG" --json tagName,isDraft,isImmutable,assets \
+            > "$release_json"
+          gh release download "$INPUT_TAG" \
+            --dir "$download_directory" \
+            --pattern "$ARTIFACT" \
+            --pattern "$CHECKSUM" \
+            --pattern "$INSTALLER"
+          git show "$EXPECTED_COMMIT:install.sh" > "$tagged_installer"
+          bash -n "$download_directory/$INSTALLER"
+          remote_tag_refs="$(
+            git ls-remote origin \
+              "refs/tags/$INPUT_TAG" \
+              "refs/tags/$INPUT_TAG^{}"
           )"
-          IFS=$'\t' read -r published_tag published_draft published_immutable <<< "$release_state"
-          test "$published_tag" = "$TAG"
-          test "$published_draft" = "false"
-          test "$published_immutable" = "true"
+          REMOTE_TAG_COMMIT="$(
+            printf '%s\n' "$remote_tag_refs" | awk -v tag="refs/tags/$INPUT_TAG" '
+              $2 == tag { direct = $1 }
+              $2 == tag "^{}" { peeled = $1 }
+              END { print peeled != "" ? peeled : direct }
+            '
+          )"
+          export REMOTE_TAG_COMMIT
+          node "$RUNNER_TEMP/validate-release-candidate.cjs" \
+            "$release_json" "$download_directory" "$tagged_installer"

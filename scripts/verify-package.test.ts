@@ -55,6 +55,7 @@ async function createFixture(options: FixtureOptions = {}) {
   const info = {
     CFBundleIdentifier: "com.kopper.app",
     CFBundleExecutable: "Kopper",
+    CFBundleShortVersionString: "0.1.0",
     LSMinimumSystemVersion: "14.0",
     NSAppleEventsUsageDescription:
       "Kopper uses System Events only when you invoke capture, so it can copy the text you selected.",
@@ -935,6 +936,11 @@ describe("source security auditor", () => {
 describe("package verifier", () => {
   it.each([
     ["CFBundleIdentifier", "wrong.identifier", "invalid_bundle_identifier"],
+    [
+      "CFBundleShortVersionString",
+      "0.1.1",
+      "invalid_bundle_version",
+    ],
     ["LSMinimumSystemVersion", "13.0", "invalid_minimum_system_version"],
     [
       "NSAppleEventsUsageDescription",

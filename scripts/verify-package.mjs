@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { execFile as execFileCallback } from "node:child_process";
-import { realpathSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { access, readdir } from "node:fs/promises";
 import { basename, join, relative, resolve, sep } from "node:path";
 import { promisify } from "node:util";
@@ -15,6 +15,9 @@ import { API as TypeScriptApi } from "typescript/unstable/sync";
 
 const execFile = promisify(execFileCallback);
 const REQUIRED_ARCHITECTURES = ["arm64", "x86_64"];
+const PACKAGE_VERSION = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+).version;
 const APPLE_EVENTS_DESCRIPTION =
   "Kopper uses System Events only when you invoke capture, so it can copy the text you selected.";
 
@@ -1349,6 +1352,14 @@ export async function verifyPackage(appPath, injectedPorts = {}) {
       failure(
         "invalid_bundle_identifier",
         "CFBundleIdentifier must be com.kopper.app.",
+      ),
+    );
+  }
+  if (info.CFBundleShortVersionString !== PACKAGE_VERSION) {
+    failures.push(
+      failure(
+        "invalid_bundle_version",
+        `CFBundleShortVersionString must be ${PACKAGE_VERSION}.`,
       ),
     );
   }

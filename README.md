@@ -64,7 +64,7 @@ The unsigned package is for local verification only. It is not a distributable r
 
 ## Releases
 
-Unsigned friends-beta releases use the protected GitHub `release` environment but require no repository or environment secrets. The package version and pushed tag must match exactly: version `<version>` requires tag `v<version>`.
+Unsigned friends-beta releases require no repository or environment secrets. The package version and pushed tag must match exactly: version `<version>` requires tag `v<version>`.
 
 After updating and committing `package.json`, create and push the matching tag:
 
@@ -75,6 +75,6 @@ git push origin "v$(node -p 'require("./package.json").version')"
 
 Before creating the first release tag, the repository owner must enable GitHub immutable releases and verify the repository setting reports enabled.
 
-The tag-triggered **Release** workflow runs the complete test, type, build, E2E, dependency-audit, and source-audit gates; explicitly disables signing and notarization; verifies the universal application package; and creates a draft containing exactly the DMG, SHA-256 file, and tagged `install.sh`.
+The tag-triggered **Release** workflow separates candidate execution from publication. An unprivileged `contents: read` build job runs the complete test, type, build, E2E, dependency-audit, and source-audit gates, explicitly disables signing and notarization, verifies the universal application package, and uploads an exact three-file workflow artifact. A fresh protected `release`-environment job gets `contents: write`, runs no dependency, package, or repository script, compares the artifact with the exact event Git objects and current remote tag, and creates the draft containing only the DMG, SHA-256 file, and tagged `install.sh`.
 
-Inspect and physically test that draft with `tests/manual/macos-installer.md`. Only after that evidence is complete should an authorized reviewer approve and run **Promote Release** for the exact tag. Publication is irreversible for that tag because immutable releases are enabled; a failed published candidate requires a new version and tag.
+Inspect and physically test that draft with `tests/manual/macos-installer.md`. Record the accepted release commit as an exact 40-character lowercase SHA and the accepted DMG digest as an exact 64-character lowercase SHA-256. Only after that evidence is complete should an authorized reviewer approve and run **Promote Release** with all three required inputs: `tag`, `expected_commit`, and `expected_dmg_sha256`. Promotion runs no dependency, package, or repository script; it validates those accepted values before publication, rechecks the remote tag immediately before publishing, then re-downloads and revalidates the exact immutable asset set afterward. Publication is irreversible for that tag because immutable releases are enabled; a failed published candidate requires a new version and tag.

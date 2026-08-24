@@ -7,19 +7,21 @@ name: Release
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  release:
-    name: Build unsigned friends beta
+  build_candidate:
+    name: Build unsigned friends-beta candidate
     runs-on: macos-14
-    environment: release
+    permissions:
+      contents: read
 
     steps:
       - name: Check out tagged revision
         # actions/checkout v4 => 11d5960a326750d5838078e36cf38b85af677262
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -39,6 +41,8 @@ jobs:
         run: |
           package_version="$(node -p "require('./package.json').version")"
           test "$GITHUB_REF_NAME" = "v${package_version}"
+          test "$(git rev-parse 'HEAD^{commit}')" = "$GITHUB_SHA"
+          test "$(git rev-parse "${GITHUB_REF_NAME}^{commit}")" = "$GITHUB_SHA"
           test "$(git describe --tags --exact-match HEAD)" = "$GITHUB_REF_NAME"
 
       - name: Run tests
@@ -65,29 +69,135 @@ jobs:
       - name: Verify unsigned package
         run: pnpm verify:package "release/mac-universal/Kopper.app"
 
-      - name: Generate exact release assets
-        id: assets
+      - name: Stage exact release candidate
         run: |
           version="$(node -p "require('./package.json').version")"
           dmg_name="Kopper-${version}-universal.dmg"
+          checksum_name="${dmg_name}.sha256"
+          staging_directory="$RUNNER_TEMP/kopper-release-candidate"
+          rm -rf -- "$staging_directory"
+          mkdir -p "$staging_directory"
           test -f "release/$dmg_name"
           test -f install.sh
           bash -n install.sh
-          (cd release && shasum -a 256 "$dmg_name" > "$dmg_name.sha256")
+          cp -- "release/$dmg_name" "$staging_directory/$dmg_name"
+          cp -- install.sh "$staging_directory/install.sh"
+          (
+            cd "$staging_directory"
+            shasum -a 256 "$dmg_name" > "$checksum_name"
+          )
+          node - "$staging_directory" "$dmg_name" "$checksum_name" install.sh <<'NODE'
+          const { readdirSync } = require("node:fs");
+          const [directory, ...expectedAssets] = process.argv.slice(2);
+          const entries = readdirSync(directory, { withFileTypes: true });
+          const names = entries.map((entry) => entry.name).sort();
+          expectedAssets.sort();
+          if (
+            entries.some((entry) => !entry.isFile()) ||
+            JSON.stringify(names) !== JSON.stringify(expectedAssets)
+          ) {
+            throw new Error("Staged release candidate must contain exactly three regular files.");
+          }
+          NODE
+
+      - name: Upload exact release candidate
+        # actions/upload-artifact v4 => ea165f8d65b6e75b540449e92b4886f43607fa02
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: unsigned-release-candidate
+          path: ${{ runner.temp }}/kopper-release-candidate
+          if-no-files-found: error
+          include-hidden-files: false
+          compression-level: 0
+
+  publish_draft:
+    name: Validate and create protected draft
+    needs: build_candidate
+    runs-on: macos-14
+    environment: release
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out exact event commit
+        # actions/checkout v4 => 11d5960a326750d5838078e36cf38b85af677262
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download exact release candidate
+        # actions/download-artifact v4 => d3f86a106a0bac45b974a628896c90dbdf5c8093
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: unsigned-release-candidate
+          path: ${{ runner.temp }}/kopper-release-candidate
+
+      - name: Validate staged release candidate
+        env:
+          CANDIDATE_DIRECTORY: ${{ runner.temp }}/kopper-release-candidate
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release requires an exact v<major>.<minor>.<patch> tag." >&2
+            exit 1
+          fi
+          version="${GITHUB_REF_NAME#v}"
+          dmg_name="Kopper-${version}-universal.dmg"
           checksum_name="${dmg_name}.sha256"
-          output="$GITHUB_OUTPUT"
+          DMG_PATH="$CANDIDATE_DIRECTORY/$dmg_name"
+          CHECKSUM_PATH="$CANDIDATE_DIRECTORY/$checksum_name"
+          INSTALLER_PATH="$CANDIDATE_DIRECTORY/install.sh"
+          tagged_installer="$RUNNER_TEMP/tagged-install.sh"
+          git show "$GITHUB_SHA:install.sh" > "$tagged_installer"
+          node - "$CANDIDATE_DIRECTORY" "$dmg_name" "$checksum_name" install.sh <<'NODE'
+          const { readdirSync } = require("node:fs");
+          const [directory, ...expectedAssets] = process.argv.slice(2);
+          const entries = readdirSync(directory, { withFileTypes: true });
+          const names = entries.map((entry) => entry.name).sort();
+          expectedAssets.sort();
+          if (
+            entries.some((entry) => !entry.isFile()) ||
+            JSON.stringify(names) !== JSON.stringify(expectedAssets)
+          ) {
+            throw new Error("Downloaded candidate must contain exactly three regular files.");
+          }
+          NODE
+          bash -n "$INSTALLER_PATH"
+          cmp "$INSTALLER_PATH" "$tagged_installer"
+          test "$(wc -l < "$CHECKSUM_PATH" | tr -d ' ')" = "1"
+          expected_line="$(cat "$CHECKSUM_PATH")"
+          checksum_pattern="^[0-9a-f]{64}[[:space:]][[:space:]]${dmg_name}$"
+          [[ "$expected_line" =~ $checksum_pattern ]]
+          (
+            cd "$CANDIDATE_DIRECTORY"
+            shasum -a 256 -c "$checksum_name"
+          )
           {
-            printf 'dmg_path=release/%s\n' "$dmg_name"
-            printf 'checksum_path=release/%s\n' "$checksum_name"
-            printf 'installer_path=install.sh\n'
-          } >> "$output"
+            printf 'DMG_PATH=%s\n' "$DMG_PATH"
+            printf 'CHECKSUM_PATH=%s\n' "$CHECKSUM_PATH"
+            printf 'INSTALLER_PATH=%s\n' "$INSTALLER_PATH"
+          } >> "$GITHUB_ENV"
+
+      - name: Recheck remote tag commit
+        run: |
+          remote_tag_refs="$(
+            git ls-remote origin \
+              "refs/tags/$GITHUB_REF_NAME" \
+              "refs/tags/$GITHUB_REF_NAME^{}"
+          )"
+          remote_tag_commit="$(
+            printf '%s\n' "$remote_tag_refs" | awk -v tag="refs/tags/$GITHUB_REF_NAME" '
+              $2 == tag { direct = $1 }
+              $2 == tag "^{}" { peeled = $1 }
+              END { print peeled != "" ? peeled : direct }
+            '
+          )"
+          test "$remote_tag_commit" = "$GITHUB_SHA"
 
       - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          DMG_PATH: ${{ steps.assets.outputs.dmg_path }}
-          CHECKSUM_PATH: ${{ steps.assets.outputs.checksum_path }}
-          INSTALLER_PATH: ${{ steps.assets.outputs.installer_path }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
             "$DMG_PATH" \
