@@ -9,6 +9,7 @@ import {
 import type { KopperDocument } from "../../../shared/domain/document";
 import type { KopperError } from "../../../shared/domain/errors";
 import { Button } from "../components/ui/button";
+import { DismissButton } from "../components/ui/dismiss-button";
 import { CaptureToast } from "../features/capture/CaptureToast";
 import { PanelFeedbackProvider } from "../features/feedback/PanelFeedback";
 import { NoteCollection } from "../features/notes/NoteCollection";
@@ -31,9 +32,10 @@ interface DocumentErrorProps {
   error: KopperError;
   disabled: boolean;
   retry(): Promise<boolean>;
+  dismiss(): void;
 }
 
-function DocumentError({ error, disabled, retry }: DocumentErrorProps) {
+function DocumentError({ error, disabled, retry, dismiss }: DocumentErrorProps) {
   const retryAction = () => {
     void retry();
   };
@@ -55,6 +57,7 @@ function DocumentError({ error, disabled, retry }: DocumentErrorProps) {
           Retry
         </Button>
       ) : null}
+      <DismissButton label="Dismiss error" onClick={dismiss} />
     </div>
   );
 }
@@ -128,7 +131,8 @@ export function DocumentPanel({
   captureUnavailable,
   permissionControls,
 }: DocumentPanelProps) {
-  const { error, pendingAction, retryLastAction, undo } = useKopperDocument();
+  const { clearError, error, pendingAction, retryLastAction, undo } =
+    useKopperDocument();
   const [query, setQuery] = useState("");
   const [view, setView] = useState<NoteProjectionView>("active");
   const [route, setRoute] = useState<PanelRoute>({ page: "notes" });
@@ -228,6 +232,7 @@ export function DocumentPanel({
                     error={error}
                     retry={retryLastAction}
                     disabled={busy}
+                    dismiss={clearError}
                   />
                 )}
 

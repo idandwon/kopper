@@ -244,4 +244,42 @@ describe("panel feedback", () => {
     );
     view.unmount();
   });
+
+  it("keeps errors readable briefly and lets people dismiss them immediately", () => {
+    vi.useFakeTimers();
+    render(
+      <PanelFeedbackProvider>
+        <FeedbackHarness />
+      </PanelFeedbackProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Report failure" }));
+    expect(screen.getByRole("alert")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Dismiss notification" }),
+    ).toBeVisible();
+
+    act(() => vi.advanceTimersByTime(3_999));
+    expect(screen.getByRole("alert")).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Dismiss notification" }),
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("automatically removes an error after four seconds", () => {
+    vi.useFakeTimers();
+    render(
+      <PanelFeedbackProvider>
+        <FeedbackHarness />
+      </PanelFeedbackProvider>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Report failure" }));
+    act(() => vi.advanceTimersByTime(4_000));
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });

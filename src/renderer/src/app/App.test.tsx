@@ -134,6 +134,7 @@ const mockedUseKopperDocument = vi.mocked(useKopperDocument);
 const execute = vi.fn<KopperDocumentContextValue["execute"]>();
 const undo = vi.fn<KopperDocumentContextValue["undo"]>();
 const retryLastAction = vi.fn<KopperDocumentContextValue["retryLastAction"]>();
+const clearError = vi.fn<KopperDocumentContextValue["clearError"]>();
 const setPinned = vi.fn();
 const scrollIntoView = vi.fn();
 
@@ -156,7 +157,7 @@ function contextValue(
     execute,
     undo,
     retryLastAction,
-    clearError: vi.fn(),
+    clearError,
     ...overrides,
   };
 }
@@ -214,6 +215,7 @@ beforeEach(() => {
   execute.mockReset().mockResolvedValue(true);
   undo.mockReset().mockResolvedValue(true);
   retryLastAction.mockReset().mockResolvedValue(true);
+  clearError.mockReset();
   setPinned.mockReset().mockResolvedValue({
     ok: true,
     value: { ...document, window: { ...document.window, pinned: true } },
@@ -1075,6 +1077,27 @@ describe("Oxide Ledger App", () => {
     expect(
       screen.queryByRole("button", { name: "Retry" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("lets people dismiss a persistent document error", async () => {
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({
+        error: {
+          code: "validation_failed",
+          message: "Invalid action.",
+          retryable: false,
+        },
+      }),
+    );
+    render(<App />);
+
+    await userEvent.click(
+      within(screen.getByRole("alert")).getByRole("button", {
+        name: "Dismiss error",
+      }),
+    );
+
+    expect(clearError).toHaveBeenCalledOnce();
   });
 
   it("renders a labeled loading progress region", () => {

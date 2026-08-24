@@ -10,6 +10,7 @@ export interface VerificationResult {
     architectures: string[];
     asarEntries: number;
     bundleIdentifier: string | null;
+    codeSignature: "valid" | "invalid";
     minimumSystemVersion: string | null;
     nativeModules: number;
   };
@@ -17,6 +18,7 @@ export interface VerificationResult {
 }
 
 export interface VerifierPorts {
+  verifyCodeSignature(path: string): Promise<void>;
   readInfoPlist(path: string): Promise<Record<string, unknown>>;
   listAsarEntries(path: string): Promise<string[]>;
   readAsarEntry(path: string, entry: string): Promise<Buffer>;

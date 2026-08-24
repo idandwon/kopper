@@ -60,7 +60,7 @@ pnpm package:unsigned
 pnpm verify:package "release/mac-universal/Kopper.app"
 ```
 
-The unsigned package is for local verification only. It is not a distributable release.
+The ad-hoc signed package is for local verification only. It is not an Apple-trusted distributable release.
 
 ## Releases
 

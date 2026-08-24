@@ -110,7 +110,10 @@ export function DataSettings({
           Import data
         </Button>
       </div>
-      <SettingsFeedback value={feedback} />
+      <SettingsFeedback
+        value={feedback}
+        onDismiss={() => setFeedback(null)}
+      />
 
       <AlertDialog open={preview !== null} onOpenChange={(open) => !open && setPreview(null)}>
         <AlertDialogContent>

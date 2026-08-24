@@ -25,7 +25,7 @@ Run this exact procedure in the first clean account. It downloads the three exac
 bash <<'BASH'
 set -euo pipefail
 
-TAG="v0.1.0"
+TAG="v0.1.1"
 VERSION="${TAG#v}"
 TEMP_ROOT="${TMPDIR:-/tmp}"
 TEMP_ROOT="${TEMP_ROOT%/}"
@@ -159,7 +159,7 @@ After explicit approval promotes the exact draft, use a second clean standard ac
 bash <<'BASH'
 set -euo pipefail
 
-TAG="v0.1.0"
+TAG="v0.1.1"
 VERSION="${TAG#v}"
 STORE="$HOME/Library/Application Support/Kopper/kopper.json"
 APP="$HOME/Applications/Kopper.app"
@@ -205,7 +205,7 @@ The canonical installer must leave no exact versioned Kopper DMG mounted and no 
 bash <<'BASH'
 set -euo pipefail
 
-TAG="v0.1.0"
+TAG="v0.1.1"
 VERSION="${TAG#v}"
 EXPECTED_DMG="Kopper-${VERSION}-universal.dmg"
 TEMP_ROOT="${TMPDIR:-/tmp}"

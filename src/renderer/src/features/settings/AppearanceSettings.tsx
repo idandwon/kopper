@@ -254,6 +254,7 @@ export function AppearanceSettings() {
           <SettingsFeedback
             value={feedback}
             className="flex-1 text-[11px] text-muted-foreground"
+            onDismiss={() => setFeedback(null)}
           />
         ) : null}
       </div>
@@ -287,6 +288,8 @@ export function AppearanceSettings() {
           <SettingsFeedback
             value={feedback}
             className="text-[11px] text-muted-foreground"
+            persistent
+            onDismiss={() => setFeedback(null)}
           />
           <AlertDialogFooter className="flex-wrap">
             <AlertDialogCancel>Cancel</AlertDialogCancel>

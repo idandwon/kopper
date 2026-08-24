@@ -280,6 +280,26 @@ describe("AccessibilityPermissionGate", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
+  it("rechecks access when a continued panel regains focus", async () => {
+    getAccessibilitySession.mockResolvedValue({
+      ok: true,
+      value: { continuedWithoutCapture: true },
+    });
+    getAccessibilityPermission
+      .mockResolvedValueOnce({ ok: true, value: "unknown" })
+      .mockResolvedValueOnce({ ok: true, value: "granted" });
+    renderGate();
+
+    expect(await screen.findByRole("heading", { name: "Normal panel" })).toBeVisible();
+    expect(screen.getByRole("status")).toHaveTextContent("Capture unavailable");
+
+    await act(async () => window.dispatchEvent(new Event("focus")));
+
+    expect(getAccessibilityPermission).toHaveBeenCalledTimes(2);
+    expect(getAccessibilityPermission).toHaveBeenLastCalledWith(false);
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+  });
+
   it("settles a continued-panel check when a permission event arrives first", async () => {
     getAccessibilitySession.mockResolvedValue({
       ok: true,

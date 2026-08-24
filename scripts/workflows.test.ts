@@ -266,12 +266,12 @@ describe("workflow security semantics", () => {
     },
   );
 
-  it("builds the release without Apple credentials, signing, or notarization", () => {
+  it("builds an ad-hoc signed release without Apple credentials or notarization", () => {
     expect(release).not.toMatch(/secrets\.|APPLE_|CSC_|notarytool|stapler/u);
     const build = step(release, "Build unsigned universal DMG");
     expect(build).toContain("run: pnpm package:beta");
     expect(packageJson.scripts["package:beta"]).toContain("--mac dmg --universal");
-    expect(packageJson.scripts["package:beta"]).toContain("-c.mac.identity=null");
+    expect(packageJson.scripts["package:beta"]).toContain("-c.mac.identity=-");
     expect(packageJson.scripts["package:beta"]).toContain("-c.mac.notarize=false");
   });
 

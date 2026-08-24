@@ -5,6 +5,8 @@ import { cn } from "../../lib/utils";
 
 const ToastProvider = ToastPrimitive.Provider;
 
+const ToastClose = ToastPrimitive.Close;
+
 function Toast({
   className,
   ...props
@@ -63,4 +65,11 @@ function ToastViewport({
   );
 }
 
-export { Toast, ToastDescription, ToastProvider, ToastTitle, ToastViewport };
+export {
+  Toast,
+  ToastClose,
+  ToastDescription,
+  ToastProvider,
+  ToastTitle,
+  ToastViewport,
+};

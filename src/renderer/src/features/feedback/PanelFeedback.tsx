@@ -12,12 +12,15 @@ import {
 import type { ClipboardCopyResult } from "../../../../shared/ipc/contract";
 import {
   Toast,
+  ToastClose,
   ToastProvider,
   ToastTitle,
   ToastViewport,
 } from "../../components/ui/toast";
+import { DismissButton } from "../../components/ui/dismiss-button";
 
 const FEEDBACK_DURATION_MS = 1_800;
+const ERROR_FEEDBACK_DURATION_MS = 4_000;
 
 interface FeedbackNotice {
   id: number;
@@ -60,7 +63,7 @@ export function PanelFeedbackProvider({ children }: { children: ReactNode }) {
       timerRef.current = setTimeout(() => {
         timerRef.current = null;
         setNotice(null);
-      }, FEEDBACK_DURATION_MS);
+      }, tone === "error" ? ERROR_FEEDBACK_DURATION_MS : FEEDBACK_DURATION_MS);
     },
     [clearNoticeTimer],
   );
@@ -122,6 +125,12 @@ export function PanelFeedbackProvider({ children }: { children: ReactNode }) {
             }}
           >
             <ToastTitle>{notice.message}</ToastTitle>
+            <ToastClose asChild>
+              <DismissButton
+                label="Dismiss notification"
+                className="absolute top-2 right-2"
+              />
+            </ToastClose>
           </Toast>
         )}
         <ToastViewport />

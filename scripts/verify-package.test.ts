@@ -55,7 +55,7 @@ async function createFixture(options: FixtureOptions = {}) {
   const info = {
     CFBundleIdentifier: "com.kopper.app",
     CFBundleExecutable: "Kopper",
-    CFBundleShortVersionString: "0.1.0",
+    CFBundleShortVersionString: "0.1.1",
     LSMinimumSystemVersion: "14.0",
     NSAppleEventsUsageDescription:
       "Kopper uses System Events only when you invoke capture, so it can copy the text you selected.",
@@ -67,7 +67,7 @@ async function createFixture(options: FixtureOptions = {}) {
     "/out/renderer/assets/index.js",
   ];
   const asarFiles: Record<string, string> = {
-    "/package.json": JSON.stringify({ name: "kopper", version: "0.1.0" }),
+    "/package.json": JSON.stringify({ name: "kopper", version: "0.1.1" }),
     "/out/renderer/index.html":
       '<script type="module" src="./assets/index.js"></script>',
     "/out/renderer/assets/index.js": "console.log('local renderer')",
@@ -86,6 +86,7 @@ async function createFixture(options: FixtureOptions = {}) {
     nativePath,
     lipoCalls,
     ports: {
+      verifyCodeSignature: vi.fn(async () => undefined),
       readInfoPlist: vi.fn(async () => info),
       listAsarEntries: vi.fn(async () => asarEntries),
       readAsarEntry: vi.fn(async (_asarPath: string, entry: string) =>
@@ -938,7 +939,7 @@ describe("package verifier", () => {
     ["CFBundleIdentifier", "wrong.identifier", "invalid_bundle_identifier"],
     [
       "CFBundleShortVersionString",
-      "0.1.1",
+      "0.1.0",
       "invalid_bundle_version",
     ],
     ["LSMinimumSystemVersion", "13.0", "invalid_minimum_system_version"],
@@ -1305,6 +1306,22 @@ describe("package verifier", () => {
     expect(failureCodes(result)).toContain("missing_uiohook_native_module");
   });
 
+  it("rejects a package without a complete valid code signature", async () => {
+    const fixture = await createFixture();
+    fixture.ports.verifyCodeSignature.mockRejectedValueOnce(
+      new Error("bundle is unsigned"),
+    );
+
+    const result = await verifyPackage(fixture.appPath, fixture.ports);
+
+    expect(result.ok).toBe(false);
+    expect(result.failures).toContainEqual({
+      code: "invalid_code_signature",
+      message: "The application must have a complete valid code signature.",
+    });
+    expect(JSON.stringify(result)).not.toContain("bundle is unsigned");
+  });
+
   it("rejects a prebuild-only uiohook bundle when the exact runtime binary is missing", async () => {
     const fixture = await createFixture();
     const prebuild = join(
@@ -1406,6 +1423,7 @@ describe("package verifier", () => {
         architectures: ["arm64", "x86_64"],
         asarEntries: 3,
         bundleIdentifier: "com.kopper.app",
+        codeSignature: "valid",
         minimumSystemVersion: "14.0",
         nativeModules: 1,
       },

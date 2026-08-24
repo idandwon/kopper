@@ -14,7 +14,7 @@ Record results in a copy of `docs/releases/acceptance-template.md`. Every row mu
 4. Use a version shell variable and verify the files exist:
 
 ```bash
-VERSION="0.1.0" # replace with the exact package version under test
+VERSION="0.1.1" # replace with the exact package version under test
 DMG="$HOME/Downloads/Kopper-${VERSION}-universal.dmg"
 CHECKSUM="$DMG.sha256"
 test -f "$DMG" && test -f "$CHECKSUM"

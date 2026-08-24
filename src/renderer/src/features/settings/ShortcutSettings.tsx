@@ -299,7 +299,12 @@ export function ShortcutSettings({
           Capture is unavailable until Accessibility access is granted.
         </p>
       )}
-      <SettingsFeedback value={feedback} className="text-muted-foreground" />
+      <SettingsFeedback
+        value={feedback}
+        className="text-muted-foreground"
+        persistent={recording || testing}
+        onDismiss={() => setFeedback(null)}
+      />
 
       <div className="flex flex-wrap gap-2">
         <Button type="button" size="xs" disabled={busy} onClick={() => void save(candidate)}>

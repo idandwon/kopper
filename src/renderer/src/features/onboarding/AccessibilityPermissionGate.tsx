@@ -180,7 +180,12 @@ export function AccessibilityPermissionGate({
       }
       startInitialCheck(true);
     };
+    const handleWindowFocus = () => {
+      if (document.visibilityState !== "visible") return;
+      void checkPermission(false, true);
+    };
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleWindowFocus);
     const unsubscribe = window.kopper.onAccessibilityPermissionChanged(
       (state) => {
         requestIdRef.current += 1;
@@ -215,6 +220,7 @@ export function AccessibilityPermissionGate({
       requestIdRef.current += 1;
       passiveCheckPendingRef.current = false;
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleWindowFocus);
       unsubscribe();
     };
   }, [applyPermission, checkPermission, invalidatePassiveCheck]);

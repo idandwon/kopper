@@ -102,7 +102,16 @@ async function readArchitectures(binaryPath) {
   return stdout.trim().split(/\s+/).filter(Boolean);
 }
 
+async function verifyCodeSignature(appPath) {
+  await execFile(
+    "/usr/bin/codesign",
+    ["--verify", "--deep", "--strict", "--verbose=4", appPath],
+    { encoding: "utf8", maxBuffer: 1024 * 1024 },
+  );
+}
+
 const defaultPorts = {
+  verifyCodeSignature,
   readInfoPlist,
   listAsarEntries,
   readAsarEntry,
@@ -1335,6 +1344,19 @@ export async function verifyPackage(appPath, injectedPorts = {}) {
   let nativeBinaries = [];
   let updaterConfigurations = [];
   let mainArchitectures = [];
+  let codeSignatureValid = false;
+
+  try {
+    await ports.verifyCodeSignature(absoluteAppPath);
+    codeSignatureValid = true;
+  } catch {
+    failures.push(
+      failure(
+        "invalid_code_signature",
+        "The application must have a complete valid code signature.",
+      ),
+    );
+  }
 
   try {
     info = await ports.readInfoPlist(join(contentsPath, "Info.plist"));
@@ -1552,6 +1574,7 @@ export async function verifyPackage(appPath, injectedPorts = {}) {
         ? REQUIRED_ARCHITECTURES
         : mainArchitectures,
       asarEntries: entries.length,
+      codeSignature: codeSignatureValid ? "valid" : "invalid",
       bundleIdentifier:
         typeof info.CFBundleIdentifier === "string"
           ? info.CFBundleIdentifier
