@@ -25,6 +25,10 @@ const promote = readFileSync(
 const packageJson = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ) as { scripts: Record<string, string> };
+const electronBuilderConfig = readFileSync(
+  new URL("../electron-builder.yml", import.meta.url),
+  "utf8",
+);
 
 function step(workflow: string, name: string) {
   const marker = `      - name: ${name}\n`;
@@ -276,7 +280,8 @@ describe("workflow security semantics", () => {
   });
 
   it("omits automatic-updater configuration from friends-beta packages", () => {
-    expect(packageJson.scripts["package:beta"]).toContain("-c.publish=null");
+    expect(electronBuilderConfig).toMatch(/^publish: null$/mu);
+    expect(packageJson.scripts["package:beta"]).not.toContain(".publish=");
   });
 
   it("isolates candidate execution from the protected draft publisher", () => {
