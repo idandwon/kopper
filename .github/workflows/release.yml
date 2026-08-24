@@ -190,7 +190,7 @@ jobs:
             printf '%s\n' "$remote_tag_refs" | awk -v tag="refs/tags/$GITHUB_REF_NAME" '
               $2 == tag { direct = $1 }
               $2 == tag "^{}" { peeled = $1 }
-              END { print peeled != "" ? peeled : direct }
+              END { print (peeled != "" ? peeled : direct) }
             '
           )"
           test "$remote_tag_commit" = "$GITHUB_SHA"

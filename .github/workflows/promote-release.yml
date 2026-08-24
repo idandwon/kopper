@@ -250,7 +250,7 @@ jobs:
             printf '%s\n' "$remote_tag_refs" | awk -v tag="refs/tags/$INPUT_TAG" '
               $2 == tag { direct = $1 }
               $2 == tag "^{}" { peeled = $1 }
-              END { print peeled != "" ? peeled : direct }
+              END { print (peeled != "" ? peeled : direct) }
             '
           )"
           export REMOTE_TAG_COMMIT
@@ -271,7 +271,7 @@ jobs:
             printf '%s\n' "$remote_tag_refs" | awk -v tag="refs/tags/$INPUT_TAG" '
               $2 == tag { direct = $1 }
               $2 == tag "^{}" { peeled = $1 }
-              END { print peeled != "" ? peeled : direct }
+              END { print (peeled != "" ? peeled : direct) }
             '
           )"
           test "$remote_tag_commit" = "$EXPECTED_COMMIT"
@@ -320,7 +320,7 @@ jobs:
             printf '%s\n' "$remote_tag_refs" | awk -v tag="refs/tags/$INPUT_TAG" '
               $2 == tag { direct = $1 }
               $2 == tag "^{}" { peeled = $1 }
-              END { print peeled != "" ? peeled : direct }
+              END { print (peeled != "" ? peeled : direct) }
             '
           )"
           export REMOTE_TAG_COMMIT

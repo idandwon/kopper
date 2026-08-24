@@ -397,6 +397,40 @@ describe("workflow security semantics", () => {
     ).toBe("");
   });
 
+  it("resolves lightweight and annotated remote tags with macOS awk", () => {
+    const programs = [release, promote].flatMap((workflow) =>
+      [...workflow.matchAll(/awk -v tag="[^"]+" '([\s\S]*?)\n\s*'/gu)].map(
+        (match) => match[1],
+      ),
+    );
+    expect(programs).toHaveLength(4);
+
+    for (const program of programs) {
+      const lightweight = spawnSync(
+        "awk",
+        ["-v", "tag=refs/tags/v0.1.0", program],
+        {
+          encoding: "utf8",
+          input: "direct\trefs/tags/v0.1.0\n",
+        },
+      );
+      expect(lightweight.status, lightweight.stderr).toBe(0);
+      expect(lightweight.stdout.trim()).toBe("direct");
+
+      const annotated = spawnSync(
+        "awk",
+        ["-v", "tag=refs/tags/v0.1.0", program],
+        {
+          encoding: "utf8",
+          input:
+            "tag-object\trefs/tags/v0.1.0\npeeled\trefs/tags/v0.1.0^{}\n",
+        },
+      );
+      expect(annotated.status, annotated.stderr).toBe(0);
+      expect(annotated.stdout.trim()).toBe("peeled");
+    }
+  });
+
   it("publishes only an exact inspected unsigned draft", () => {
     expect(promote).toContain("workflow_dispatch:");
     expect(promote).toContain("expected_commit:");
