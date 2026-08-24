@@ -45,30 +45,48 @@ function job(workflow: string, name: string) {
   );
 }
 
-function releaseAssetArguments(workflow: string) {
+function releaseCreateCommandTokens(workflow: string) {
   const create = step(workflow, "Create draft GitHub Release");
-  const marker = 'gh release create "$GITHUB_REF_NAME"';
+  const marker = "gh release create";
   const commandStart = create.indexOf(marker);
   expect(
     commandStart,
     "missing gh release create command",
   ).toBeGreaterThanOrEqual(0);
-  const argumentsStart = commandStart + marker.length;
-  const flagsStart = create.indexOf("--verify-tag", argumentsStart);
-  expect(flagsStart, "missing gh release create flags").toBeGreaterThan(
-    argumentsStart,
-  );
-  const positionalArguments = create.slice(argumentsStart, flagsStart);
+
+  const commandLines: string[] = [];
+  let commandComplete = false;
+  for (const line of create.slice(commandStart).split("\n")) {
+    const trimmed = line.trim();
+    const continued = trimmed.endsWith("\\");
+    commandLines.push(continued ? trimmed.slice(0, -1).trimEnd() : trimmed);
+    if (!continued) {
+      commandComplete = true;
+      break;
+    }
+  }
+  expect(commandComplete, "unterminated gh release create command").toBe(true);
+
+  const command = commandLines.join(" ");
   return (
-    positionalArguments.match(/"(?:[^"\\]|\\.)*"|'[^']*'|[^\s\\]+/gu) ?? []
+    command.match(/"(?:[^"\\]|\\.)*"|'[^']*'|[^\s\\]+/gu) ?? []
   );
 }
 
-function expectExactReleaseAssetArguments(workflow: string) {
-  expect(releaseAssetArguments(workflow)).toEqual([
+function expectExactReleaseCreateCommand(workflow: string) {
+  expect(releaseCreateCommandTokens(workflow)).toEqual([
+    "gh",
+    "release",
+    "create",
+    '"$GITHUB_REF_NAME"',
     '"$DMG_PATH"',
     '"$CHECKSUM_PATH"',
     '"$INSTALLER_PATH"',
+    "--verify-tag",
+    "--draft",
+    "--title",
+    '"$GITHUB_REF_NAME"',
+    "--generate-notes",
   ]);
 }
 
@@ -320,7 +338,7 @@ describe("workflow security semantics", () => {
   it("creates a draft from only the three staged asset arguments", () => {
     const createRelease = step(release, "Create draft GitHub Release");
     expect(createRelease).toContain('gh release create "$GITHUB_REF_NAME"');
-    expectExactReleaseAssetArguments(release);
+    expectExactReleaseCreateCommand(release);
     expect(createRelease).toContain("--draft");
     expect(createRelease).not.toContain("--draft=false");
   });
@@ -331,7 +349,16 @@ describe("workflow security semantics", () => {
       'gh release create "$GITHUB_REF_NAME" "release-notes.txt" \\',
     );
 
-    expect(() => expectExactReleaseAssetArguments(mutated)).toThrow();
+    expect(() => expectExactReleaseCreateCommand(mutated)).toThrow();
+  });
+
+  it("rejects an extra asset after the final release-create flag", () => {
+    const mutated = release.replace(
+      "            --generate-notes",
+      '            --generate-notes "release-notes.txt"',
+    );
+
+    expect(() => expectExactReleaseCreateCommand(mutated)).toThrow();
   });
 
   it("publishes the staged installer only after matching the event Git object", () => {

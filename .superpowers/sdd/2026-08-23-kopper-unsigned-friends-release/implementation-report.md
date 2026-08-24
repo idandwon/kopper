@@ -51,9 +51,15 @@ Implemented the approved unsigned friends-beta installer and release path plus t
 The scoped re-review found two remaining test/documentation gaps and authorized only these corrections:
 
 - Workflow RED: `pnpm exec vitest run scripts/workflows.test.ts` exited 1 with exactly 5 failed and 34 passed. The first-line fourth release asset was discarded by the parser, while missing, extra, directory, and symlink download mutations were not yet applied to the physical fixture.
-- Workflow GREEN: the release-create parser now examines positional content on the command's first line as well as continuation lines. The executable candidate fixture can independently mutate the downloaded filesystem while leaving release JSON metadata exact. The same focused command exits 0 with 39 of 39 tests passing.
+- Initial residual GREEN: first-line positional content became visible, and the executable candidate fixture could independently mutate the downloaded filesystem while leaving release JSON metadata exact. The focused command exited 0 with 39 of 39 tests passing. A later scoped parser check found that this partial extraction still stopped at `--verify-tag`; the final correction is recorded below.
 - Manual procedure: all six executable fences now invoke isolated child Bash processes. The three blocks that allocate temporary paths define cleanup first and install the `EXIT` trap immediately after the first allocation passes its prefix validation, so successful pasted blocks run cleanup on child-process exit.
 - Fresh residual verification: workflow tests passed 39/39; release-document traceability passed with 91 canonical rows in 2 records; actionlint exited 0; all six isolated fences passed `bash -n`; and the full suite passed 68 files and 819 tests.
+
+### Final parser residual
+
+- RED: a new mutation appended `"release-notes.txt"` after the final `--generate-notes` flag. `pnpm exec vitest run scripts/workflows.test.ts` exited 1 with exactly 1 failed and 39 passed because the partial parser ignored every token after the first `--verify-tag`.
+- GREEN: the test now tokenizes the complete backslash-continued `gh release create` command through its terminating line and asserts the exact ordered token shape. That shape includes only the tag, three assets, `--verify-tag`, `--draft`, `--title` plus its one consumed value, and `--generate-notes`, so an extra positional or flag token anywhere in the command is rejected.
+- Fresh verification: workflow tests passed 40/40, actionlint exited 0, and the full suite passed 68 files and 820 tests.
 
 ## Self-review and remaining concerns
 
