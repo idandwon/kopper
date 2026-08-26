@@ -1,6 +1,7 @@
 /// <reference types="node" />
 
 import { Buffer } from "node:buffer";
+import { readFileSync } from "node:fs";
 import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -10,6 +11,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as packageVerifier from "./verify-package.mjs";
 
 const { runCli, verifyPackage } = packageVerifier;
+const packageVersion = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+).version as string;
 const { verifySource } = packageVerifier as typeof packageVerifier & {
   verifySource(root?: string): Promise<{
     ok: boolean;
@@ -55,7 +59,7 @@ async function createFixture(options: FixtureOptions = {}) {
   const info = {
     CFBundleIdentifier: "com.kopper.app",
     CFBundleExecutable: "Kopper",
-    CFBundleShortVersionString: "0.1.1",
+    CFBundleShortVersionString: packageVersion,
     LSMinimumSystemVersion: "14.0",
     NSAppleEventsUsageDescription:
       "Kopper uses System Events only when you invoke capture, so it can copy the text you selected.",
@@ -67,7 +71,10 @@ async function createFixture(options: FixtureOptions = {}) {
     "/out/renderer/assets/index.js",
   ];
   const asarFiles: Record<string, string> = {
-    "/package.json": JSON.stringify({ name: "kopper", version: "0.1.1" }),
+    "/package.json": JSON.stringify({
+      name: "kopper",
+      version: packageVersion,
+    }),
     "/out/renderer/index.html":
       '<script type="module" src="./assets/index.js"></script>',
     "/out/renderer/assets/index.js": "console.log('local renderer')",
@@ -939,7 +946,7 @@ describe("package verifier", () => {
     ["CFBundleIdentifier", "wrong.identifier", "invalid_bundle_identifier"],
     [
       "CFBundleShortVersionString",
-      "0.1.0",
+      `${packageVersion}-mismatch`,
       "invalid_bundle_version",
     ],
     ["LSMinimumSystemVersion", "13.0", "invalid_minimum_system_version"],
