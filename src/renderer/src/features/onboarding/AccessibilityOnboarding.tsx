@@ -123,7 +123,9 @@ export function AccessibilityOnboarding({
                 className="min-w-0 rounded-lg border border-destructive bg-card p-3 text-sm text-card-foreground"
               >
                 Accessibility access is not enabled. Grant access in System
-                Settings, then check again.
+                Settings, then check again. If Kopper already appears enabled,
+                remove it with the minus button, add the current Kopper app
+                again, then check again.
               </div>
             )}
             {operationError !== null && (

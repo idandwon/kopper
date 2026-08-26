@@ -20,6 +20,8 @@ const PACKAGE_VERSION = JSON.parse(
 ).version;
 const APPLE_EVENTS_DESCRIPTION =
   "Kopper uses System Events only when you invoke capture, so it can copy the text you selected.";
+const APPLE_EVENTS_AUTOMATION_ENTITLEMENT =
+  "com.apple.security.automation.apple-events";
 
 async function readInfoPlist(plistPath) {
   const { stdout } = await execFile(
@@ -110,8 +112,18 @@ async function verifyCodeSignature(appPath) {
   );
 }
 
+async function readCodeSignatureEntitlements(appPath) {
+  const { stdout, stderr } = await execFile(
+    "/usr/bin/codesign",
+    ["--display", "--entitlements", "-", appPath],
+    { encoding: "utf8", maxBuffer: 1024 * 1024 },
+  );
+  return `${stdout}\n${stderr}`;
+}
+
 const defaultPorts = {
   verifyCodeSignature,
+  readCodeSignatureEntitlements,
   readInfoPlist,
   listAsarEntries,
   readAsarEntry,
@@ -119,6 +131,17 @@ const defaultPorts = {
   findUpdaterConfigurations,
   readArchitectures,
 };
+
+function hasBooleanEntitlement(source, entitlement) {
+  const escaped = entitlement.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return (
+    new RegExp(
+      `\\[Key\\]\\s+${escaped}\\s*\\n\\s*\\[Value\\]\\s*\\n\\s*\\[Bool\\]\\s+true`,
+      "u",
+    ).test(source) ||
+    new RegExp(`<key>${escaped}</key>\\s*<true\\s*/>`, "u").test(source)
+  );
+}
 
 function hasRequiredArchitectures(architectures) {
   return (
@@ -1345,6 +1368,7 @@ export async function verifyPackage(appPath, injectedPorts = {}) {
   let updaterConfigurations = [];
   let mainArchitectures = [];
   let codeSignatureValid = false;
+  let appleEventsAutomationEnabled = false;
 
   try {
     await ports.verifyCodeSignature(absoluteAppPath);
@@ -1354,6 +1378,26 @@ export async function verifyPackage(appPath, injectedPorts = {}) {
       failure(
         "invalid_code_signature",
         "The application must have a complete valid code signature.",
+      ),
+    );
+  }
+
+  try {
+    const entitlements = await ports.readCodeSignatureEntitlements(
+      absoluteAppPath,
+    );
+    appleEventsAutomationEnabled = hasBooleanEntitlement(
+      entitlements,
+      APPLE_EVENTS_AUTOMATION_ENTITLEMENT,
+    );
+  } catch {
+    appleEventsAutomationEnabled = false;
+  }
+  if (!appleEventsAutomationEnabled) {
+    failures.push(
+      failure(
+        "missing_apple_events_automation_entitlement",
+        "The application must allow Apple Events automation for explicit selection capture.",
       ),
     );
   }
@@ -1570,6 +1614,9 @@ export async function verifyPackage(appPath, injectedPorts = {}) {
     ok: failures.length === 0,
     app: basename(absoluteAppPath),
     checks: {
+      appleEventsAutomation: appleEventsAutomationEnabled
+        ? "enabled"
+        : "missing",
       architectures: hasRequiredArchitectures(mainArchitectures)
         ? REQUIRED_ARCHITECTURES
         : mainArchitectures,

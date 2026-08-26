@@ -94,6 +94,10 @@ function CaptureAccessPanel({
       <p role="status" aria-live="polite">
         {statusMessage}
       </p>
+      <p>
+        If Kopper already appears enabled, remove it with the minus button, add
+        the current Kopper app again, then check again.
+      </p>
       {controls.operationError === null ? null : (
         <p role="alert">{controls.operationError}</p>
       )}

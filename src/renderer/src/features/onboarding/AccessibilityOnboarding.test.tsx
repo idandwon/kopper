@@ -98,6 +98,9 @@ describe("AccessibilityOnboarding", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Accessibility access is not enabled.",
     );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "If Kopper already appears enabled, remove it with the minus button, add the current Kopper app again, then check again.",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Enable Capture" }));
     await waitFor(() => expect(checkPermission).toHaveBeenCalledWith(true));

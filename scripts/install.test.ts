@@ -468,6 +468,12 @@ describe("verified transactional installation", { timeout: 30_000 }, () => {
 
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("Kopper installed at");
+    expect(result.stdout).toContain(
+      "Unsigned updates can leave macOS Accessibility tied to the previous Kopper build.",
+    );
+    expect(result.stdout).toContain(
+      "remove Kopper with the minus button, add the current Kopper app again, and enable it.",
+    );
     expect(fixture.installedMarker()).toBe("new-v0.1.0");
     expect(fixture.callsInOrder()).toContain("open");
     expect(fixture.temporaryArtifacts()).toEqual([]);

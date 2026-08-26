@@ -262,6 +262,9 @@ describe("Oxide Ledger App", () => {
     expect(screen.getByRole("status")).toHaveTextContent(
       "Capture unavailable — Accessibility access has not been granted.",
     );
+    expect(screen.getByText(/If Kopper already appears enabled/)).toHaveTextContent(
+      "remove it with the minus button, add the current Kopper app again, then check again.",
+    );
     expect(
       screen.getByRole("button", { name: "Open System Settings" }),
     ).toBeVisible();

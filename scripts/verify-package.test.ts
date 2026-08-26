@@ -25,6 +25,7 @@ const { verifySource } = packageVerifier as typeof packageVerifier & {
 
 interface FixtureOptions {
   info?: Record<string, unknown>;
+  entitlements?: string;
   asarEntries?: string[];
   asarFiles?: Record<string, string>;
   nativeFiles?: string[];
@@ -94,6 +95,10 @@ async function createFixture(options: FixtureOptions = {}) {
     lipoCalls,
     ports: {
       verifyCodeSignature: vi.fn(async () => undefined),
+      readCodeSignatureEntitlements: vi.fn(async () =>
+        options.entitlements ??
+        "[Key] com.apple.security.automation.apple-events\n[Value]\n[Bool] true",
+      ),
       readInfoPlist: vi.fn(async () => info),
       listAsarEntries: vi.fn(async () => asarEntries),
       readAsarEntry: vi.fn(async (_asarPath: string, entry: string) =>
@@ -942,6 +947,20 @@ describe("source security auditor", () => {
 });
 
 describe("package verifier", () => {
+  it("rejects a hardened app without Apple Events automation access", async () => {
+    const fixture = await createFixture({
+      entitlements:
+        "[Key] com.apple.security.automation.apple-events\n[Value]\n[Bool] false",
+    });
+
+    const result = await verifyPackage(fixture.appPath, fixture.ports);
+
+    expect(result.ok).toBe(false);
+    expect(failureCodes(result)).toContain(
+      "missing_apple_events_automation_entitlement",
+    );
+  });
+
   it.each([
     ["CFBundleIdentifier", "wrong.identifier", "invalid_bundle_identifier"],
     [
@@ -1427,6 +1446,7 @@ describe("package verifier", () => {
       ok: true,
       app: "Kopper.app",
       checks: {
+        appleEventsAutomation: "enabled",
         architectures: ["arm64", "x86_64"],
         asarEntries: 3,
         bundleIdentifier: "com.kopper.app",

@@ -53,6 +53,7 @@ mounted=0
 transaction_phase="unmodified"
 transaction_updating=0
 signal_pending=0
+upgrading=0
 
 verify_app_identity() {
   local app_path="$1"
@@ -208,6 +209,7 @@ ditto "$mounted_app" "$staged_target" || fail "Could not stage Kopper."
 verify_app_identity "$staged_target" || fail "The staged Kopper application failed verification."
 
 if [[ -e "$KOPPER_TARGET" ]]; then
+  upgrading=1
   begin_transaction_update
   if mv "$KOPPER_TARGET" "$rollback_target"; then
     transaction_phase="rollback-ready"
@@ -258,4 +260,8 @@ if [[ -n "$rollback_target" && -e "$rollback_target" ]]; then
 fi
 
 printf 'Kopper installed at %s.\n' "$KOPPER_TARGET"
+if [[ "$upgrading" == "1" ]]; then
+  printf 'Unsigned updates can leave macOS Accessibility tied to the previous Kopper build.\n'
+  printf 'If capture is unavailable, open System Settings → Privacy & Security → Accessibility, remove Kopper with the minus button, add the current Kopper app again, and enable it.\n'
+fi
 printf 'Kopper is an unsigned friends beta. If macOS blocks the first launch, open System Settings → Privacy & Security → Open Anyway for Kopper.\n'
