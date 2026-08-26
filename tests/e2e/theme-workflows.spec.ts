@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import type { Page } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { createEmptyDocument } from "../../src/shared/domain/document";
 
@@ -47,6 +47,13 @@ interface RootThemeSnapshot {
   dark: boolean;
   colorScheme: { value: string; priority: string };
   properties: Record<string, { value: string; priority: string }>;
+}
+
+async function fillExactly(locator: Locator, value: string): Promise<void> {
+  await expect(async () => {
+    await locator.fill(value);
+    await expect(locator).toHaveValue(value);
+  }).toPass();
 }
 
 async function readRootThemeSnapshot(page: Page): Promise<RootThemeSnapshot> {
@@ -202,10 +209,10 @@ test("persists modes, presets, edited custom theme, and imported preview decisio
     createDialog.locator('[data-scroll-owner="theme-editor"]'),
   ).toBeVisible();
   const foreground = createDialog.getByLabel("foreground", { exact: true });
-  await foreground.fill("#F6F9F6");
+  await fillExactly(foreground, "#F6F9F6");
   await expect(createDialog.getByRole("button", { name: "Save theme" })).toBeDisabled();
   await expect(createDialog.getByRole("alert").first()).toContainText("Contrast");
-  await foreground.fill("#173D35");
+  await fillExactly(foreground, "#173D35");
   await expect(createDialog.getByText("Theme is readable in both modes.")).toBeVisible();
   await createDialog.getByRole("button", { name: "Save theme" }).click();
 
@@ -225,9 +232,15 @@ test("persists modes, presets, edited custom theme, and imported preview decisio
   await expect(
     editDialog.locator('[data-scroll-owner="theme-editor"]'),
   ).toBeVisible();
-  await editDialog.getByLabel("primary", { exact: true }).fill("#285F54");
-  await editDialog.getByLabel("capture", { exact: true }).fill("#A05030");
-  await editDialog.getByLabel("radius", { exact: true }).fill("1rem");
+  await fillExactly(
+    editDialog.getByLabel("primary", { exact: true }),
+    "#285F54",
+  );
+  await fillExactly(
+    editDialog.getByLabel("capture", { exact: true }),
+    "#A05030",
+  );
+  await fillExactly(editDialog.getByLabel("radius", { exact: true }), "1rem");
   await expect(editDialog.getByText("Theme is readable in both modes.")).toBeVisible();
   const saveEditedTheme = editDialog.getByRole("button", { name: "Save theme" });
   await saveEditedTheme.focus();

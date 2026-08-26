@@ -89,6 +89,7 @@ function ProjectedNotes({
 }
 
 interface NoteCollectionProps {
+  active: boolean;
   document: KopperDocument;
   query: string;
   view: NoteProjectionView;
@@ -97,6 +98,7 @@ interface NoteCollectionProps {
 }
 
 export function NoteCollection({
+  active,
   document,
   query,
   view,
@@ -107,6 +109,8 @@ export function NoteCollection({
     selectionReducer,
     initialSelectionState,
   );
+  const collectionRef = useRef<HTMLDivElement>(null);
+  const previousActiveRef = useRef(active);
   const { entries } = useNotePresentation();
   const authoritativeProjections = useMemo(
     () => projectNotes(document, query, view),
@@ -130,6 +134,7 @@ export function NoteCollection({
         )
       : null;
   const focusWasInNoteCollection =
+    active &&
     activeElement instanceof HTMLElement &&
     activeElement.closest("[role=listbox]") !== null;
   const previousFocusedId =
@@ -177,29 +182,37 @@ export function NoteCollection({
   }, [displayedIds, fallbackFocusedId]);
 
   useEffect(() => {
-    if (selectAllRequest === previousSelectAllRequestRef.current) return;
+    if (
+      !active ||
+      selectAllRequest === previousSelectAllRequestRef.current
+    ) {
+      return;
+    }
     previousSelectAllRequestRef.current = selectAllRequest;
     dispatchSelection({ type: "select-all", displayedIds });
-  }, [displayedIds, selectAllRequest]);
+  }, [active, displayedIds, selectAllRequest]);
 
   useEffect(() => {
-    if (visibleSelection.focusedId === null) return;
+    const becameActive = active && !previousActiveRef.current;
+    previousActiveRef.current = active;
+    if (!active || becameActive || visibleSelection.focusedId === null) return;
     const focusedCard = Array.from(
-      globalThis.document.querySelectorAll<HTMLElement>("[data-note-id]"),
+      collectionRef.current?.querySelectorAll<HTMLElement>("[data-note-id]") ?? [],
     ).find(({ dataset }) => dataset.noteId === visibleSelection.focusedId);
     focusedCard?.focus();
-  }, [visibleSelection.focusedId]);
+  }, [active, visibleSelection.focusedId]);
 
   useEffect(() => {
-    if (captureHighlightedNoteId === null) return;
+    if (!active || captureHighlightedNoteId === null) return;
     const capturedCard = Array.from(
-      globalThis.document.querySelectorAll<HTMLElement>("[data-note-id]"),
+      collectionRef.current?.querySelectorAll<HTMLElement>("[data-note-id]") ?? [],
     ).find(({ dataset }) => dataset.noteId === captureHighlightedNoteId);
     capturedCard?.scrollIntoView({ block: "nearest" });
-  }, [captureHighlightedNoteId]);
+  }, [active, captureHighlightedNoteId]);
 
   return (
     <ScrollArea
+      ref={collectionRef}
       data-scroll-owner="notes"
       className="min-h-0 min-w-0 flex-1"
       aria-label="Notes by section"

@@ -80,7 +80,7 @@ export function AccessibilityOnboarding({
           className="min-h-0 min-w-0 flex-1"
           aria-label="Capture setup information"
         >
-          <div className="flex min-h-full min-w-0 flex-col justify-center gap-5 px-6 py-6 pl-7">
+          <div className="flex min-h-full min-w-0 flex-col justify-center gap-5 px-6 pt-14 pb-6 pl-7">
             <div className="min-w-0 space-y-2">
               <p className="font-mono text-xs font-semibold tracking-[0.14em] text-muted-foreground uppercase">
                 Capture setup

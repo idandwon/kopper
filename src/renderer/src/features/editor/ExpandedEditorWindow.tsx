@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { Button } from "../../components/ui/button";
 import { ScrollArea } from "../../components/ui/scroll-area";
@@ -11,27 +11,58 @@ export function expandedEditorNoteId(hash: string): string | null {
   return noteId === null || noteId.length === 0 ? null : noteId;
 }
 
+function EditorStatus({ children }: { children: ReactNode }) {
+  return (
+    <main className="mx-auto flex h-dvh min-h-0 min-w-0 w-full max-w-2xl flex-col overflow-hidden bg-background text-foreground">
+      <header className="min-w-0 shrink-0 border-b border-border px-4 py-4 sm:px-8">
+        <h1 className="m-0 break-words text-base font-semibold">Edit note</h1>
+      </header>
+      <ScrollArea
+        data-scroll-owner="editor"
+        className="min-h-0 min-w-0 flex-1"
+        aria-label="Editor content"
+      >
+        <div className="grid min-h-full min-w-0 place-items-center p-4 sm:p-8">
+          {children}
+        </div>
+      </ScrollArea>
+    </main>
+  );
+}
+
 export function ExpandedEditorWindow({ noteId }: { noteId: string }) {
-  const { document, execute, pendingAction } = useKopperDocument();
+  const { document, error, execute, pendingAction, ready } = useKopperDocument();
   const [editing, setEditing] = useState(true);
   const note = document.notes.find(({ id }) => id === noteId);
 
+  if (pendingAction === "load") {
+    return (
+      <EditorStatus>
+        <div
+          role="progressbar"
+          aria-label="Loading note"
+          aria-valuetext="Loading note"
+          className="h-1 w-24 overflow-hidden rounded-full bg-muted"
+        >
+          <div className="h-full w-1/2 rounded-full bg-primary motion-safe:animate-pulse" />
+        </div>
+      </EditorStatus>
+    );
+  }
+
+  if (!ready && error !== null) {
+    return (
+      <EditorStatus>
+        <p role="alert">{error.message}</p>
+      </EditorStatus>
+    );
+  }
+
   if (note === undefined) {
     return (
-      <main className="mx-auto flex h-dvh min-h-0 min-w-0 w-full max-w-2xl flex-col overflow-hidden bg-background text-foreground">
-        <header className="min-w-0 shrink-0 border-b border-border px-4 py-4 sm:px-8">
-          <h1 className="m-0 break-words text-base font-semibold">Edit note</h1>
-        </header>
-        <ScrollArea
-          data-scroll-owner="editor"
-          className="min-h-0 min-w-0 flex-1"
-          aria-label="Editor content"
-        >
-          <div className="grid min-h-full min-w-0 place-items-center p-4 sm:p-8">
-            <p role="alert">This note no longer exists.</p>
-          </div>
-        </ScrollArea>
-      </main>
+      <EditorStatus>
+        <p role="alert">This note no longer exists.</p>
+      </EditorStatus>
     );
   }
 

@@ -12,11 +12,11 @@ export function App() {
   const { document, ready, error, pendingAction } = useKopperDocument();
   const editorNoteId = expandedEditorNoteId(globalThis.location.hash);
 
-  if (pendingAction === "load") return <LoadingPanel />;
-  if (!ready && error !== null) return <RecoveryScreen error={error} />;
   if (editorNoteId !== null) {
     return <ExpandedEditorWindow noteId={editorNoteId} />;
   }
+  if (pendingAction === "load") return <LoadingPanel />;
+  if (!ready && error !== null) return <RecoveryScreen error={error} />;
 
   return (
     <AccessibilityPermissionGate

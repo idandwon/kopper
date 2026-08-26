@@ -1,36 +1,28 @@
 import type { Ref } from "react";
 
-import {
-  ToggleGroup,
-  ToggleGroupItem,
-} from "../../components/ui/toggle-group";
+import { TabsList, TabsTrigger } from "../../components/ui/tabs";
 import type { SettingsTab } from "../settings/settingsRoute";
 import { SearchField } from "../search/SearchField";
-import type { NoteProjectionView } from "../search/projectNotes";
 import { PanelMenu } from "./PanelMenu";
 import { PanelPinButton } from "./PanelPinButton";
 
 interface PanelHeaderProps {
   query: string;
-  view: NoteProjectionView;
   searchInputRef: Ref<HTMLInputElement>;
   menuTriggerRef: Ref<HTMLButtonElement>;
   changeQuery(query: string): void;
-  changeView(view: NoteProjectionView): void;
   openSettings(tab: SettingsTab): void;
 }
 
 export function PanelHeader({
   query,
-  view,
   searchInputRef,
   menuTriggerRef,
   changeQuery,
-  changeView,
   openSettings,
 }: PanelHeaderProps) {
   return (
-    <header className="grid gap-2 px-4 pt-4 pb-3">
+    <header className="grid gap-2 pt-4 pr-14 pb-3 pl-4">
       <div className="flex items-center gap-2">
         <SearchField
           query={query}
@@ -43,32 +35,25 @@ export function PanelHeader({
           triggerRef={menuTriggerRef}
         />
       </div>
-      <ToggleGroup
-        type="single"
-        value={view}
+      <TabsList
         aria-label="Note lifecycle view"
-        className="rounded-lg border-0 bg-card/60"
-        onValueChange={(nextView) => {
-          if (nextView === "active" || nextView === "completed") {
-            changeView(nextView);
-          }
-        }}
+        className="h-auto w-fit gap-1"
       >
-        <ToggleGroupItem
+        <TabsTrigger
           value="active"
           aria-label="Active notes"
-          className="h-6 px-3 text-xs"
+          className="h-7 px-3"
         >
           Active
-        </ToggleGroupItem>
-        <ToggleGroupItem
+        </TabsTrigger>
+        <TabsTrigger
           value="completed"
           aria-label="Completed notes"
-          className="h-6 px-3 text-xs"
+          className="h-7 px-3"
         >
           Completed
-        </ToggleGroupItem>
-      </ToggleGroup>
+        </TabsTrigger>
+      </TabsList>
     </header>
   );
 }

@@ -51,6 +51,7 @@ describe("RecoveryScreen", () => {
       screen.queryByText("Lifecycle: captured to completed"),
     ).not.toBeInTheDocument();
     expect(screen.getByText(/will not overwrite this damaged file automatically/i)).toBeVisible();
+    expect(screen.getByRole("button", { name: "Hide Kopper" })).toBeVisible();
     expect(api.createNewStore).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Create new store" }));

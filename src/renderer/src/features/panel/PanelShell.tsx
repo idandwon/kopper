@@ -1,5 +1,14 @@
 import type { ReactNode } from "react";
 
+import { Button } from "../../components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../../components/ui/tooltip";
+import { CloseIcon } from "./PanelIcons";
+
 export function PanelShell({ children }: { children: ReactNode }) {
   return (
     <main
@@ -11,19 +20,36 @@ export function PanelShell({ children }: { children: ReactNode }) {
         aria-hidden="true"
         className="kopper-panel-drag-region"
       />
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              className="absolute top-4 right-4 z-40 size-8"
+              aria-label="Hide Kopper"
+              onClick={() => void window.kopper.hidePanel()}
+            >
+              <CloseIcon className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Hide Kopper</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       {children}
     </main>
   );
 }
 
-export function LoadingPanel() {
+export function LoadingPanel({ label = "Loading notes" }: { label?: string }) {
   return (
     <PanelShell>
       <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden p-6">
         <div
           role="progressbar"
-          aria-label="Loading notes"
-          aria-valuetext="Loading notes"
+          aria-label={label}
+          aria-valuetext={label}
           className="h-1 w-24 overflow-hidden rounded-full bg-muted"
         >
           <div className="h-full w-1/2 rounded-full bg-primary motion-safe:animate-pulse" />

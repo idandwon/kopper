@@ -50,7 +50,7 @@ function RecoveryOverview({
       className="min-h-0 min-w-0 flex-1"
       aria-label="Recovery options"
     >
-      <div className="flex min-h-full min-w-0 items-center p-5 pl-6">
+      <div className="flex min-h-full min-w-0 items-center px-5 pt-14 pb-5 pl-6">
         <section className="grid w-full min-w-0 gap-4 rounded-xl border border-destructive bg-card p-5">
           <div>
             <h1 className="m-0 text-lg font-semibold">

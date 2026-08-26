@@ -235,6 +235,7 @@ void app.whenReady().then(async () => {
       permissionObserver,
       preferenceService,
       requestCapture,
+      hidePanel: () => windowManager?.hide(),
       getNativeAppearance: () => nativeTheme.shouldUseDarkColors,
       openEditorWindow: (noteId) =>
         windowManager?.openExpandedEditorWindow(noteId),

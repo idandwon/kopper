@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 import type { PermissionState } from "../../../../shared/permissions/permissionState";
+import { LoadingPanel } from "../panel/PanelShell";
 import { AccessibilityOnboarding } from "./AccessibilityOnboarding";
 
 const CHECK_ERROR = "Kopper could not check Accessibility access.";
@@ -276,11 +277,7 @@ export function AccessibilityPermissionGate({
   ]);
 
   if (!sessionLoaded || !initialCheckComplete) {
-    return (
-      <main className="flex h-dvh items-center justify-center bg-background text-foreground">
-        <p role="status">Loading capture setup…</p>
-      </main>
-    );
+    return <LoadingPanel label="Loading capture setup" />;
   }
 
   if (panelEntered) {

@@ -10,6 +10,7 @@ import type { KopperDocument } from "../../../shared/domain/document";
 import type { KopperError } from "../../../shared/domain/errors";
 import { Button } from "../components/ui/button";
 import { DismissButton } from "../components/ui/dismiss-button";
+import { Tabs, TabsContent } from "../components/ui/tabs";
 import { CaptureToast } from "../features/capture/CaptureToast";
 import { PanelFeedbackProvider } from "../features/feedback/PanelFeedback";
 import { NoteCollection } from "../features/notes/NoteCollection";
@@ -137,7 +138,9 @@ export function DocumentPanel({
   const [view, setView] = useState<NoteProjectionView>("active");
   const [route, setRoute] = useState<PanelRoute>({ page: "notes" });
   const [settingsFocusRequest, setSettingsFocusRequest] = useState(0);
-  const [selectAllRequest, setSelectAllRequest] = useState(0);
+  const [selectAllRequests, setSelectAllRequests] = useState<
+    Record<NoteProjectionView, number>
+  >({ active: 0, completed: 0 });
   const [captureHighlightedNoteId, setCaptureHighlightedNoteId] = useState<
     string | null
   >(null);
@@ -199,7 +202,16 @@ export function DocumentPanel({
   };
 
   const selectAllNotes = () => {
-    setSelectAllRequest((request) => request + 1);
+    setSelectAllRequests((requests) => ({
+      ...requests,
+      [view]: requests[view] + 1,
+    }));
+  };
+
+  const changeView = (nextView: string) => {
+    if (nextView === "active" || nextView === "completed") {
+      setView(nextView);
+    }
   };
 
   return (
@@ -213,38 +225,65 @@ export function DocumentPanel({
                 hidden={route.page !== "notes"}
                 className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
               >
-                <PanelHeader
-                  query={query}
-                  view={view}
-                  searchInputRef={searchInputRef}
-                  menuTriggerRef={menuTriggerRef}
-                  changeQuery={setQuery}
-                  changeView={setView}
-                  openSettings={openSettingsFromMenu}
-                />
-
-                {captureUnavailable ? (
-                  <CaptureAccessPanel controls={permissionControls} />
-                ) : null}
-
-                {error === null ? null : (
-                  <DocumentError
-                    error={error}
-                    retry={retryLastAction}
-                    disabled={busy}
-                    dismiss={clearError}
+                <Tabs
+                  value={view}
+                  onValueChange={changeView}
+                  className="contents"
+                >
+                  <PanelHeader
+                    query={query}
+                    searchInputRef={searchInputRef}
+                    menuTriggerRef={menuTriggerRef}
+                    changeQuery={setQuery}
+                    openSettings={openSettingsFromMenu}
                   />
-                )}
 
-                <NoteCollection
-                  document={document}
-                  query={query}
-                  view={view}
-                  captureHighlightedNoteId={captureHighlightedNoteId}
-                  selectAllRequest={selectAllRequest}
-                />
+                  {captureUnavailable ? (
+                    <CaptureAccessPanel controls={permissionControls} />
+                  ) : null}
 
-                {view === "active" ? <NoteComposer /> : null}
+                  {error === null ? null : (
+                    <DocumentError
+                      error={error}
+                      retry={retryLastAction}
+                      disabled={busy}
+                      dismiss={clearError}
+                    />
+                  )}
+
+                  <TabsContent
+                    value="active"
+                    forceMount
+                    hidden={view !== "active"}
+                    className="mt-0 min-h-0 min-w-0 flex-1 data-[state=active]:flex data-[state=active]:flex-col data-[state=inactive]:hidden"
+                  >
+                    <NoteCollection
+                      active={view === "active"}
+                      document={document}
+                      query={query}
+                      view="active"
+                      captureHighlightedNoteId={captureHighlightedNoteId}
+                      selectAllRequest={selectAllRequests.active}
+                    />
+                    <NoteComposer />
+                  </TabsContent>
+
+                  <TabsContent
+                    value="completed"
+                    forceMount
+                    hidden={view !== "completed"}
+                    className="mt-0 min-h-0 min-w-0 flex-1 data-[state=active]:flex data-[state=active]:flex-col data-[state=inactive]:hidden"
+                  >
+                    <NoteCollection
+                      active={view === "completed"}
+                      document={document}
+                      query={query}
+                      view="completed"
+                      captureHighlightedNoteId={null}
+                      selectAllRequest={selectAllRequests.completed}
+                    />
+                  </TabsContent>
+                </Tabs>
               </div>
 
               {route.page === "settings" ? (

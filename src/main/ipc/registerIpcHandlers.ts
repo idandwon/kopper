@@ -99,6 +99,7 @@ export interface IpcServices {
   continueWithoutCapture?(): void | Promise<void>;
   preferenceService?: IpcPreferenceService;
   requestCapture?(): Promise<CaptureOutcome>;
+  hidePanel?(): void;
 }
 
 const NoArgumentsSchema = z.tuple([]);
@@ -545,6 +546,14 @@ export function registerIpcHandlers(
     );
   };
 
+  const hidePanel = async (
+    _event: IpcMainInvokeEvent,
+    ...args: unknown[]
+  ) => {
+    NoArgumentsSchema.parse(args);
+    services.hidePanel?.();
+  };
+
   const channels = [
     [IPC_CHANNELS.getDocument, getDocument],
     [IPC_CHANNELS.executeCommand, executeCommand],
@@ -568,6 +577,7 @@ export function registerIpcHandlers(
     [IPC_CHANNELS.validateShortcuts, validateShortcuts],
     [IPC_CHANNELS.saveShortcuts, saveShortcuts],
     [IPC_CHANNELS.setPinned, setPinned],
+    [IPC_CHANNELS.hidePanel, hidePanel],
   ] as const;
   for (const [channel, handler] of channels) {
     ipcMain.handle(channel, handler);

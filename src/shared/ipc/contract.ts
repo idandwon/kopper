@@ -42,6 +42,7 @@ export const IPC_CHANNELS = {
   validateShortcuts: "kopper:shortcuts:validate",
   saveShortcuts: "kopper:shortcuts:save",
   setPinned: "kopper:window:pin",
+  hidePanel: "kopper:window:hide",
   openSettings: "kopper:settings:open",
 } as const;
 
@@ -367,6 +368,7 @@ export interface KopperApi {
     preferences: ShortcutPreferences,
   ): Promise<Result<KopperDocument, KopperError>>;
   setPinned(pinned: boolean): Promise<Result<KopperDocument, KopperError>>;
+  hidePanel(): Promise<void>;
   onOpenSettings(listener: () => void): () => void;
   subscribeDocument(listener: (document: KopperDocument) => void): () => void;
 }

@@ -103,6 +103,20 @@ function renderGate() {
 }
 
 describe("AccessibilityPermissionGate", () => {
+  it("keeps initial capture setup loading inside the closable panel shell", () => {
+    getAccessibilityPermission.mockReturnValueOnce(
+      new Promise(() => undefined),
+    );
+    getAccessibilitySession.mockReturnValueOnce(new Promise(() => undefined));
+    renderGate();
+
+    const progress = screen.getByRole("progressbar", {
+      name: "Loading capture setup",
+    });
+    expect(progress.closest('[data-panel-shell="true"]')).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hide Kopper" })).toBeVisible();
+  });
+
   it("loads passive permission and main-owned session disposition once", async () => {
     renderGate();
 

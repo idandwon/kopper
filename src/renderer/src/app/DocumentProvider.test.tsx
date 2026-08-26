@@ -83,6 +83,7 @@ function fileApiMocks(): Pick<
   | "validateShortcuts"
   | "saveShortcuts"
   | "setPinned"
+  | "hidePanel"
   | "onOpenSettings"
 > {
   return {
@@ -107,6 +108,7 @@ function fileApiMocks(): Pick<
     validateShortcuts: vi.fn(),
     saveShortcuts: vi.fn(),
     setPinned: vi.fn(),
+    hidePanel: vi.fn(),
     onOpenSettings: vi.fn(() => vi.fn()),
   };
 }

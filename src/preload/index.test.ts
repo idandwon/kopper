@@ -55,6 +55,7 @@ describe("preload bridge", () => {
       "getDataPath",
       "getDocument",
       "getNativeAppearance",
+      "hidePanel",
       "importTheme",
       "onAccessibilityPermissionChanged",
       "onCaptureOutcome",
@@ -340,7 +341,7 @@ describe("preload bridge", () => {
     await expect(exposedApi().openAccessibilitySettings()).rejects.toThrow();
   });
 
-  it("validates dedicated capture, shortcut, pin, and settings-event bridges", async () => {
+  it("validates dedicated capture, shortcut, pin, hide, and settings-event bridges", async () => {
     const document = createEmptyDocument(new Date("2026-08-16T12:00:00.000Z"));
     const preferences = document.shortcuts;
     electron.invoke
@@ -362,11 +363,13 @@ describe("preload bridge", () => {
       ok: true,
       value: document,
     });
+    await expect(exposedApi().hidePanel()).resolves.toBeUndefined();
     expect(electron.invoke.mock.calls).toEqual([
       [IPC_CHANNELS.requestCapture],
       [IPC_CHANNELS.validateShortcuts, preferences],
       [IPC_CHANNELS.saveShortcuts, preferences],
       [IPC_CHANNELS.setPinned, true],
+      [IPC_CHANNELS.hidePanel],
     ]);
 
     const listener = vi.fn();

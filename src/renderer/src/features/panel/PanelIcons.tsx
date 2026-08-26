@@ -1,5 +1,23 @@
 import type { SVGProps } from "react";
 
+export function CloseIcon(props: SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeWidth="1.75"
+      aria-hidden="true"
+      data-icon="close"
+      {...props}
+    >
+      <path d="m5.5 5.5 9 9" />
+      <path d="m14.5 5.5-9 9" />
+    </svg>
+  );
+}
+
 export function VerticalOverflowIcon(props: SVGProps<SVGSVGElement>) {
   return (
     <svg

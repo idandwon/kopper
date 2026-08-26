@@ -173,6 +173,7 @@ async function expectNativeSettingsOwnsSurface(
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
   expect(screen.getByRole("heading", { name: "Settings" })).toBeVisible();
+  expect(screen.getByRole("button", { name: "Hide Kopper" })).toBeVisible();
   expect(screen.getByRole("tab", { name: "Shortcuts" })).toHaveAttribute(
     "data-state",
     "active",
@@ -309,7 +310,43 @@ describe("Oxide Ledger App", () => {
     expect(onboardingMock.mounts).toBe(0);
   });
 
-  it("renders the interactive active panel without a lifecycle rail", async () => {
+  it("keeps panel-owned controls out of expanded editor loading and failure states", () => {
+    globalThis.location.hash = "#editor=note-1";
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({ ready: false, pendingAction: "load" }),
+    );
+    const view = render(<App />);
+
+    expect(
+      screen.getByRole("progressbar", { name: "Loading note" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Hide Kopper" }),
+    ).not.toBeInTheDocument();
+
+    mockedUseKopperDocument.mockReturnValue(
+      contextValue({
+        ready: false,
+        pendingAction: null,
+        error: {
+          code: "read_failed",
+          message: "Could not read the store.",
+          retryable: true,
+          recoveryAction: "retry",
+        },
+      }),
+    );
+    view.rerender(<App />);
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Could not read the store.",
+    );
+    expect(
+      screen.queryByRole("button", { name: "Hide Kopper" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("renders compact lifecycle tabs without a lifecycle rail", async () => {
     const user = userEvent.setup();
     render(<App />);
 
@@ -326,34 +363,49 @@ describe("Oxide Ledger App", () => {
         .getByRole("button", { name: "Manage Inbox" })
         .querySelector('[data-icon="vertical-overflow"]'),
     ).toBeInTheDocument();
-    const lifecycleGroup = screen.getByRole("group", {
+    const lifecycleTabs = screen.getByRole("tablist", {
       name: "Note lifecycle view",
     });
-    const activeView = screen.getByRole("button", { name: "Active notes" });
-    const completedView = screen.getByRole("button", {
+    const activeView = screen.getByRole("tab", { name: "Active notes" });
+    const completedView = screen.getByRole("tab", {
       name: "Completed notes",
     });
-    expect(lifecycleGroup).toHaveAttribute("data-slot", "toggle-group");
-    expect(activeView).toHaveAttribute("data-slot", "toggle-group-item");
+    expect(lifecycleTabs).toHaveClass("gap-1");
     expect(activeView).toHaveClass("px-3");
     expect(completedView).toHaveClass("px-3");
-    expect(activeView).toHaveAttribute("aria-pressed", "true");
-    expect(completedView).toHaveAttribute("aria-pressed", "false");
+    expect(activeView).toHaveAttribute("aria-selected", "true");
+    expect(completedView).toHaveAttribute("aria-selected", "false");
+    const tabPanels = screen.getAllByRole("tabpanel", { hidden: true });
+    expect(tabPanels).toHaveLength(2);
+    expect(tabPanels[0]).not.toHaveAttribute("hidden");
+    expect(tabPanels[1]).toHaveAttribute("hidden");
     await user.click(activeView);
-    expect(activeView).toHaveAttribute("aria-pressed", "true");
-    expect(completedView).toHaveAttribute("aria-pressed", "false");
+    expect(activeView).toHaveAttribute("aria-selected", "true");
+    expect(completedView).toHaveAttribute("aria-selected", "false");
     expect(screen.getByRole("heading", { name: "Inbox" })).toBeVisible();
     expect(screen.getByText("Captured note")).toBeVisible();
-    expect(screen.queryByText("Completed note")).not.toBeInTheDocument();
+    expect(screen.getByText("Completed note")).not.toBeVisible();
     expect(
       screen.getByRole("textbox", { name: "Add a note or prompt" }),
     ).toBeEnabled();
 
-    await user.click(completedView);
-    expect(activeView).toHaveAttribute("aria-pressed", "false");
-    expect(completedView).toHaveAttribute("aria-pressed", "true");
-    expect(screen.queryByText("Captured note")).not.toBeInTheDocument();
+    activeView.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(completedView).toHaveFocus();
+    expect(activeView).toHaveAttribute("aria-selected", "false");
+    expect(completedView).toHaveAttribute("aria-selected", "true");
+    expect(tabPanels[0]).toHaveAttribute("hidden");
+    expect(tabPanels[1]).not.toHaveAttribute("hidden");
+    expect(screen.getByText("Captured note")).not.toBeVisible();
     expect(screen.getByText("Completed note")).toBeVisible();
+
+    await user.keyboard("{Home}");
+    expect(activeView).toHaveFocus();
+    expect(activeView).toHaveAttribute("aria-selected", "true");
+    await user.keyboard("{End}");
+    expect(completedView).toHaveFocus();
+    expect(completedView).toHaveAttribute("aria-selected", "true");
+
     expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "Add section" }),
@@ -367,6 +419,89 @@ describe("Oxide Ledger App", () => {
     expect(
       globalThis.document.querySelector("[data-panel-drag-region]"),
     ).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("preserves independent tab working state while keeping hidden panels inert", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const activeTab = screen.getByRole("tab", { name: "Active notes" });
+    const completedTab = screen.getByRole("tab", { name: "Completed notes" });
+    const activeCard = screen.getByRole("option", {
+      name: "Note: Captured note",
+    });
+    await user.click(activeCard);
+    fireEvent.keyDown(activeCard, { key: "Enter" });
+    const editor = screen.getByRole("textbox", { name: "Edit note" });
+    await user.clear(editor);
+    await user.type(editor, "Unsaved active draft");
+    await user.type(
+      screen.getByRole("textbox", { name: "Add a note or prompt" }),
+      "Composer draft",
+    );
+    const activeScrollViewport = visiblePrimaryScrollOwners()[0]?.querySelector<HTMLElement>(
+      '[data-slot="scroll-area-viewport"]',
+    );
+    expect(activeScrollViewport).toBeDefined();
+    if (activeScrollViewport !== null && activeScrollViewport !== undefined) {
+      activeScrollViewport.scrollTop = 48;
+    }
+
+    await user.click(completedTab);
+    const completedCard = screen.getByRole("option", {
+      name: "Note: Completed note",
+    });
+    await user.click(completedCard);
+    expect(completedCard).toHaveAttribute("aria-selected", "true");
+    expect(visiblePrimaryScrollOwners()).toHaveLength(1);
+
+    await user.click(activeTab);
+    expect(screen.getByRole("textbox", { name: "Edit note" })).toHaveValue(
+      "Unsaved active draft",
+    );
+    expect(
+      screen.getByRole("textbox", { name: "Add a note or prompt" }),
+    ).toHaveValue("Composer draft");
+    expect(
+      screen.getByRole("option", { name: "Note: Captured note" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(activeScrollViewport).toHaveProperty("scrollTop", 48);
+
+    await user.click(completedTab);
+    expect(
+      screen.getByRole("option", { name: "Note: Completed note" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(visiblePrimaryScrollOwners()).toHaveLength(1);
+  });
+
+  it("keeps focus on lifecycle tab triggers when activating preserved panels", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    const activeTab = screen.getByRole("tab", { name: "Active notes" });
+    const completedTab = screen.getByRole("tab", { name: "Completed notes" });
+    await user.click(
+      screen.getByRole("option", { name: "Note: Captured note" }),
+    );
+    await user.click(completedTab);
+    await user.click(
+      screen.getByRole("option", { name: "Note: Completed note" }),
+    );
+
+    completedTab.focus();
+    await user.keyboard("{ArrowLeft}");
+    expect(activeTab).toHaveFocus();
+    expect(activeTab).toHaveAttribute("aria-selected", "true");
+
+    activeTab.focus();
+    await user.keyboard("{End}");
+    expect(completedTab).toHaveFocus();
+    expect(completedTab).toHaveAttribute("aria-selected", "true");
+
+    completedTab.focus();
+    await user.keyboard("{Home}");
+    expect(activeTab).toHaveFocus();
+    expect(activeTab).toHaveAttribute("aria-selected", "true");
   });
 
   it("highlights only the matching visible active card for 1800ms", () => {
@@ -507,6 +642,9 @@ describe("Oxide Ledger App", () => {
     const discard = screen.getByRole("alertdialog", {
       name: "Discard your unsaved changes?",
     });
+    expect(
+      screen.queryByRole("button", { name: "Hide Kopper" }),
+    ).not.toBeInTheDocument();
 
     await expectNativeSettingsOwnsSurface(user, discard);
 
@@ -544,7 +682,7 @@ describe("Oxide Ledger App", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "Completed notes" }));
+    await user.click(screen.getByRole("tab", { name: "Completed notes" }));
     await user.type(
       screen.getByRole("searchbox", { name: "Search notes" }),
       "Completed",
@@ -557,8 +695,8 @@ describe("Oxide Ledger App", () => {
       "Completed",
     );
     expect(
-      screen.getByRole("button", { name: "Completed notes" }),
-    ).toHaveAttribute("aria-pressed", "true");
+      screen.getByRole("tab", { name: "Completed notes" }),
+    ).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("Completed note")).toBeVisible();
   });
 
@@ -632,7 +770,8 @@ describe("Oxide Ledger App", () => {
     expect(screen.getByText("2 selected · ⌘C copy · Space done")).toBeVisible();
   });
 
-  it("selects only the filtered current view on repeated Cmd+A and Ctrl+A", () => {
+  it("selects only the filtered current view on repeated Cmd+A and Ctrl+A", async () => {
+    const user = userEvent.setup();
     const activeDocument: KopperDocument = {
       ...document,
       notes: [
@@ -666,7 +805,7 @@ describe("Oxide Ledger App", () => {
     fireEvent.change(screen.getByRole("searchbox", { name: "Search notes" }), {
       target: { value: "Match" },
     });
-    const activeToggle = screen.getByRole("button", { name: "Active notes" });
+    const activeToggle = screen.getByRole("tab", { name: "Active notes" });
     activeToggle.focus();
     fireEvent.keyDown(window, { key: "a", metaKey: true });
 
@@ -686,10 +825,10 @@ describe("Oxide Ledger App", () => {
     fireEvent.keyDown(window, { key: "A", ctrlKey: true });
     expect(secondActive).toHaveAttribute("aria-selected", "true");
 
-    const completedToggle = screen.getByRole("button", {
+    const completedToggle = screen.getByRole("tab", {
       name: "Completed notes",
     });
-    fireEvent.click(completedToggle);
+    await user.click(completedToggle);
     completedToggle.focus();
     fireEvent.keyDown(window, { key: "a", metaKey: true });
     expect(
@@ -868,9 +1007,9 @@ describe("Oxide Ledger App", () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByRole("button", { name: "Completed notes" }));
+    await user.click(screen.getByRole("tab", { name: "Completed notes" }));
     expect(screen.getByText("Completed note")).toBeVisible();
-    expect(screen.queryByText("Captured note")).not.toBeInTheDocument();
+    expect(screen.getByText("Captured note")).not.toBeVisible();
     expect(
       screen.queryByRole("textbox", { name: "Add a note or prompt" }),
     ).not.toBeInTheDocument();
@@ -879,7 +1018,11 @@ describe("Oxide Ledger App", () => {
     expect(
       screen.queryByRole("heading", { name: "Inbox" }),
     ).not.toBeInTheDocument();
-    expect(screen.getByText("No notes match “missing”.")).toBeVisible();
+    expect(
+      within(
+        screen.getByRole("tabpanel", { name: "Completed notes" }),
+      ).getByText("No notes match “missing”."),
+    ).toBeVisible();
   });
 
   it("directs active and completed empty states toward the next action", async () => {
@@ -895,7 +1038,7 @@ describe("Oxide Ledger App", () => {
       ),
     ).toBeVisible();
 
-    await user.click(screen.getByRole("button", { name: "Completed notes" }));
+    await user.click(screen.getByRole("tab", { name: "Completed notes" }));
     expect(screen.getByText("No completed notes yet.")).toBeVisible();
   });
 
@@ -1110,5 +1253,6 @@ describe("Oxide Ledger App", () => {
     });
     expect(progress).toBeVisible();
     expect(progress.closest('[data-panel-shell="true"]')).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Hide Kopper" })).toBeVisible();
   });
 });

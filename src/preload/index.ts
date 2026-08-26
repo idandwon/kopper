@@ -225,6 +225,10 @@ const api: KopperApi = {
     );
   },
 
+  async hidePanel() {
+    await ipcRenderer.invoke(IPC_CHANNELS.hidePanel);
+  },
+
   onOpenSettings(listener) {
     const wrappedListener = () => listener();
     ipcRenderer.on(IPC_CHANNELS.openSettings, wrappedListener);

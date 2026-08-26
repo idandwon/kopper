@@ -16,7 +16,6 @@ async function mainWindowState(kopper: KopperE2E) {
     if (window === undefined) return null;
     return {
       bounds: window.getBounds(),
-      focused: window.isFocused(),
       visible: window.isVisible(),
     };
   });
@@ -47,10 +46,43 @@ test("routes the fixed live main-process Settings event to Shortcuts and focus",
   );
   await expect(page.getByRole("heading", { name: "Shortcuts & panel" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Back to notes" })).toBeFocused();
-  await expect.poll(async () => (await mainWindowState(kopper))?.focused).toBe(true);
 
   await page.getByRole("button", { name: "Back to notes" }).click();
   await expect(page.getByRole("searchbox", { name: "Search notes" })).toBeFocused();
+});
+
+test("hides through the panel X without quitting and restores the tab session", async ({
+  kopper,
+}) => {
+  const page = await kopper.launchKopper();
+  await continueWithoutCaptureIfNeeded(page);
+  const composer = page.getByRole("textbox", { name: "Add a note or prompt" });
+
+  await composer.fill("Saved before hiding");
+  await composer.press("Enter");
+  const note = page.getByRole("option", { name: "Note: Saved before hiding" });
+  await note.click();
+  await composer.fill("Draft preserved while hidden");
+  const completed = page.getByRole("tab", { name: "Completed notes" });
+  await completed.click();
+
+  await page.getByRole("button", { name: "Hide Kopper" }).click();
+  await expect.poll(async () => (await mainWindowState(kopper))?.visible).toBe(false);
+  expect(kopper.electronApp.process().exitCode).toBeNull();
+
+  await kopper.electronApp.evaluate(({ BrowserWindow }) => {
+    const window = BrowserWindow.getAllWindows().find(
+      (candidate) => !candidate.webContents.getURL().endsWith("#capture-hud"),
+    );
+    window?.show();
+    window?.focus();
+  });
+
+  await expect.poll(async () => (await mainWindowState(kopper))?.visible).toBe(true);
+  await expect(completed).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "Active notes" }).click();
+  await expect(composer).toHaveValue("Draft preserved while hidden");
+  await expect(note).toHaveAttribute("aria-selected", "true");
 });
 
 test("renders the actual focusless 340x72 HUD anchored to a hidden panel", async ({

@@ -39,6 +39,7 @@ async function addSection(page: Page, name: string): Promise<void> {
 async function addNote(page: Page, body: string): Promise<void> {
   const composer = page.getByLabel("Add a note or prompt");
   await composer.fill(body);
+  await expect(composer).toHaveValue(body);
   await composer.press("Enter");
   await expect(page.getByRole("option", { name: `Note: ${body}` })).toBeVisible();
   await expect(composer).toHaveValue("");
@@ -111,7 +112,7 @@ test("submits with Enter, keeps Shift+Enter lines, and selects the visible notes
   await expect(composer).toHaveValue("");
 
   await addNote(page, "Another note");
-  const active = page.getByRole("button", { name: "Active notes" });
+  const active = page.getByRole("tab", { name: "Active notes" });
   await active.focus();
   await active.press("Meta+a");
   await expect(page.getByText("2 selected · ⌘C copy · Space done")).toBeVisible();
@@ -355,11 +356,11 @@ test("isolates a complete document journey and persists only acknowledged state"
 
   await page.getByRole("button", { name: /Mark Alpha finding.*Beta decision as done/ }).click();
   await expect(merged).toHaveCount(0);
-  await page.getByRole("button", { name: "Completed notes" }).click();
+  await page.getByRole("tab", { name: "Completed notes" }).click();
   await expect(merged).toBeVisible();
   await page.getByRole("button", { name: /Restore Alpha finding.*Beta decision/ }).click();
   await expect(merged).toHaveCount(0);
-  await page.getByRole("button", { name: "Active notes" }).click();
+  await page.getByRole("tab", { name: "Active notes" }).click();
   await expect(merged).toBeVisible();
 
   await openNoteMenu(page, "Gamma reference");

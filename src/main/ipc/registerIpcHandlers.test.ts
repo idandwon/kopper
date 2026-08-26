@@ -648,7 +648,7 @@ describe("registerIpcHandlers", () => {
     expect(commandExecutor.undo).toHaveBeenCalledTimes(1);
   });
 
-  it("routes capture and privileged preferences only through dedicated strict services", async () => {
+  it("routes capture, panel hiding, and privileged preferences only through dedicated strict services", async () => {
     const repository = new NoteRepository("unused.json");
     const document = repository.snapshot();
     const preferenceService = {
@@ -657,13 +657,14 @@ describe("registerIpcHandlers", () => {
       setPinned: vi.fn(async () => ({ ok: true as const, value: document })),
     };
     const requestCapture = vi.fn(async () => ({ status: "empty" as const }));
+    const hidePanel = vi.fn();
     const ipcMain = new FakeIpcMain();
     registerIpcHandlers(
       repository,
       makeCommandExecutor(),
       ipcMain,
       makeClipboardWriter(),
-      { preferenceService, requestCapture },
+      { preferenceService, requestCapture, hidePanel },
     );
 
     await expect(ipcMain.invoke(IPC_CHANNELS.requestCapture)).resolves.toEqual({
@@ -679,6 +680,7 @@ describe("registerIpcHandlers", () => {
       ok: true,
       value: document,
     });
+    await expect(ipcMain.invoke(IPC_CHANNELS.hidePanel)).resolves.toBeUndefined();
 
     await expect(
       ipcMain.invoke(IPC_CHANNELS.saveShortcuts, { capture: "raw" }),
@@ -686,8 +688,12 @@ describe("registerIpcHandlers", () => {
     await expect(
       ipcMain.invoke(IPC_CHANNELS.setPinned, "yes"),
     ).resolves.toMatchObject({ ok: false, error: { code: "validation_failed" } });
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.hidePanel, "unexpected"),
+    ).rejects.toThrow();
     expect(preferenceService.setShortcuts).toHaveBeenCalledOnce();
     expect(preferenceService.setPinned).toHaveBeenCalledOnce();
+    expect(hidePanel).toHaveBeenCalledOnce();
   });
 
   it("removes only registered handlers and can register again after cleanup", () => {

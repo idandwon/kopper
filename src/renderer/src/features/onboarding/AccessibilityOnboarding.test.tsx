@@ -72,6 +72,7 @@ describe("AccessibilityOnboarding", () => {
     expect(
       globalThis.document.querySelector("[data-panel-drag-region]"),
     ).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByRole("button", { name: "Hide Kopper" })).toBeVisible();
   });
 
   it("stacks narrow secondary actions outside one onboarding scroll owner", () => {
