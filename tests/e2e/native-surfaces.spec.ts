@@ -45,7 +45,7 @@ test("routes the fixed live main-process Settings event to Shortcuts and focus",
     "aria-selected",
     "true",
   );
-  await expect(page.getByRole("heading", { name: "Shortcuts & panel" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Keyboard shortcuts" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Back to notes" })).toBeFocused();
 
   await page.getByRole("button", { name: "Back to notes" }).click();

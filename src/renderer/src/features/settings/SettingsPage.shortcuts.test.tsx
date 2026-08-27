@@ -70,12 +70,17 @@ describe("SettingsPage shortcut draft lifecycle", () => {
     const user = userEvent.setup();
     render(<ControlledSettingsPage />);
 
-    const toggle = screen.getByLabelText("Toggle panel");
-    await user.clear(toggle);
-    await user.type(toggle, "Command+Alt+U");
-    await user.click(screen.getByRole("button", { name: "Record shortcut" }));
-    expect(screen.getByRole("button", { name: "Recording…" })).toBeVisible();
-    const shortcutHeading = screen.getByText("Shortcuts & panel");
+    await user.click(
+      screen.getByRole("button", { name: "Change panel shortcut" }),
+    );
+    fireEvent.keyDown(window, { key: "u", metaKey: true, altKey: true });
+    await user.click(
+      screen.getByRole("button", { name: "Change capture shortcut" }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Recording capture shortcut…" }),
+    ).toBeVisible();
+    const shortcutHeading = screen.getByText("Keyboard shortcuts");
 
     await user.click(screen.getByRole("tab", { name: "Appearance" }));
     expect(screen.getByText("Real tab switch target")).toBeVisible();
@@ -84,15 +89,17 @@ describe("SettingsPage shortcut draft lifecycle", () => {
     fireEvent.keyDown(window, { key: "k", metaKey: true });
     await user.click(screen.getByRole("tab", { name: "Shortcuts" }));
 
-    expect(screen.getByLabelText("Toggle panel")).toHaveValue("Command+Alt+U");
+    expect(
+      screen.getByLabelText("Panel shortcut: Command+Alt+U"),
+    ).toHaveTextContent("⌘ ⌥ U");
     expect(screen.getByLabelText("Capture shortcut candidate")).toHaveTextContent(
-      "Double Shift",
+      "⇧ ⇧",
     );
     expect(
-      screen.getByRole("button", { name: "Record shortcut" }),
+      screen.getByRole("button", { name: "Change capture shortcut" }),
     ).toBeVisible();
     expect(
-      screen.queryByText("Press a shortcut, or Escape to cancel."),
+      screen.queryByText("Press a capture shortcut, or Escape to cancel."),
     ).not.toBeInTheDocument();
     expect(screen.queryByText("Real tab switch target")).not.toBeInTheDocument();
   });

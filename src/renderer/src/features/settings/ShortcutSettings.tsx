@@ -6,7 +6,6 @@ import {
 } from "../../../../shared/domain/document";
 import { useKopperDocument } from "../../app/DocumentProvider";
 import { Button } from "../../components/ui/button";
-import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import {
   RadioGroup,
@@ -40,6 +39,22 @@ function shortcutFingerprint(preferences: ShortcutPreferences): string {
   return `${capture}\u0000${preferences.togglePanel}`;
 }
 
+function formatShortcut(accelerator: string): string {
+  const keys: Record<string, string> = {
+    Command: "⌘",
+    CommandOrControl: "⌘/Ctrl",
+    Control: "⌃",
+    Alt: "⌥",
+    Shift: "⇧",
+  };
+  return accelerator
+    .split("+")
+    .map((part) => keys[part] ?? part)
+    .join(" ");
+}
+
+type RecordingTarget = "capture" | "panel";
+
 export function ShortcutSettings({
   active,
   captureUnavailable,
@@ -51,7 +66,8 @@ export function ShortcutSettings({
   const [candidate, setCandidate] = useState<ShortcutPreferences>(() =>
     structuredClone(document.shortcuts),
   );
-  const [recording, setRecording] = useState(false);
+  const [recordingTarget, setRecordingTarget] =
+    useState<RecordingTarget | null>(null);
   const [busy, setBusy] = useState(false);
   const [testing, setTesting] = useState(false);
   const [feedback, setFeedback] = useState<SettingsFeedbackValue | null>(null);
@@ -62,19 +78,19 @@ export function ShortcutSettings({
   }, [authoritativeShortcutFingerprint]);
 
   useLayoutEffect(() => {
-    if (!active && recording) {
-      setRecording(false);
+    if (!active && recordingTarget !== null) {
+      setRecordingTarget(null);
       setFeedback(null);
     }
-  }, [active, recording]);
+  }, [active, recordingTarget]);
 
   useLayoutEffect(() => {
-    if (!active || !recording) return;
+    if (!active || recordingTarget === null) return;
     const onKeyDown = (event: KeyboardEvent) => {
       event.preventDefault();
       if (event.key === "Escape") {
         event.stopImmediatePropagation();
-        setRecording(false);
+        setRecordingTarget(null);
         setFeedback({
           text: "Shortcut recording cancelled.",
           tone: "status",
@@ -83,16 +99,20 @@ export function ShortcutSettings({
       }
       const accelerator = acceleratorFromEvent(event);
       if (accelerator === null) return;
-      setCandidate((current) => ({
-        ...current,
-        capture: { kind: "accelerator", accelerator },
-      }));
-      setRecording(false);
+      setCandidate((current) =>
+        recordingTarget === "capture"
+          ? {
+              ...current,
+              capture: { kind: "accelerator", accelerator },
+            }
+          : { ...current, togglePanel: accelerator },
+      );
+      setRecordingTarget(null);
       setFeedback(null);
     };
     globalThis.addEventListener("keydown", onKeyDown, true);
     return () => globalThis.removeEventListener("keydown", onKeyDown, true);
-  }, [active, recording]);
+  }, [active, recordingTarget]);
 
   const save = async (preferences: ShortcutPreferences, reset = false) => {
     if (busy) return;
@@ -121,9 +141,12 @@ export function ShortcutSettings({
     }
   };
 
-  const changeToggle = (togglePanel: string) => {
-    setCandidate((current) => ({ ...current, togglePanel }));
-    setFeedback(null);
+  const record = (target: RecordingTarget) => {
+    setRecordingTarget(target);
+    setFeedback({
+      text: `Press a ${target === "capture" ? "capture" : "panel"} shortcut, or Escape to cancel.`,
+      tone: "status",
+    });
   };
 
   const pin = async () => {
@@ -172,33 +195,36 @@ export function ShortcutSettings({
     }
   };
 
-  const captureLabel =
-    candidate.capture.kind === "double-modifier"
-      ? "Double Shift"
-      : candidate.capture.accelerator;
+  const recordingCapture = recordingTarget === "capture";
+  const recordingPanel = recordingTarget === "panel";
 
   return (
     <SettingsSection
-      title="Shortcuts & panel"
-      description="Configure capture without exposing native keyboard access to this page."
+      title="Keyboard shortcuts"
+      description="Choose the keys you use from other apps."
       headingId="shortcut-settings-title"
       separated
-      className="min-w-0 gap-5"
+      className="min-w-0 gap-4"
     >
-      <div className="grid min-w-0 gap-2">
-        <Label
-          id="capture-selection-label"
-          className="text-xs uppercase tracking-wide text-muted-foreground"
-        >
-          Capture selection
-        </Label>
+      <div
+        className="grid min-w-0 gap-3"
+      >
+        <div className="grid gap-1">
+          <h3 id="capture-selection-label" className="m-0 text-sm font-medium">
+            Capture selected text
+          </h3>
+          <p className="m-0 text-xs text-muted-foreground">
+            Choose Double Shift or record your own shortcut.
+          </p>
+        </div>
         <RadioGroup
-          value={recording ? "accelerator" : candidate.capture.kind}
+          value={recordingCapture ? "accelerator" : candidate.capture.kind}
           aria-labelledby="capture-selection-label"
           disabled={busy}
+          className="grid gap-2"
           onValueChange={(value) => {
             if (value === "double-modifier") {
-              setRecording(false);
+              setRecordingTarget(null);
               setCandidate((current) => ({
                 ...current,
                 capture: { kind: "double-modifier", modifier: "shift" },
@@ -207,74 +233,128 @@ export function ShortcutSettings({
               return;
             }
             if (value === "accelerator") {
-              setRecording(true);
-              setFeedback({
-                text: "Press a shortcut, or Escape to cancel.",
-                tone: "status",
-              });
+              record("capture");
             }
           }}
         >
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-h-9 min-w-0 items-center gap-3 rounded-md border border-border bg-background px-3 py-2">
             <RadioGroupItem id="capture-double-shift" value="double-modifier" />
-            <Label htmlFor="capture-double-shift" className="text-xs">
+            <Label
+              htmlFor="capture-double-shift"
+              className="min-w-0 flex-1 text-sm"
+            >
               Double Shift
             </Label>
+            <kbd
+              aria-label={
+                candidate.capture.kind === "double-modifier"
+                  ? "Capture shortcut candidate"
+                  : undefined
+              }
+              className="shrink-0 rounded-sm border border-border bg-muted px-2 py-1 font-mono text-xs text-muted-foreground"
+            >
+              ⇧ ⇧
+            </kbd>
           </div>
-          <div className="grid min-w-0 gap-2">
-            <div className="flex min-w-0 items-center gap-2">
-              <RadioGroupItem id="capture-accelerator" value="accelerator" />
-              <Label htmlFor="capture-accelerator" className="text-xs">
-                Keyboard shortcut
-              </Label>
-            </div>
-            <div className="ml-6 flex min-w-0 flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                size="sm"
-                variant={recording ? "secondary" : "outline"}
-                aria-pressed={recording}
-                disabled={busy}
-                onClick={() => {
-                  setRecording(true);
-                  setFeedback({
-                    text: "Press a shortcut, or Escape to cancel.",
-                    tone: "status",
-                  });
-                }}
-              >
-                {recording ? "Recording…" : "Record shortcut"}
-              </Button>
+          <div className="flex min-h-9 min-w-0 flex-wrap items-center gap-3 rounded-md border border-border bg-background px-3 py-2">
+            <RadioGroupItem id="capture-accelerator" value="accelerator" />
+            <Label
+              htmlFor="capture-accelerator"
+              className="min-w-0 flex-1 text-sm"
+            >
+              Custom shortcut
+            </Label>
+            {recordingCapture ? (
               <span
-                className="min-w-0 break-all font-mono text-xs"
-                aria-label="Capture shortcut candidate"
+                className="text-xs text-muted-foreground"
+                aria-live="polite"
               >
-                {captureLabel}
+                Listening…
               </span>
-            </div>
+            ) : candidate.capture.kind === "accelerator" ? (
+              <kbd
+                aria-label="Capture shortcut candidate"
+                className="min-w-0 break-words rounded-sm border border-border bg-muted px-2 py-1 font-mono text-xs text-muted-foreground"
+              >
+                {formatShortcut(candidate.capture.accelerator)}
+              </kbd>
+            ) : null}
+            <Button
+              type="button"
+              size="sm"
+              variant={recordingCapture ? "secondary" : "outline"}
+              aria-label={
+                recordingCapture
+                  ? "Recording capture shortcut…"
+                  : "Change capture shortcut"
+              }
+              aria-pressed={recordingCapture}
+              disabled={busy}
+              onClick={() => record("capture")}
+            >
+              {recordingCapture
+                ? "Recording…"
+                : candidate.capture.kind === "accelerator"
+                  ? "Change"
+                  : "Record"}
+            </Button>
           </div>
         </RadioGroup>
       </div>
 
       <Separator />
-      <div className="grid min-w-0 gap-1">
-        <Label htmlFor="toggle-panel-shortcut" className="text-xs">
-          Toggle panel
-        </Label>
-        <Input
-          id="toggle-panel-shortcut"
-          value={candidate.togglePanel}
-          disabled={busy}
-          onChange={(event) => changeToggle(event.currentTarget.value)}
-        />
+      <div
+        role="group"
+        aria-labelledby="panel-shortcut-label"
+        className="grid min-w-0 gap-3"
+      >
+        <div className="grid gap-1">
+          <h3 id="panel-shortcut-label" className="m-0 text-sm font-medium">
+            Show or hide Kopper
+          </h3>
+          <p className="m-0 text-xs text-muted-foreground">
+            Use this shortcut from any app.
+          </p>
+        </div>
+        <div className="flex min-h-9 min-w-0 flex-wrap items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-2">
+          {recordingPanel ? (
+            <span className="text-xs text-muted-foreground" aria-live="polite">
+              Listening…
+            </span>
+          ) : (
+            <kbd
+              aria-label={`Panel shortcut: ${candidate.togglePanel}`}
+              className="min-w-0 break-words rounded-sm border border-border bg-muted px-2 py-1 font-mono text-xs text-muted-foreground"
+            >
+              {formatShortcut(candidate.togglePanel)}
+            </kbd>
+          )}
+          <Button
+            type="button"
+            size="sm"
+            variant={recordingPanel ? "secondary" : "outline"}
+            aria-label={
+              recordingPanel
+                ? "Recording panel shortcut…"
+                : "Change panel shortcut"
+            }
+            aria-pressed={recordingPanel}
+            disabled={busy}
+            onClick={() => record("panel")}
+          >
+            {recordingPanel ? "Recording…" : "Change"}
+          </Button>
+        </div>
       </div>
 
       <Separator />
-      <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="m-0 text-xs font-medium">Keep panel on top</p>
-          <p className="m-0 break-words text-xs text-muted-foreground">
-            Applied only after native and local persistence both succeed.
+          <Label htmlFor="keep-panel-on-top" className="text-sm font-medium">
+            Keep panel on top
+          </Label>
+          <p className="m-0 text-xs text-muted-foreground">
+            Keep Kopper above other windows.
           </p>
         </div>
         <Switch
@@ -294,38 +374,47 @@ export function ShortcutSettings({
       <SettingsFeedback
         value={feedback}
         className="text-muted-foreground"
-        persistent={recording || testing}
+        persistent={recordingTarget !== null || testing}
         onDismiss={() => setFeedback(null)}
       />
 
-      <div className="flex flex-wrap gap-2">
-        <Button type="button" size="sm" disabled={busy} onClick={() => void save(candidate)}>
-          Save shortcuts
-        </Button>
+      <div className="flex min-w-0 items-center justify-between gap-2">
         <Button
           type="button"
           size="sm"
-          variant="outline"
+          variant="ghost"
           disabled={busy}
           onClick={() => {
             const defaults = structuredClone(DEFAULT_SHORTCUT_PREFERENCES);
             setCandidate(defaults);
-            setRecording(false);
+            setRecordingTarget(null);
             void save(defaults, true);
           }}
         >
           Reset
         </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="ghost"
-          disabled={busy || testing || captureUnavailable}
-          aria-busy={testing}
-          onClick={() => void testCapture()}
-        >
-          Test capture
-        </Button>
+        <div className="flex min-w-0 items-center gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={
+              busy || testing || captureUnavailable || recordingTarget !== null
+            }
+            aria-busy={testing}
+            onClick={() => void testCapture()}
+          >
+            Test capture
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            disabled={busy || recordingTarget !== null}
+            onClick={() => void save(candidate)}
+          >
+            Save shortcuts
+          </Button>
+        </div>
       </div>
     </SettingsSection>
   );

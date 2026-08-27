@@ -267,7 +267,7 @@ test("preserves notes state through the full keyboard Settings traversal", async
   await appearanceTab.press("ArrowRight");
   await expect(page.getByRole("heading", { name: "Data files" })).toBeVisible();
   await page.getByRole("tab", { name: "Data" }).press("ArrowRight");
-  await expect(page.getByRole("heading", { name: "Shortcuts & panel" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Keyboard shortcuts" })).toBeVisible();
   await page.getByRole("tab", { name: "Shortcuts" }).press("ArrowRight");
   await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
 
@@ -410,6 +410,38 @@ test("renders the compact capture onboarding baseline", async ({ kopper }) => {
     caret: "hide",
     maxDiffPixelRatio: 0.01,
   });
+});
+
+test("renders the compact keyboard shortcuts baseline", async ({ kopper }) => {
+  const page = await kopper.launchKopper(demoDocument("light"));
+  await continueWithoutCaptureIfNeeded(page);
+  await page.getByRole("button", { name: "Panel menu" }).click();
+  await page.getByRole("menuitem", { name: "Settings…" }).click();
+  await page.getByRole("tab", { name: "Shortcuts" }).click();
+  await expect(
+    page.getByRole("heading", { name: "Keyboard shortcuts" }),
+  ).toBeVisible();
+
+  for (const [width, height] of [
+    [380, 640],
+    [340, 480],
+  ] as const) {
+    await setSurfaceSize(page, width, height);
+    await expectSurfaceContained(page, "settings");
+    await page.evaluate(() => {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement) active.blur();
+    });
+    await page.mouse.move(1, Math.floor(height / 2));
+    await expect(page).toHaveScreenshot(
+      `keyboard-shortcuts-light-${width}x${height}.png`,
+      {
+        animations: "disabled",
+        caret: "hide",
+        maxDiffPixelRatio: 0.01,
+      },
+    );
+  }
 });
 
 test("renders deterministic Oxide Ledger Light Settings baselines", async ({

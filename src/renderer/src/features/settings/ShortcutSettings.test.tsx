@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -76,16 +76,64 @@ afterEach(() => {
 });
 
 describe("ShortcutSettings", () => {
+  it("records the panel shortcut through a named control instead of a raw accelerator input", async () => {
+    const user = userEvent.setup();
+    render(<ShortcutSettings captureUnavailable={false} />);
+
+    expect(
+      screen.queryByRole("textbox", { name: "Toggle panel" }),
+    ).not.toBeInTheDocument();
+    const panelShortcut = screen.getByRole("group", {
+      name: "Show or hide Kopper",
+    });
+    expect(panelShortcut).toHaveTextContent("⌘/Ctrl ⇧ Space");
+    expect(
+      screen.getByLabelText(
+        "Panel shortcut: CommandOrControl+Shift+Space",
+      ),
+    ).toBeInTheDocument();
+
+    await user.click(
+      within(panelShortcut).getByRole("button", {
+        name: "Change panel shortcut",
+      }),
+    );
+    expect(
+      within(panelShortcut).getByRole("button", {
+        name: "Recording panel shortcut…",
+      }),
+    ).toBeInTheDocument();
+    fireEvent.keyDown(window, {
+      key: "p",
+      metaKey: true,
+      altKey: true,
+    });
+
+    expect(panelShortcut).toHaveTextContent("⌘ ⌥ P");
+    expect(screen.getByLabelText("Capture shortcut candidate")).toHaveTextContent(
+      "⇧ ⇧",
+    );
+    await user.click(screen.getByRole("button", { name: "Save shortcuts" }));
+    await waitFor(() =>
+      expect(window.kopper.saveShortcuts).toHaveBeenCalledWith({
+        capture: { kind: "double-modifier", modifier: "shift" },
+        togglePanel: "Command+Alt+P",
+      }),
+    );
+  });
+
   it("uses a named radio group and cancels shortcut recording with Escape", async () => {
     render(<ShortcutSettings captureUnavailable={false} />);
 
     expect(
-      screen.getByRole("radiogroup", { name: "Capture selection" }),
+      screen.getByRole("radiogroup", { name: "Capture selected text" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("radio", { name: "Keyboard shortcut" }),
+      screen.getByRole("radio", { name: "Custom shortcut" }),
     ).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Record shortcut" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Change capture shortcut" }),
+    );
     fireEvent.keyDown(window, { key: "Escape" });
 
     expect(screen.getByRole("status")).toHaveTextContent(
@@ -96,32 +144,40 @@ describe("ShortcutSettings", () => {
   it("selects Double Shift or records an immutable accelerator candidate", async () => {
     const user = userEvent.setup();
     render(<ShortcutSettings captureUnavailable={false} />);
-    await user.click(screen.getByRole("button", { name: "Record shortcut" }));
+    await user.click(
+      screen.getByRole("button", { name: "Change capture shortcut" }),
+    );
     fireEvent.keyDown(window, { key: "Shift", shiftKey: true });
-    expect(screen.getByRole("button", { name: "Recording…" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Recording capture shortcut…" }),
+    ).toBeInTheDocument();
     fireEvent.keyDown(window, {
       key: "k",
       metaKey: true,
       shiftKey: true,
     });
     expect(screen.getByLabelText("Capture shortcut candidate")).toHaveTextContent(
-      "Command+Shift+K",
+      "⌘ ⇧ K",
     );
 
     await user.click(screen.getByRole("radio", { name: "Double Shift" }));
     expect(screen.getByLabelText("Capture shortcut candidate")).toHaveTextContent(
-      "Double Shift",
+      "⇧ ⇧",
     );
   });
 
   it("records Command and Control distinctly, including both with Alt and Shift", async () => {
     render(<ShortcutSettings captureUnavailable={false} />);
 
-    await userEvent.click(screen.getByRole("button", { name: "Record shortcut" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Change capture shortcut" }),
+    );
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
-    expect(screen.getByLabelText("Capture shortcut candidate")).toHaveTextContent("Control+K");
+    expect(screen.getByLabelText("Capture shortcut candidate")).toHaveTextContent("⌃ K");
 
-    await userEvent.click(screen.getByRole("button", { name: "Record shortcut" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Change capture shortcut" }),
+    );
     fireEvent.keyDown(window, {
       key: "k",
       metaKey: true,
@@ -130,30 +186,38 @@ describe("ShortcutSettings", () => {
       shiftKey: true,
     });
     expect(screen.getByLabelText("Capture shortcut candidate")).toHaveTextContent(
-      "Command+Control+Alt+Shift+K",
+      "⌘ ⌃ ⌥ ⇧ K",
     );
   });
 
   it("ignores modifier-only keys and Escape keeps the pre-recording candidate", async () => {
     render(<ShortcutSettings captureUnavailable={false} />);
-    const toggle = screen.getByLabelText("Toggle panel");
-    await userEvent.clear(toggle);
-    await userEvent.type(toggle, "Control+Alt+P");
-    await userEvent.click(screen.getByRole("button", { name: "Record shortcut" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Change panel shortcut" }),
+    );
     fireEvent.keyDown(window, { key: "Meta", metaKey: true });
     fireEvent.keyDown(window, { key: "Control", ctrlKey: true });
-    expect(screen.getByRole("button", { name: "Recording…" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Recording panel shortcut…" }),
+    ).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "Escape" });
     expect(screen.getByRole("status")).toHaveTextContent("recording cancelled");
-    expect(toggle).toHaveValue("Control+Alt+P");
+    expect(
+      screen.getByLabelText(
+        "Panel shortcut: CommandOrControl+Shift+Space",
+      ),
+    ).toBeInTheDocument();
   });
 
   it("preserves an unsaved candidate and recording across unrelated document publication", async () => {
     const { rerender } = render(<ShortcutSettings captureUnavailable={false} />);
-    const toggle = screen.getByLabelText("Toggle panel");
-    await userEvent.clear(toggle);
-    await userEvent.type(toggle, "Command+Alt+U");
-    await userEvent.click(screen.getByRole("button", { name: "Record shortcut" }));
+    await userEvent.click(
+      screen.getByRole("button", { name: "Change panel shortcut" }),
+    );
+    fireEvent.keyDown(window, { key: "u", metaKey: true, altKey: true });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Change capture shortcut" }),
+    );
 
     const unrelated = structuredClone(document);
     unrelated.notes.push({
@@ -169,22 +233,25 @@ describe("ShortcutSettings", () => {
     publish(unrelated);
     rerender(<ShortcutSettings captureUnavailable={false} />);
 
-    expect(toggle).toHaveValue("Command+Alt+U");
-    expect(screen.getByRole("button", { name: "Recording…" })).toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Panel shortcut: Command+Alt+U"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Recording capture shortcut…" }),
+    ).toBeInTheDocument();
   });
 
   it("reconciles the candidate when authoritative shortcut values actually change", async () => {
     const { rerender } = render(<ShortcutSettings captureUnavailable={false} />);
-    const toggle = screen.getByLabelText("Toggle panel");
-    await userEvent.clear(toggle);
-    await userEvent.type(toggle, "Command+Alt+U");
 
     const changed = structuredClone(document);
     changed.shortcuts.togglePanel = "Control+Shift+P";
     publish(changed);
     rerender(<ShortcutSettings captureUnavailable={false} />);
 
-    expect(toggle).toHaveValue("Control+Shift+P");
+    expect(
+      screen.getByLabelText("Panel shortcut: Control+Shift+P"),
+    ).toHaveTextContent("⌃ ⇧ P");
   });
 
   it("keeps a conflicting candidate unsaved with accessible fixed feedback", async () => {
@@ -197,16 +264,23 @@ describe("ShortcutSettings", () => {
       },
     });
     render(<ShortcutSettings captureUnavailable={false} />);
-    const toggle = screen.getByLabelText("Toggle panel");
-    await userEvent.clear(toggle);
-    await userEvent.type(toggle, "CommandOrControl+Shift+C");
+    await userEvent.click(
+      screen.getByRole("button", { name: "Change capture shortcut" }),
+    );
+    fireEvent.keyDown(window, { key: "c", metaKey: true, shiftKey: true });
+    await userEvent.click(
+      screen.getByRole("button", { name: "Change panel shortcut" }),
+    );
+    fireEvent.keyDown(window, { key: "c", metaKey: true, shiftKey: true });
     await userEvent.click(screen.getByRole("button", { name: "Save shortcuts" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Capture and panel shortcuts must be different.",
     );
     expect(window.kopper.saveShortcuts).not.toHaveBeenCalled();
-    expect(toggle).toHaveValue("CommandOrControl+Shift+C");
+    expect(
+      screen.getByLabelText("Panel shortcut: Command+Shift+C"),
+    ).toHaveTextContent("⌘ ⇧ C");
   });
 
   it("resets through the same acknowledged save transaction", async () => {
