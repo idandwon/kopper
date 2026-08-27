@@ -296,7 +296,14 @@ test("keeps control, tab, radius, and overlay geometry on the shared system", as
     const hide = document.querySelector<HTMLElement>('[aria-label="Hide Kopper"]');
     const tab = document.querySelector<HTMLElement>('[role="tab"][aria-label="Active notes"]');
     const card = document.querySelector<HTMLElement>('[data-slot="card"][role="option"]');
-    if ([search, pin, menu, hide, tab, card].some((value) => value === null)) {
+    const composer = document.querySelector<HTMLElement>(
+      '[data-composer-surface="true"]',
+    );
+    if (
+      [search, pin, menu, hide, tab, card, composer].some(
+        (value) => value === null,
+      )
+    ) {
       return null;
     }
     const tabStyle = getComputedStyle(tab!);
@@ -315,6 +322,7 @@ test("keeps control, tab, radius, and overlay geometry on the shared system", as
       },
       controlRadius: Number.parseFloat(getComputedStyle(search!).borderRadius),
       cardRadius: Number.parseFloat(getComputedStyle(card!).borderRadius),
+      composerGap: Number.parseFloat(getComputedStyle(composer!).columnGap),
     };
   });
   expect(notesGeometry).not.toBeNull();
@@ -323,6 +331,7 @@ test("keeps control, tab, radius, and overlay geometry on the shared system", as
   expect(notesGeometry.compactHeight).toBe(32);
   expect(notesGeometry.tab.height).toBe(32);
   expect(notesGeometry.cardRadius).toBeGreaterThan(notesGeometry.controlRadius);
+  expect(notesGeometry.composerGap).toBeGreaterThan(0);
 
   await page.getByRole("button", { name: "Panel menu" }).click();
   const menuLayering = await page.evaluate(() => ({

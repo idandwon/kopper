@@ -26,7 +26,7 @@ export function NoteComposer() {
   return (
     <InputGroup
       data-composer-surface="true"
-      className="relative z-20 mx-4 mt-2 mb-4 w-auto shrink-0 items-start shadow-sm"
+      className="relative z-20 mx-4 mt-2 mb-4 w-auto shrink-0 items-start gap-1 shadow-sm"
     >
       <InputGroupAddon className="pt-2.5 pl-2">
         <span
