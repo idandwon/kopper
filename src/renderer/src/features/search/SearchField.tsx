@@ -15,7 +15,7 @@ export function SearchField({
   onQueryChange,
 }: SearchFieldProps) {
   return (
-    <div className="relative min-w-0 w-full">
+    <div data-slot="search-field" className="relative w-full min-w-0">
       <SearchIcon
         className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
       />
@@ -35,7 +35,7 @@ export function SearchField({
           event.currentTarget.blur();
         }}
         placeholder="Search notes"
-        className="h-10 rounded-lg bg-card pr-3 pl-9 text-sm"
+        className="pr-3 pl-9"
       />
     </div>
   );

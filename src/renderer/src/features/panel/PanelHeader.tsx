@@ -37,19 +37,17 @@ export function PanelHeader({
       </div>
       <TabsList
         aria-label="Note lifecycle view"
-        className="h-auto w-fit gap-1"
+        className="w-fit"
       >
         <TabsTrigger
           value="active"
           aria-label="Active notes"
-          className="h-7 px-3"
         >
           Active
         </TabsTrigger>
         <TabsTrigger
           value="completed"
           aria-label="Completed notes"
-          className="h-7 px-3"
         >
           Completed
         </TabsTrigger>

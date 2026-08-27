@@ -222,7 +222,7 @@ export function NoteCollection({
           <p
             role="status"
             aria-live="polite"
-            className="sticky top-0 z-10 m-0 w-fit rounded-full border border-primary/25 bg-card px-2 py-1 font-mono text-[9px] tracking-wide text-primary uppercase shadow-sm"
+            className="sticky top-0 z-10 m-0 w-fit rounded-full border border-primary/25 bg-card px-3 py-1 text-xs font-medium text-primary shadow-sm"
           >
             {selectedCount} selected · ⌘C copy · Space done
           </p>

@@ -13,10 +13,12 @@ import {
   RadioGroupItem,
 } from "../../components/ui/radio-group";
 import { Separator } from "../../components/ui/separator";
+import { Switch } from "../../components/ui/switch";
 import {
   SettingsFeedback,
   type SettingsFeedbackValue,
 } from "./SettingsFeedback";
+import { SettingsSection } from "./SettingsSection";
 
 function acceleratorFromEvent(event: KeyboardEvent): string | null {
   if (["Meta", "Control", "Alt", "Shift"].includes(event.key)) return null;
@@ -176,24 +178,17 @@ export function ShortcutSettings({
       : candidate.capture.accelerator;
 
   return (
-    <section
-      className="grid min-w-0 gap-5"
-      aria-labelledby="shortcut-settings-title"
+    <SettingsSection
+      title="Shortcuts & panel"
+      description="Configure capture without exposing native keyboard access to this page."
+      headingId="shortcut-settings-title"
+      separated
+      className="min-w-0 gap-5"
     >
-      <div>
-        <h2 id="shortcut-settings-title" className="m-0 text-sm font-semibold">
-          Shortcuts & panel
-        </h2>
-        <p className="m-0 text-xs text-muted-foreground">
-          Configure capture without exposing native keyboard access to this page.
-        </p>
-      </div>
-
-      <Separator />
       <div className="grid min-w-0 gap-2">
         <Label
           id="capture-selection-label"
-          className="font-mono text-[11px] uppercase tracking-wide text-muted-foreground"
+          className="text-xs uppercase tracking-wide text-muted-foreground"
         >
           Capture selection
         </Label>
@@ -236,7 +231,7 @@ export function ShortcutSettings({
             <div className="ml-6 flex min-w-0 flex-wrap items-center gap-2">
               <Button
                 type="button"
-                size="xs"
+                size="sm"
                 variant={recording ? "secondary" : "outline"}
                 aria-pressed={recording}
                 disabled={busy}
@@ -251,7 +246,7 @@ export function ShortcutSettings({
                 {recording ? "Recording…" : "Record shortcut"}
               </Button>
               <span
-                className="min-w-0 break-all font-mono text-[11px]"
+                className="min-w-0 break-all font-mono text-xs"
                 aria-label="Capture shortcut candidate"
               >
                 {captureLabel}
@@ -278,20 +273,17 @@ export function ShortcutSettings({
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
         <div className="min-w-0 flex-1">
           <p className="m-0 text-xs font-medium">Keep panel on top</p>
-          <p className="m-0 break-words text-[11px] text-muted-foreground">
+          <p className="m-0 break-words text-xs text-muted-foreground">
             Applied only after native and local persistence both succeed.
           </p>
         </div>
-        <Button
-          type="button"
-          size="xs"
-          variant={document.window.pinned ? "secondary" : "outline"}
-          aria-pressed={document.window.pinned}
+        <Switch
+          id="keep-panel-on-top"
+          aria-label="Keep panel on top"
+          checked={document.window.pinned}
           disabled={busy}
-          onClick={() => void pin()}
-        >
-          {document.window.pinned ? "Pinned" : "Pin panel"}
-        </Button>
+          onCheckedChange={() => void pin()}
+        />
       </div>
 
       {captureUnavailable && (
@@ -307,12 +299,12 @@ export function ShortcutSettings({
       />
 
       <div className="flex flex-wrap gap-2">
-        <Button type="button" size="xs" disabled={busy} onClick={() => void save(candidate)}>
+        <Button type="button" size="sm" disabled={busy} onClick={() => void save(candidate)}>
           Save shortcuts
         </Button>
         <Button
           type="button"
-          size="xs"
+          size="sm"
           variant="outline"
           disabled={busy}
           onClick={() => {
@@ -326,7 +318,7 @@ export function ShortcutSettings({
         </Button>
         <Button
           type="button"
-          size="xs"
+          size="sm"
           variant="ghost"
           disabled={busy || testing || captureUnavailable}
           aria-busy={testing}
@@ -335,6 +327,6 @@ export function ShortcutSettings({
           Test capture
         </Button>
       </div>
-    </section>
+    </SettingsSection>
   );
 }

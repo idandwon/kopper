@@ -51,8 +51,7 @@ export function PanelPinButton() {
           <Button
             type="button"
             variant={pinned ? "secondary" : "ghost"}
-            size="icon-sm"
-            className="size-10 rounded-lg border border-border bg-card"
+            size="icon"
             aria-label={pinLabel}
             aria-pressed={pinned}
             disabled={busy}

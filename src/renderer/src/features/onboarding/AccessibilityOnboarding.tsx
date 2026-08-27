@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { PermissionState } from "../../../../shared/permissions/permissionState";
+import { Alert, AlertDescription } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
+import { Card, CardContent } from "../../components/ui/card";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { PanelShell } from "../panel/PanelShell";
 
@@ -82,14 +84,14 @@ export function AccessibilityOnboarding({
         >
           <div className="flex min-h-full min-w-0 flex-col justify-center gap-5 px-6 pt-14 pb-6 pl-7">
             <div className="min-w-0 space-y-2">
-              <p className="font-mono text-xs font-semibold tracking-[0.14em] text-muted-foreground uppercase">
+              <p className="text-xs font-semibold tracking-widest text-muted-foreground uppercase">
                 Capture setup
               </p>
               <h1
                 id="accessibility-heading"
                 ref={headingRef}
                 tabIndex={-1}
-                className="break-words text-xl font-semibold tracking-tight outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                className="rounded-sm break-words text-xl font-semibold tracking-tight outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
               >
                 Enable explicit text capture
               </h1>
@@ -97,13 +99,10 @@ export function AccessibilityOnboarding({
                 Kopper needs Accessibility access to notice its shortcuts and
                 copy text you explicitly capture.
               </p>
-              <p className="text-sm leading-6 text-muted-foreground">
-                Kopper reads a selection only after you use your configured
-                capture shortcut.
-              </p>
             </div>
 
-            <div className="min-w-0 rounded-lg border border-border bg-card p-3 text-sm text-card-foreground">
+            <Card className="min-w-0 gap-0 py-3">
+              <CardContent>
               <p className="m-0" role="status" aria-live="polite">
                 {permission === null && "Checking Accessibility access…"}
                 {permission === "unknown" &&
@@ -115,26 +114,32 @@ export function AccessibilityOnboarding({
                 {permission === "restricted" &&
                   "Capture is unavailable on this platform."}
               </p>
-            </div>
+              </CardContent>
+            </Card>
+
+            <p className="m-0 text-sm leading-6 text-muted-foreground">
+              Kopper reads a selection only after you use your configured
+              capture shortcut.
+            </p>
 
             {permission === "denied" && (
-              <div
+              <Alert
                 role="alert"
-                className="min-w-0 rounded-lg border border-destructive bg-card p-3 text-sm text-card-foreground"
+                variant="destructive"
+                className="min-w-0"
               >
-                Accessibility access is not enabled. Grant access in System
-                Settings, then check again. If Kopper already appears enabled,
-                remove it with the minus button, add the current Kopper app
-                again, then check again.
-              </div>
+                <AlertDescription>
+                  Accessibility access is not enabled. Grant access in System
+                  Settings, then check again. If Kopper already appears enabled,
+                  remove it with the minus button, add the current Kopper app
+                  again, then check again.
+                </AlertDescription>
+              </Alert>
             )}
             {operationError !== null && (
-              <div
-                role="alert"
-                className="min-w-0 rounded-lg border border-destructive bg-card p-3 text-sm text-card-foreground"
-              >
-                {operationError}
-              </div>
+              <Alert role="alert" variant="destructive" className="min-w-0">
+                <AlertDescription>{operationError}</AlertDescription>
+              </Alert>
             )}
           </div>
         </ScrollArea>

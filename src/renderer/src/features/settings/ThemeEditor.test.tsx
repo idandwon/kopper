@@ -10,10 +10,7 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OXIDE_LEDGER_THEME } from "../../../../shared/theme/presets";
-import {
-  KOPPER_THEME_TOKENS,
-  SHADCN_THEME_TOKENS,
-} from "../../../../shared/theme/tokens";
+import { SHADCN_THEME_TOKENS } from "../../../../shared/theme/tokens";
 import { useTheme } from "../../theme/ThemeProvider";
 import { ThemeEditor } from "./ThemeEditor";
 
@@ -67,20 +64,21 @@ async function validate() {
 }
 
 describe("ThemeEditor", () => {
-  it("labels every token field and gives each color picker a token-specific name", () => {
+  it("edits only core color tokens and excludes legacy geometry and lifecycle fields", () => {
     renderEditor();
-    const tokens = [...SHADCN_THEME_TOKENS, ...KOPPER_THEME_TOKENS];
+    const tokens = SHADCN_THEME_TOKENS.filter((token) => token !== "radius");
 
     for (const token of tokens) {
       expect(screen.getByLabelText(token)).toHaveAttribute(
         "id",
         `light-${token}`,
       );
-      if (token !== "radius") {
-        expect(
-          screen.getByLabelText(`${token} color picker`),
-        ).toHaveAttribute("type", "color");
-      }
+      expect(
+        screen.getByLabelText(`${token} color picker`),
+      ).toHaveAttribute("type", "color");
+    }
+    for (const legacyToken of ["radius", "capture", "organized", "completed"]) {
+      expect(screen.queryByLabelText(legacyToken)).not.toBeInTheDocument();
     }
     expect(globalThis.document.querySelectorAll('[data-slot="label"]')).toHaveLength(
       tokens.length + 1,
@@ -193,9 +191,6 @@ describe("ThemeEditor", () => {
       }),
       "dark",
     );
-    fireEvent.change(screen.getByLabelText("radius"), {
-      target: { value: "1.5rem" },
-    });
     fireEvent.click(screen.getByRole("button", { name: "Reset all" }));
     expect(previewTheme).toHaveBeenLastCalledWith(
       expect.anything(),
@@ -212,7 +207,7 @@ describe("ThemeEditor", () => {
     );
   });
 
-  it("shows contrast failures at both involved tokens, blocks save, and accepts radius boundaries", async () => {
+  it("shows contrast failures at both involved tokens and blocks save", async () => {
     renderEditor();
     fireEvent.change(screen.getByLabelText("background"), {
       target: { value: customTheme.light.foreground },
@@ -235,23 +230,9 @@ describe("ThemeEditor", () => {
     fireEvent.change(screen.getByLabelText("background"), {
       target: { value: customTheme.light.background },
     });
-    const radius = screen.getByLabelText("radius");
-    fireEvent.change(radius, { target: { value: "0rem" } });
-    expect(previewTheme).toHaveBeenLastCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        light: expect.objectContaining({ radius: "0rem" }),
-      }),
-      "light",
-    );
-    fireEvent.change(radius, { target: { value: "2rem" } });
-    expect(previewTheme).toHaveBeenLastCalledWith(
-      expect.anything(),
-      expect.objectContaining({
-        light: expect.objectContaining({ radius: "2rem" }),
-      }),
-      "light",
-    );
+    await validate();
+    expect(screen.getByRole("button", { name: "Save theme" })).toBeEnabled();
+    expect(screen.queryByLabelText("radius")).not.toBeInTheDocument();
   });
 
   it("blocks close, discard, reset, and editing while save acknowledgment is pending", async () => {

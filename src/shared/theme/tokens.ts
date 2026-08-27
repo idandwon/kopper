@@ -27,6 +27,15 @@ export const KOPPER_THEME_TOKENS = [
   "completed",
 ] as const;
 
+export const DEFAULT_THEME_RADIUS = "0.625rem" as const;
+
+export const LEGACY_THEME_OVERRIDE_TOKENS = [
+  "radius",
+  ...KOPPER_THEME_TOKENS,
+] as const;
+
 export type ShadcnThemeToken = (typeof SHADCN_THEME_TOKENS)[number];
 export type KopperThemeToken = (typeof KOPPER_THEME_TOKENS)[number];
+export type LegacyThemeOverrideToken =
+  (typeof LEGACY_THEME_OVERRIDE_TOKENS)[number];
 export type ThemeToken = ShadcnThemeToken | KopperThemeToken;

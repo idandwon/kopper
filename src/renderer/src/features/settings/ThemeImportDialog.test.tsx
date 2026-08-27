@@ -16,7 +16,7 @@ const cancelPreview = vi.fn();
 const savePreview = vi.fn().mockResolvedValue({ status: "saved" });
 const preview: ThemeImportPreview = {
   theme: { ...structuredClone(OXIDE_LEDGER_THEME), id: "71e13585-a167-4fe6-9819-34f3c2522237", name: "Imported Ledger" },
-  derivedTokens: { light: ["capture"], dark: [] },
+  normalizedTokens: { light: ["radius", "capture"], dark: [] },
 };
 
 beforeEach(() => {
@@ -60,7 +60,10 @@ describe("ThemeImportDialog", () => {
     expect(alert).toHaveTextContent(validationMessage);
     expect(alert).toHaveTextContent("dark: primary / primary-foreground — 2.31:1; minimum 4.5:1");
     expect(alert).toHaveTextContent("light: background must be opaque.");
-    expect(alert).toHaveClass("break-words");
+    expect(alert).toHaveAttribute("data-slot", "alert");
+    expect(alert.querySelector('[data-slot="alert-description"]')).toHaveClass(
+      "break-words",
+    );
 
     rendered.rerender(<ThemeImportDialog api={api({
       ok: false,
@@ -77,9 +80,12 @@ describe("ThemeImportDialog", () => {
     render(<ThemeImportDialog api={api({ ok: true, value: preview })} />);
     await user.click(screen.getByRole("button", { name: "Import theme" }));
     expect(await screen.findByRole("dialog")).toHaveTextContent("Imported Ledger");
-    expect(screen.getByText("Derived lifecycle tokens: capture")).toBeInTheDocument();
+    expect(
+      screen.getByText("Normalized to system defaults: radius, capture"),
+    ).toBeInTheDocument();
     expect(screen.getAllByText(/:1 contrast/)).toHaveLength(10);
     expect(screen.getByText(`background: ${preview.theme.light.background}`)).toBeVisible();
+    expect(screen.queryByText(/^capture:/i)).not.toBeInTheDocument();
     expect(previewTheme).not.toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Preview" }));

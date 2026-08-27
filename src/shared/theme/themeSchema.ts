@@ -2,6 +2,7 @@ import { parse as parseColor } from "culori";
 import { z } from "zod";
 
 import {
+  DEFAULT_THEME_RADIUS,
   KOPPER_THEME_TOKENS,
   SHADCN_THEME_TOKENS,
   type KopperThemeToken,
@@ -118,15 +119,22 @@ function validateThemeMode(
 function normalizeThemeMode(
   mode: Partial<Record<(typeof ALLOWED_THEME_TOKENS)[number], string>>,
 ): ThemeMode {
-  const normalized: Partial<Record<(typeof ALLOWED_THEME_TOKENS)[number], string>> =
-    {};
-  for (const token of ALLOWED_THEME_TOKENS) {
-    const value = mode[token];
-    if (value !== undefined) {
-      normalized[token] = token === "radius" && value === "0" ? "0rem" : value;
-    }
+  const normalized: Partial<Record<ShadcnThemeToken, string>> = {};
+  for (const token of SHADCN_THEME_TOKENS) {
+    normalized[token] =
+      token === "radius" ? DEFAULT_THEME_RADIUS : mode[token];
   }
   return normalized as ThemeMode;
+}
+
+function normalizeCompleteThemeMode(
+  mode: Partial<Record<(typeof ALLOWED_THEME_TOKENS)[number], string>>,
+): CompleteThemeMode {
+  const normalized = normalizeThemeMode(mode) as CompleteThemeMode;
+  normalized.capture = normalized.primary;
+  normalized.organized = normalized.accent;
+  normalized.completed = normalized["muted-foreground"];
+  return normalized;
 }
 
 export const ThemeModeSchema: z.ZodType<ThemeMode> = rawThemeModeSchema
@@ -136,7 +144,7 @@ export const ThemeModeSchema: z.ZodType<ThemeMode> = rawThemeModeSchema
 export const CompleteThemeModeSchema: z.ZodType<CompleteThemeMode> =
   rawThemeModeSchema
     .superRefine((mode, context) => validateThemeMode(mode, context, true))
-    .transform((mode) => normalizeThemeMode(mode) as CompleteThemeMode);
+    .transform(normalizeCompleteThemeMode);
 
 export const ThemeFileSchema = z.strictObject({
   $schema: z.literal(THEME_FILE_SCHEMA_URL),

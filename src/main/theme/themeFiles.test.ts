@@ -107,9 +107,9 @@ describe("ThemeFiles", () => {
             completed: input.light["muted-foreground"],
           }),
         }),
-        derivedTokens: {
-          light: ["capture", "organized", "completed"],
-          dark: [],
+        normalizedTokens: {
+          light: [],
+          dark: ["capture", "organized", "completed"],
         },
       },
     });
@@ -303,16 +303,27 @@ describe("ThemeFiles", () => {
         filters: [{ name: "Kopper theme", extensions: ["json"] }],
       }),
     );
-    const written = fs.writeFile.mock.calls[0]?.[1];
-    expect(JSON.parse(String(written))).toEqual(externalTheme());
-    expect(JSON.parse(String(written))).not.toHaveProperty("id");
-    expect(Object.keys(JSON.parse(String(written)))).toEqual([
+    const written = JSON.parse(String(fs.writeFile.mock.calls[0]?.[1])) as Record<
+      string,
+      unknown
+    >;
+    expect(written).not.toHaveProperty("id");
+    expect(Object.keys(written)).toEqual([
       "$schema",
       "version",
       "name",
       "light",
       "dark",
     ]);
+    expect(written).toMatchObject({
+      light: { radius: "0.625rem" },
+      dark: { radius: "0.625rem" },
+    });
+    for (const mode of ["light", "dark"] as const) {
+      expect(written[mode]).not.toHaveProperty("capture");
+      expect(written[mode]).not.toHaveProperty("organized");
+      expect(written[mode]).not.toHaveProperty("completed");
+    }
   });
 
   it("sanitizes names with normalization and appends the compound extension once", async () => {

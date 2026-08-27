@@ -40,7 +40,7 @@ afterEach(() => {
 });
 
 describe("applyTheme", () => {
-  it("applies only the explicit canonical property map in one frame", () => {
+  it("applies only core semantic properties with the fixed system radius", () => {
     const root = document.createElement("html");
     root.style.setProperty("--background", "stale");
     root.style.setProperty("--organized", "stale");
@@ -56,8 +56,10 @@ describe("applyTheme", () => {
     expect(root.style.getPropertyValue("--background")).toBe("stale");
     flushFrames();
     expect(root.style.getPropertyValue("--background")).toBe("rgb(1 2 3)");
-    expect(root.style.getPropertyValue("--organized")).toBe(mode.organized);
-    expect(root.style.getPropertyValue("--radius")).toBe("1.25rem");
+    expect(root.style.getPropertyValue("--organized")).toBe("stale");
+    expect(root.style.getPropertyValue("--capture")).toBe("");
+    expect(root.style.getPropertyValue("--completed")).toBe("");
+    expect(root.style.getPropertyValue("--radius")).toBe("0.625rem");
     expect(root.style.getPropertyValue("--injected")).toBe("");
   });
 

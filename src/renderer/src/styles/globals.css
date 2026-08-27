@@ -73,7 +73,7 @@ html[data-renderer-surface="capture-hud"] #root {
 @layer components {
   .kopper-panel-shell {
     isolation: isolate;
-    border-radius: calc(var(--radius) + 0.625rem);
+    border-radius: var(--radius-xl);
     background: color-mix(in srgb, var(--background) 88%, transparent);
     box-shadow:
       inset 0 1px 0 color-mix(in srgb, var(--foreground) 8%, transparent),
@@ -94,25 +94,6 @@ html[data-renderer-surface="capture-hud"] #root {
 
   .kopper-panel-shell :is(button, input, select, textarea, a, [role="button"]) {
     -webkit-app-region: no-drag;
-  }
-
-  .kopper-note-card {
-    box-shadow:
-      0 1px 1px color-mix(in srgb, var(--foreground) 5%, transparent),
-      0 5px 16px color-mix(in srgb, var(--foreground) 5%, transparent);
-  }
-
-  .kopper-composer {
-    transition:
-      border-color 150ms ease,
-      box-shadow 150ms ease;
-  }
-
-  .kopper-composer:focus-within {
-    border-color: var(--ring);
-    box-shadow:
-      0 0 0 2px color-mix(in srgb, var(--ring) 30%, transparent),
-      0 10px 28px color-mix(in srgb, var(--foreground) 10%, transparent);
   }
 
   .kopper-note-card-preview[data-preview-clamped="true"] .kopper-markdown {
@@ -156,13 +137,13 @@ html[data-renderer-surface="capture-hud"] #root {
 
   .kopper-markdown blockquote {
     margin-inline: 0;
-    border-left: 2px solid var(--capture);
+    border-left: 2px solid var(--primary);
     padding-left: 0.75rem;
     color: var(--muted-foreground);
   }
 
   .kopper-markdown code {
-    border-radius: 0.3rem;
+    border-radius: var(--radius-sm);
     background: color-mix(in srgb, var(--muted) 70%, transparent);
     padding: 0.1em 0.3em;
     font-family: var(--font-mono);
@@ -173,7 +154,7 @@ html[data-renderer-surface="capture-hud"] #root {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     border: 1px solid var(--border);
-    border-radius: calc(var(--radius) - 0.2rem);
+    border-radius: var(--radius-md);
     background: color-mix(in srgb, var(--muted) 55%, transparent);
     padding: 0.75rem;
   }
@@ -202,7 +183,7 @@ html[data-renderer-surface="capture-hud"] #root {
 
   .kopper-markdown input[type="checkbox"] {
     margin: 0 0.35rem 0 0;
-    accent-color: var(--completed);
+    accent-color: var(--primary);
   }
 }
 

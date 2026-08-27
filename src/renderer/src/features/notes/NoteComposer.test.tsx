@@ -80,13 +80,16 @@ describe("NoteComposer", () => {
     });
     expect(composer).toHaveAttribute("placeholder", "Add a note or prompt");
     expect(composer).toHaveAttribute("rows", "1");
-    expect(composer).toHaveAttribute("data-slot", "textarea");
+    expect(composer).toHaveAttribute("data-slot", "input-group-control");
     expect(composer).toHaveClass(
-      "min-h-10",
+      "min-h-9",
       "max-h-36",
       "[field-sizing:content]",
     );
-    expect(composer.closest("[data-composer-surface]")).toBeInTheDocument();
+    expect(composer.closest("[data-slot=input-group]")).toHaveAttribute(
+      "data-composer-surface",
+      "true",
+    );
     expect(screen.queryByText("Inbox")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add note" })).not.toBeInTheDocument();
   });

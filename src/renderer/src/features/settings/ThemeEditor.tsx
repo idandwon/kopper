@@ -7,6 +7,7 @@ import { CompleteThemeModeSchema, THEME_FILE_SCHEMA_URL } from "../../../../shar
 import {
   KOPPER_THEME_TOKENS,
   SHADCN_THEME_TOKENS,
+  type ShadcnThemeToken,
   type ThemeToken,
 } from "../../../../shared/theme/tokens";
 import {
@@ -30,13 +31,14 @@ import {
   type ThemePreviewOwner,
 } from "../../theme/ThemeProvider";
 
-const TOKEN_GROUPS: ReadonlyArray<{ name: string; tokens: readonly ThemeToken[] }> = [
+type EditableThemeToken = Exclude<ShadcnThemeToken, "radius">;
+
+const TOKEN_GROUPS: ReadonlyArray<{ name: string; tokens: readonly EditableThemeToken[] }> = [
   { name: "Surface", tokens: ["background", "card", "popover", "secondary", "muted"] },
   { name: "Text", tokens: ["foreground", "card-foreground", "popover-foreground", "secondary-foreground", "muted-foreground"] },
   { name: "Action", tokens: ["primary", "primary-foreground", "accent", "accent-foreground", "ring"] },
-  { name: "State", tokens: ["destructive", "destructive-foreground", "capture", "organized", "completed"] },
+  { name: "State", tokens: ["destructive", "destructive-foreground"] },
   { name: "Border", tokens: ["border", "input"] },
-  { name: "Shape", tokens: ["radius"] },
 ];
 
 type EditorMode = "light" | "dark";
@@ -159,7 +161,7 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
     [cancelPreview, previewOwner],
   );
 
-  const updateToken = (token: ThemeToken, value: string) => {
+  const updateToken = (token: EditableThemeToken, value: string) => {
     if (saving) return;
     const nextRaw = { ...raw, [mode]: { ...raw[mode], [token]: value } };
     setRaw(nextRaw);
@@ -178,7 +180,7 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
     }
   };
 
-  const resetToken = (token: ThemeToken) => {
+  const resetToken = (token: EditableThemeToken) => {
     if (!saving) updateToken(token, immutableBaseRef.current[mode][token]);
   };
 
@@ -233,11 +235,11 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
 
   const rows = useMemo(() => TOKEN_GROUPS.map((group) => (
     <section key={group.name} aria-labelledby={`theme-group-${group.name.toLowerCase()}`}>
-      <h3 id={`theme-group-${group.name.toLowerCase()}`} className="m-0 border-y border-border bg-background px-1 py-1.5 font-mono text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">{group.name}</h3>
+      <h3 id={`theme-group-${group.name.toLowerCase()}`} className="m-0 border-y bg-background px-2 py-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{group.name}</h3>
       <div className="divide-y divide-border">
         {group.tokens.map((token) => {
           const value = raw[mode][token];
-          const hex = token === "radius" ? null : colorHex(value);
+          const hex = colorHex(value);
           const problem = validation.tokenMessages[`${mode}:${token}`];
           const fieldId = `${mode}-${token}`;
           return (
@@ -246,18 +248,16 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
                 {token}
               </Label>
               <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] gap-1.5">
-                {hex === null ? null : (
-                  <Input
-                    type="color"
-                    value={hex}
-                    aria-label={`${token} color picker`}
-                    disabled={saving}
-                    onChange={(event) =>
-                      updateToken(token, event.currentTarget.value)
-                    }
-                    className="size-8 p-1"
-                  />
-                )}
+                <Input
+                  type="color"
+                  value={hex ?? colorHex(draft[mode].primary) ?? ""}
+                  aria-label={`${token} color picker`}
+                  disabled={saving || hex === null}
+                  onChange={(event) =>
+                    updateToken(token, event.currentTarget.value)
+                  }
+                  className="size-9 p-1"
+                />
                 <Input
                   id={fieldId}
                   value={value}
@@ -266,11 +266,11 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
                   onChange={(event) =>
                     updateToken(token, event.currentTarget.value)
                   }
-                  className="col-start-2 h-8 min-w-0 font-mono text-[11px]"
+                  className="col-start-2 min-w-0 font-mono text-xs"
                 />
                 <Button
                   type="button"
-                  size="xs"
+                  size="sm"
                   variant="ghost"
                   disabled={saving}
                   onClick={() => resetToken(token)}
@@ -282,7 +282,7 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
               {problem === undefined ? null : (
                 <p
                   role="alert"
-                  className="m-0 break-words text-[11px] text-destructive"
+                  className="m-0 break-words text-xs text-destructive"
                 >
                   {problem}
                 </p>
@@ -380,8 +380,8 @@ export function ThemeEditor({ baseTheme, custom, open, onOpenChange }: {
                 message ?? (validating ? "Validating…" : validation.message)
               }
               className={message === null
-                ? "m-0 h-4 truncate text-[11px] text-muted-foreground"
-                : "m-0 h-4 truncate text-[11px] text-destructive"}
+                ? "m-0 h-4 truncate text-xs text-muted-foreground"
+                : "m-0 h-4 truncate text-xs text-destructive"}
             >
               {message ?? (validating ? "Validating…" : validation.message)}
             </p>

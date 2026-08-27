@@ -47,7 +47,15 @@ test("preserves malformed bytes and requires UI confirmation for every recovery 
   await expect(page.getByRole("alert")).toHaveText(
     "The Kopper document is not valid JSON.",
   );
-
+  const activePath = page.locator("code").first();
+  await expect(activePath).not.toHaveText("Loading active path…");
+  await page.mouse.move(1, 240);
+  await expect(page).toHaveScreenshot("recovery-340x480.png", {
+    animations: "disabled",
+    caret: "hide",
+    maxDiffPixelRatio: 0.01,
+    mask: [activePath],
+  });
   const exportedBytes = fixturePath(kopper, "damaged-export.bin");
   await kopper.stubNextSaveDialog(exportedBytes);
   await page.getByRole("button", { name: "Export damaged content" }).click();

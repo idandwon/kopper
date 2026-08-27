@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 
+import { Alert, AlertDescription } from "../../components/ui/alert";
 import { DismissButton } from "../../components/ui/dismiss-button";
 import { cn } from "../../lib/utils";
 
@@ -38,27 +39,24 @@ export function SettingsFeedback({
   if (value === null) return null;
 
   return (
-    <div
+    <Alert
+      role={value.tone === "error" ? "alert" : "status"}
+      aria-live={value.tone === "status" ? "polite" : undefined}
+      variant={value.tone === "error" ? "destructive" : "default"}
       className={cn(
-        "flex min-w-0 items-start gap-1 text-xs",
+        "flex min-w-0 items-center gap-2 py-2",
         className,
-        value.tone === "error" && "text-destructive",
       )}
     >
-      <p
-        role={value.tone === "error" ? "alert" : "status"}
-        aria-live={value.tone === "status" ? "polite" : undefined}
-        className="m-0 min-w-0 flex-1 break-words"
-      >
+      <AlertDescription className="min-w-0 flex-1 break-words">
         {value.text}
-      </p>
+      </AlertDescription>
       {onDismiss === undefined ? null : (
         <DismissButton
           label="Dismiss message"
-          className="-mt-1 -mr-1"
           onClick={onDismiss}
         />
       )}
-    </div>
+    </Alert>
   );
 }

@@ -39,6 +39,7 @@ import {
 } from "./SettingsFeedback";
 import { ThemeEditor } from "./ThemeEditor";
 import { ThemeImportDialog } from "./ThemeImportDialog";
+import { SettingsSection } from "./SettingsSection";
 
 export function parseAppearanceMode(value: string): AppearanceMode | null {
   if (value === "system" || value === "light" || value === "dark") {
@@ -122,29 +123,19 @@ export function AppearanceSettings() {
   };
 
   return (
-    <section
-      className="grid min-w-0 gap-5"
-      aria-labelledby="appearance-settings-title"
+    <SettingsSection
+      title="Appearance"
+      description="Choose a mode and a complete semantic theme."
+      headingId="appearance-settings-title"
+      separated
+      className="min-w-0 gap-5"
     >
-      <div className="min-w-0">
-        <h2
-          id="appearance-settings-title"
-          className="m-0 text-sm font-semibold"
-        >
-          Appearance
-        </h2>
-        <p className="m-0 break-words text-xs text-muted-foreground">
-          Choose a mode and a complete semantic theme.
-        </p>
-      </div>
-
-      <Separator />
       <div className="grid min-w-0 gap-2">
         <div className="min-w-0">
           <Label htmlFor="appearance-mode" className="text-xs">
             Color mode
           </Label>
-          <p className="m-0 break-words text-[11px] text-muted-foreground">
+          <p className="m-0 break-words text-xs text-muted-foreground">
             System follows the current macOS appearance.
           </p>
         </div>
@@ -156,7 +147,7 @@ export function AppearanceSettings() {
           <SelectTrigger
             id="appearance-mode"
             aria-label="Appearance mode"
-            className="w-full min-w-0"
+            className="h-9 w-full min-w-0 px-3 text-sm"
           >
             <SelectValue />
           </SelectTrigger>
@@ -174,7 +165,7 @@ export function AppearanceSettings() {
 
       <Separator />
       <div className="grid min-w-0 gap-1">
-        <h3 className="m-0 font-mono text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+        <h3 className="m-0 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Themes
         </h3>
         <div className="min-w-0 divide-y divide-border border-y border-border">
@@ -192,14 +183,14 @@ export function AppearanceSettings() {
                   <p className="m-0 break-words text-xs font-medium">
                     {theme.name}
                   </p>
-                  <p className="m-0 break-all font-mono text-[10px] text-muted-foreground">
+                  <p className="m-0 break-all font-mono text-xs text-muted-foreground">
                     {theme.id}
                   </p>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
                   <Button
                     type="button"
-                    size="xs"
+                    size="sm"
                     variant={active ? "secondary" : "ghost"}
                     aria-label={`${active ? "Active" : "Activate"} ${theme.name}`}
                     aria-pressed={active}
@@ -212,7 +203,7 @@ export function AppearanceSettings() {
                     <DropdownMenuTrigger asChild>
                       <Button
                         type="button"
-                        size="xs"
+                        size="sm"
                         variant="ghost"
                         aria-label={`Actions for ${theme.name}`}
                         disabled={busy}
@@ -253,7 +244,7 @@ export function AppearanceSettings() {
         {deleteTheme === null ? (
           <SettingsFeedback
             value={feedback}
-            className="flex-1 text-[11px] text-muted-foreground"
+            className="flex-1 text-xs text-muted-foreground"
             onDismiss={() => setFeedback(null)}
           />
         ) : null}
@@ -287,7 +278,7 @@ export function AppearanceSettings() {
           </AlertDialogHeader>
           <SettingsFeedback
             value={feedback}
-            className="text-[11px] text-muted-foreground"
+            className="text-xs text-muted-foreground"
             persistent
             onDismiss={() => setFeedback(null)}
           />
@@ -304,6 +295,6 @@ export function AppearanceSettings() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </section>
+    </SettingsSection>
   );
 }

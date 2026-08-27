@@ -212,17 +212,22 @@ export const OpenEditorResultSchema: z.ZodType<
   z.strictObject({ ok: z.literal(false), error: KopperErrorSchema }),
 ]);
 
-const LifecycleTokenSchema = z.enum(["capture", "organized", "completed"]);
-const DerivedLifecycleTokensSchema = z
-  .array(LifecycleTokenSchema)
-  .max(3)
+const NormalizedThemeTokenSchema = z.enum([
+  "radius",
+  "capture",
+  "organized",
+  "completed",
+]);
+const NormalizedThemeTokensSchema = z
+  .array(NormalizedThemeTokenSchema)
+  .max(4)
   .refine((tokens) => new Set(tokens).size === tokens.length);
 
 export interface ThemeImportPreview {
   theme: ThemeDefinition;
-  derivedTokens: {
-    light: Array<"capture" | "organized" | "completed">;
-    dark: Array<"capture" | "organized" | "completed">;
+  normalizedTokens: {
+    light: Array<"radius" | "capture" | "organized" | "completed">;
+    dark: Array<"radius" | "capture" | "organized" | "completed">;
   };
 }
 
@@ -234,9 +239,9 @@ export const ThemeImportResultSchema: z.ZodType<
     value: z
       .strictObject({
         theme: ThemeDefinitionSchema,
-        derivedTokens: z.strictObject({
-          light: DerivedLifecycleTokensSchema,
-          dark: DerivedLifecycleTokensSchema,
+        normalizedTokens: z.strictObject({
+          light: NormalizedThemeTokensSchema,
+          dark: NormalizedThemeTokensSchema,
         }),
       })
       .nullable(),

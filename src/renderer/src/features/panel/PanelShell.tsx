@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { Button } from "../../components/ui/button";
+import { Progress } from "../../components/ui/progress";
 import {
   Tooltip,
   TooltipContent,
@@ -27,7 +28,7 @@ export function PanelShell({ children }: { children: ReactNode }) {
               type="button"
               variant="ghost"
               size="icon-sm"
-              className="absolute top-4 right-4 z-40 size-8"
+              className="absolute top-4 right-4 z-40"
               aria-label="Hide Kopper"
               onClick={() => void window.kopper.hidePanel()}
             >
@@ -46,14 +47,12 @@ export function LoadingPanel({ label = "Loading notes" }: { label?: string }) {
   return (
     <PanelShell>
       <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden p-6">
-        <div
-          role="progressbar"
+        <Progress
           aria-label={label}
           aria-valuetext={label}
-          className="h-1 w-24 overflow-hidden rounded-full bg-muted"
-        >
-          <div className="h-full w-1/2 rounded-full bg-primary motion-safe:animate-pulse" />
-        </div>
+          className="w-24 motion-safe:animate-pulse"
+          value={50}
+        />
       </div>
     </PanelShell>
   );

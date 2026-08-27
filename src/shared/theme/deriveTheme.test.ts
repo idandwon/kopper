@@ -70,14 +70,19 @@ describe("deriveCompleteTheme", () => {
     }
   });
 
-  it("preserves explicitly supplied lifecycle tokens", () => {
+  it("normalizes explicitly supplied lifecycle tokens to core semantic colors", () => {
     const theme = withMode(readableTheme(), "light", {
       capture: "#8a482d",
       organized: "#446b62",
       completed: "#637a68",
     });
 
-    expect(deriveCompleteTheme(theme).light).toEqual(theme.light);
+    expect(deriveCompleteTheme(theme).light).toMatchObject({
+      radius: "0.625rem",
+      capture: theme.light.primary,
+      organized: theme.light.accent,
+      completed: theme.light["muted-foreground"],
+    });
   });
 });
 

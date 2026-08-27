@@ -12,6 +12,7 @@ import {
   expectSurfaceContained,
   setSurfaceSize,
 } from "./helpers/surfaceGeometry";
+import { fillExactly } from "./helpers/formInteractions";
 
 async function choosePanelMenuAction(
   page: Page,
@@ -103,7 +104,7 @@ test("submits with Enter, keeps Shift+Enter lines, and selects the visible notes
 
   await composer.fill("First line");
   await composer.press("Shift+Enter");
-  await composer.pressSequentially("Second line");
+  await page.keyboard.insertText("Second line");
   await expect(composer).toHaveValue("First line\nSecond line");
   await composer.press("Enter");
   await expect(
@@ -280,7 +281,9 @@ test("wraps adversarial code and GFM tables without horizontal owners at minimum
 test("isolates a complete document journey and persists only acknowledged state", async ({
   kopper,
 }) => {
-  const page = await kopper.launchKopper();
+  const initial = createEmptyDocument(new Date("2026-08-16T12:00:00.000Z"));
+  initial.appearance.mode = "light";
+  const page = await kopper.launchKopper(initial);
   await continueWithoutCaptureIfNeeded(page);
   await setSurfaceSize(page, 340, 480);
   await expectSurfaceContained(page, "notes");
@@ -298,6 +301,12 @@ test("isolates a complete document journey and persists only acknowledged state"
   await expect(editor.getByRole("heading", { name: "Edit note" })).toBeVisible();
   await expect(editor.getByRole("textbox", { name: "Edit note" })).toBeInViewport();
   await expectSurfaceContained(editor, "editor");
+  await editor.mouse.move(1, 240);
+  await expect(editor).toHaveScreenshot("expanded-editor-light-420x480.png", {
+    animations: "disabled",
+    caret: "hide",
+    maxDiffPixelRatio: 0.01,
+  });
   await editor.close();
 
   const research = page.getByRole("button", {
@@ -324,10 +333,10 @@ test("isolates a complete document journey and persists only acknowledged state"
   await expect(headings).toHaveText(["Inbox", "Archive", "Projects"]);
 
   const search = page.getByRole("searchbox", { name: "Search notes" });
-  await search.fill("Gamma");
+  await fillExactly(search, "Gamma");
   await expect(page.getByRole("option", { name: "Note: Gamma reference" })).toBeVisible();
   await expect(page.getByRole("option", { name: "Note: Alpha finding" })).toHaveCount(0);
-  await search.fill("");
+  await fillExactly(search, "");
 
   const alpha = page.getByRole("option", { name: "Note: Alpha finding" });
   const beta = page.getByRole("option", { name: "Note: Beta decision" });

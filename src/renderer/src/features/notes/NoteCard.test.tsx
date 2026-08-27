@@ -60,7 +60,10 @@ describe("NoteCard", () => {
     });
     expect(lifecycle).toBeVisible();
     expect(lifecycle).toHaveAttribute("data-slot", "button");
-    expect(lifecycle).toHaveClass("rounded-full");
+    expect(lifecycle).toHaveAttribute("data-size", "icon-sm");
+    expect(
+      lifecycle.querySelector('[data-slot="note-state-icon"]'),
+    ).toHaveClass("size-4", "rounded-full", "border-primary");
     expect(screen.queryByText("⌘C Copy")).not.toBeInTheDocument();
 
     rerender(<NoteCard {...props({ focused: true, selected: false })} />);
@@ -115,16 +118,14 @@ describe("NoteCard", () => {
     expect(statusButton).toBeDisabled();
   });
 
-  it("preserves the completed lifecycle token for normal and dark hover", () => {
+  it("renders completed state from the core primary token", () => {
     render(<NoteCard {...props({ view: "completed" })} />);
 
-    expect(
-      screen.getByRole("button", { name: "Restore First body" }),
-    ).toHaveClass(
-      "bg-[var(--completed)]",
-      "hover:bg-[var(--completed)]",
-      "dark:hover:bg-[var(--completed)]",
-    );
+    const stateIcon = screen
+      .getByRole("button", { name: "Restore First body" })
+      .querySelector('[data-slot="note-state-icon"]');
+    expect(stateIcon).toHaveClass("border-primary", "bg-primary");
+    expect(stateIcon?.className).not.toContain("--completed");
   });
 
   it("reports click modifiers without conflating focus and selection", async () => {

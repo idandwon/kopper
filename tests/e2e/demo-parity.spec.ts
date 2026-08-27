@@ -14,6 +14,7 @@ import {
   expectSurfaceContained,
   setSurfaceSize,
 } from "./helpers/surfaceGeometry";
+import { fillExactly } from "./helpers/formInteractions";
 
 const TIMESTAMP = "2026-08-16T12:00:00.000Z";
 
@@ -88,6 +89,11 @@ async function openAppearanceSettings(page: Page): Promise<void> {
     "true",
   );
   await expect(page.getByRole("heading", { name: "Appearance" })).toBeVisible();
+}
+
+async function openThemeActions(page: Page, themeName: string): Promise<void> {
+  await page.getByRole("button", { name: `Actions for ${themeName}` }).click();
+  await expect(page.getByRole("menu")).toBeVisible();
 }
 
 async function expectNotesViewportAboveComposer(page: Page): Promise<void> {
@@ -236,7 +242,7 @@ test("preserves notes state through the full keyboard Settings traversal", async
   await setSurfaceSize(page, 340, 480);
 
   const search = page.getByRole("searchbox", { name: "Search notes" });
-  await search.fill("edge cases");
+  await fillExactly(search, "edge cases");
   const preservedNote = page.getByRole("option", {
     name: "Note: Which edge cases should double-Shift capture handle?",
   });
@@ -274,6 +280,136 @@ test("preserves notes state through the full keyboard Settings traversal", async
   await expect(preservedNote).toBeVisible();
   await expect(panelMenu).toBeFocused();
   await expectSurfaceContained(page, "notes");
+});
+
+test("keeps control, tab, radius, and overlay geometry on the shared system", async ({
+  kopper,
+}) => {
+  const page = await kopper.launchKopper(demoDocument("light"));
+  await continueWithoutCaptureIfNeeded(page);
+  await setSurfaceSize(page, 340, 480);
+
+  const notesGeometry = await page.evaluate(() => {
+    const search = document.querySelector<HTMLElement>('[data-slot="input"]');
+    const pin = document.querySelector<HTMLElement>('[aria-label="Pin panel"]');
+    const menu = document.querySelector<HTMLElement>('[aria-label="Panel menu"]');
+    const hide = document.querySelector<HTMLElement>('[aria-label="Hide Kopper"]');
+    const tab = document.querySelector<HTMLElement>('[role="tab"][aria-label="Active notes"]');
+    const card = document.querySelector<HTMLElement>('[data-slot="card"][role="option"]');
+    if ([search, pin, menu, hide, tab, card].some((value) => value === null)) {
+      return null;
+    }
+    const tabStyle = getComputedStyle(tab!);
+    return {
+      heights: [search!, pin!, menu!].map(
+        (element) => element.getBoundingClientRect().height,
+      ),
+      compactHeight: hide!.getBoundingClientRect().height,
+      tab: {
+        height: tab!.getBoundingClientRect().height,
+        paddingLeft: tabStyle.paddingLeft,
+        paddingRight: tabStyle.paddingRight,
+        fontSize: tabStyle.fontSize,
+        fontWeight: tabStyle.fontWeight,
+        borderBottomWidth: tabStyle.borderBottomWidth,
+      },
+      controlRadius: Number.parseFloat(getComputedStyle(search!).borderRadius),
+      cardRadius: Number.parseFloat(getComputedStyle(card!).borderRadius),
+    };
+  });
+  expect(notesGeometry).not.toBeNull();
+  if (notesGeometry === null) return;
+  expect(notesGeometry.heights).toEqual([36, 36, 36]);
+  expect(notesGeometry.compactHeight).toBe(32);
+  expect(notesGeometry.tab.height).toBe(32);
+  expect(notesGeometry.cardRadius).toBeGreaterThan(notesGeometry.controlRadius);
+
+  await page.getByRole("button", { name: "Panel menu" }).click();
+  const menuLayering = await page.evaluate(() => ({
+    menu: getComputedStyle(document.querySelector<HTMLElement>('[role="menu"]')!).zIndex,
+    hide: getComputedStyle(document.querySelector<HTMLElement>('[aria-label="Hide Kopper"]')!).zIndex,
+  }));
+  expect(Number(menuLayering.menu)).toBeGreaterThan(Number(menuLayering.hide));
+  await page.getByRole("menuitem", { name: "Settings…" }).click();
+
+  const settingsGeometry = await page.evaluate(() => {
+    const back = document.querySelector<HTMLElement>('[aria-label="Back to notes"]');
+    const mode = document.querySelector<HTMLElement>('[aria-label="Appearance mode"]');
+    const tab = Array.from(document.querySelectorAll<HTMLElement>('[role="tab"]')).find(
+      (element) => element.textContent === "Appearance",
+    );
+    if (back === null || mode === null || tab === undefined) return null;
+    const tabStyle = getComputedStyle(tab);
+    return {
+      compactHeight: back.getBoundingClientRect().height,
+      controlHeight: mode.getBoundingClientRect().height,
+      tab: {
+        height: tab.getBoundingClientRect().height,
+        paddingLeft: tabStyle.paddingLeft,
+        paddingRight: tabStyle.paddingRight,
+        fontSize: tabStyle.fontSize,
+        fontWeight: tabStyle.fontWeight,
+        borderBottomWidth: tabStyle.borderBottomWidth,
+      },
+    };
+  });
+  expect(settingsGeometry).toEqual({
+    compactHeight: 32,
+    controlHeight: 36,
+    tab: notesGeometry.tab,
+  });
+
+  await openThemeActions(page, "Oxide Ledger");
+  await page.getByRole("menuitem", { name: "Customize" }).click();
+  const dialog = page.getByRole("dialog", { name: "Customize theme" });
+  const dialogGeometry = await dialog.evaluate((element) => {
+    const close = Array.from(
+      element.querySelectorAll<HTMLElement>("button"),
+    ).find(
+      (button) => button.querySelector(".sr-only")?.textContent === "Close",
+    );
+    const input = element.querySelector<HTMLElement>('[data-slot="input"]');
+    const shellClose = document.querySelector<HTMLElement>('[aria-label="Hide Kopper"]');
+    return {
+      closeHeight: close?.getBoundingClientRect().height,
+      inputHeight: input?.getBoundingClientRect().height,
+      dialogRadius: Number.parseFloat(getComputedStyle(element).borderRadius),
+      inputRadius: input === null ? null : Number.parseFloat(getComputedStyle(input).borderRadius),
+      dialogZ: Number(getComputedStyle(element).zIndex),
+      shellZ: shellClose === null ? null : Number(getComputedStyle(shellClose).zIndex),
+    };
+  });
+  expect(dialogGeometry.closeHeight).toBe(32);
+  expect(dialogGeometry.inputHeight).toBe(36);
+  expect(dialogGeometry.inputRadius).not.toBeNull();
+  expect(dialogGeometry.dialogRadius).toBeGreaterThan(dialogGeometry.inputRadius ?? 0);
+  expect(dialogGeometry.dialogZ).toBeGreaterThan(dialogGeometry.shellZ ?? 0);
+});
+
+test("renders the compact capture onboarding baseline", async ({ kopper }) => {
+  const page = await kopper.launchKopper(demoDocument("light"));
+  await kopper.electronApp.evaluate(({ systemPreferences }) => {
+    Object.defineProperty(systemPreferences, "isTrustedAccessibilityClient", {
+      configurable: true,
+      value: () => false,
+    });
+  });
+  await page.reload();
+  await setSurfaceSize(page, 340, 480);
+  await expect(
+    page.getByRole("heading", { name: "Enable explicit text capture" }),
+  ).toBeVisible();
+  await expectSurfaceContained(page, "onboarding");
+  await page.evaluate(() => {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) active.blur();
+  });
+  await page.mouse.move(1, 240);
+  await expect(page).toHaveScreenshot("capture-onboarding-light-340x480.png", {
+    animations: "disabled",
+    caret: "hide",
+    maxDiffPixelRatio: 0.01,
+  });
 });
 
 test("renders deterministic Oxide Ledger Light Settings baselines", async ({

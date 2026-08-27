@@ -1,5 +1,6 @@
 import type { KopperDocument, ThemeDefinition } from "../domain/document";
 import type { CompleteThemeMode } from "./themeSchema";
+import { DEFAULT_THEME_RADIUS } from "./tokens";
 
 interface ModePalette {
   background: string;
@@ -19,10 +20,6 @@ interface ModePalette {
   border: string;
   input: string;
   ring: string;
-  capture: string;
-  organized: string;
-  completed: string;
-  radius: string;
 }
 
 function createMode(palette: ModePalette): CompleteThemeMode {
@@ -46,10 +43,10 @@ function createMode(palette: ModePalette): CompleteThemeMode {
     border: palette.border,
     input: palette.input,
     ring: palette.ring,
-    radius: palette.radius,
-    capture: palette.capture,
-    organized: palette.organized,
-    completed: palette.completed,
+    radius: DEFAULT_THEME_RADIUS,
+    capture: palette.primary,
+    organized: palette.accent,
+    completed: palette.mutedForeground,
   };
 }
 
@@ -75,10 +72,6 @@ export const OXIDE_LEDGER_THEME: ThemeDefinition = {
     border: "#C7D9D5",
     input: "#C7D9D5",
     ring: "#2E8775",
-    capture: "#B86138",
-    organized: "#2E8775",
-    completed: "#2E8775",
-    radius: "0.75rem",
   }),
   dark: createMode({
     background: "#173D35",
@@ -98,10 +91,6 @@ export const OXIDE_LEDGER_THEME: ThemeDefinition = {
     border: "#2E8775",
     input: "#2E8775",
     ring: "#C7D9D5",
-    capture: "#B86138",
-    organized: "#2E8775",
-    completed: "#2E8775",
-    radius: "0.75rem",
   }),
 };
 
@@ -127,10 +116,6 @@ const NIGHT_WORKSHOP_THEME: ThemeDefinition = {
     border: "#C4C0BA",
     input: "#C4C0BA",
     ring: "#527166",
-    capture: "#9A5435",
-    organized: "#527166",
-    completed: "#527166",
-    radius: "0.625rem",
   }),
   dark: createMode({
     background: "#202326",
@@ -150,10 +135,6 @@ const NIGHT_WORKSHOP_THEME: ThemeDefinition = {
     border: "#454B4E",
     input: "#454B4E",
     ring: "#7BA296",
-    capture: "#B96E4C",
-    organized: "#66877E",
-    completed: "#66877E",
-    radius: "0.625rem",
   }),
 };
 
@@ -179,10 +160,6 @@ const INDEX_DRAWER_THEME: ThemeDefinition = {
     border: "#C9BEAE",
     input: "#C9BEAE",
     ring: "#637A68",
-    capture: "#8B4B2D",
-    organized: "#637A68",
-    completed: "#637A68",
-    radius: "0.375rem",
   }),
   dark: createMode({
     background: "#29251F",
@@ -202,10 +179,6 @@ const INDEX_DRAWER_THEME: ThemeDefinition = {
     border: "#514A40",
     input: "#514A40",
     ring: "#8DA394",
-    capture: "#B87350",
-    organized: "#718878",
-    completed: "#718878",
-    radius: "0.375rem",
   }),
 };
 

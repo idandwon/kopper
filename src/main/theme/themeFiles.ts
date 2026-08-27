@@ -16,7 +16,13 @@ import {
   THEME_FILE_SCHEMA_URL,
   type ThemeFile,
 } from "../../shared/theme/themeSchema";
-import { KOPPER_THEME_TOKENS } from "../../shared/theme/tokens";
+import {
+  DEFAULT_THEME_RADIUS,
+  LEGACY_THEME_OVERRIDE_TOKENS,
+  SHADCN_THEME_TOKENS,
+  type LegacyThemeOverrideToken,
+  type ShadcnThemeToken,
+} from "../../shared/theme/tokens";
 
 const MAX_THEME_FILE_BYTES = 256 * 1024;
 const THEME_FILE_SUFFIX = ".kopper-theme.json";
@@ -73,13 +79,47 @@ function failure(
 }
 
 function toExternalTheme(theme: ThemeDefinition): ThemeFile {
+  const externalMode = (
+    mode: ThemeDefinition["light"],
+  ): ThemeFile["light"] => {
+    const external = {} as Record<ShadcnThemeToken, string>;
+    for (const token of SHADCN_THEME_TOKENS) {
+      external[token] =
+        token === "radius" ? DEFAULT_THEME_RADIUS : mode[token];
+    }
+    return external;
+  };
   return {
     $schema: THEME_FILE_SCHEMA_URL,
     version: theme.version,
     name: theme.name,
-    light: theme.light,
-    dark: theme.dark,
+    light: externalMode(theme.light),
+    dark: externalMode(theme.dark),
   };
+}
+
+function normalizedLegacyTokens(
+  input: unknown,
+  mode: "light" | "dark",
+): LegacyThemeOverrideToken[] {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    return [];
+  }
+  const candidate = (input as Record<string, unknown>)[mode];
+  if (
+    typeof candidate !== "object" ||
+    candidate === null ||
+    Array.isArray(candidate)
+  ) {
+    return [];
+  }
+  const values = candidate as Record<string, unknown>;
+  return LEGACY_THEME_OVERRIDE_TOKENS.filter((token) => {
+    if (token === "radius") {
+      return values.radius !== DEFAULT_THEME_RADIUS;
+    }
+    return values[token] !== undefined;
+  });
 }
 
 function suggestedFileName(name: string): string {
@@ -194,13 +234,9 @@ export class ThemeFiles {
         "The selected file is not a valid Kopper theme.",
       );
     }
-    const derivedTokens = {
-      light: KOPPER_THEME_TOKENS.filter(
-        (token) => parsed.data.light[token] === undefined,
-      ),
-      dark: KOPPER_THEME_TOKENS.filter(
-        (token) => parsed.data.dark[token] === undefined,
-      ),
+    const normalizedTokens = {
+      light: normalizedLegacyTokens(input, "light"),
+      dark: normalizedLegacyTokens(input, "dark"),
     };
     const readable = validateReadableTheme(deriveCompleteTheme(parsed.data));
     if (!readable.ok) return readable;
@@ -221,7 +257,7 @@ export class ThemeFiles {
     }
     return {
       ok: true,
-      value: { theme: preview.data, derivedTokens },
+      value: { theme: preview.data, normalizedTokens },
     };
   }
 

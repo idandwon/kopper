@@ -6,7 +6,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { DocumentCommand } from "../../shared/domain/commands";
-import { createEmptyDocument } from "../../shared/domain/document";
+import {
+  createEmptyDocument,
+  ThemeDefinitionSchema,
+} from "../../shared/domain/document";
 import { OXIDE_LEDGER_THEME } from "../../shared/theme/presets";
 import { IPC_CHANNELS, parseDocumentResult } from "../../shared/ipc/contract";
 import type { ClipboardWriter } from "../clipboard/noteClipboard";
@@ -332,11 +335,11 @@ describe("registerIpcHandlers", () => {
     temporaryDirectories.push(directory);
     const repository = new NoteRepository(join(directory, "kopper.json"));
     const document = repository.snapshot();
-    const customTheme = {
+    const customTheme = ThemeDefinitionSchema.parse({
       ...structuredClone(OXIDE_LEDGER_THEME),
       id: "custom:export",
       name: "Custom export",
-    };
+    });
     document.customThemes = [customTheme];
     await repository.replace(document);
     const themeFiles: IpcThemeFiles = {
@@ -344,7 +347,7 @@ describe("registerIpcHandlers", () => {
         ok: true,
         value: {
           theme: customTheme,
-          derivedTokens: { light: [], dark: [] },
+          normalizedTokens: { light: [], dark: [] },
         },
       }),
       exportTheme: vi.fn().mockResolvedValue({
@@ -369,7 +372,7 @@ describe("registerIpcHandlers", () => {
       ok: true,
       value: {
         theme: customTheme,
-        derivedTokens: { light: [], dark: [] },
+        normalizedTokens: { light: [], dark: [] },
       },
     });
     expect(commandExecutor.execute).not.toHaveBeenCalled();

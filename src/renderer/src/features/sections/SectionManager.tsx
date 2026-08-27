@@ -124,10 +124,10 @@ export function SectionManager({ section }: SectionManagerProps) {
                 <Button
                   type="button"
                   variant="ghost"
-                  size="icon-xs"
+                  size="icon-sm"
                   aria-label={`Manage ${section.title}`}
                 >
-                  <VerticalOverflowIcon className="size-3" />
+                  <VerticalOverflowIcon className="size-4" />
                 </Button>
               </DropdownMenuTrigger>
             </TooltipTrigger>

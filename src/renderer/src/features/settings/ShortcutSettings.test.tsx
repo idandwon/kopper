@@ -274,9 +274,9 @@ describe("ShortcutSettings", () => {
       },
     });
     render(<ShortcutSettings captureUnavailable={false} />);
-    const pin = screen.getByRole("button", { name: "Pin panel" });
+    const pin = screen.getByRole("switch", { name: "Keep panel on top" });
     await userEvent.click(pin);
-    expect(pin).toHaveAttribute("aria-pressed", "false");
+    expect(pin).not.toBeChecked();
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Pin could not be saved.",
     );

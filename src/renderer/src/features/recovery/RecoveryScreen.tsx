@@ -12,7 +12,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
+import { Alert, AlertDescription } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "../../components/ui/card";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { PanelShell } from "../panel/PanelShell";
 
@@ -51,18 +59,18 @@ function RecoveryOverview({
       aria-label="Recovery options"
     >
       <div className="flex min-h-full min-w-0 items-center px-5 pt-14 pb-5 pl-6">
-        <section className="grid w-full min-w-0 gap-4 rounded-xl border border-destructive bg-card p-5">
-          <div>
-            <h1 className="m-0 text-lg font-semibold">
+        <Card className="w-full min-w-0 gap-4 border-destructive py-4">
+          <CardHeader className="px-4">
+            <CardTitle className="text-lg">
               Kopper data needs recovery
-            </h1>
-            <p role="alert" className="mt-2 mb-0 text-sm">
-              {error.message}
-            </p>
-          </div>
-          <div className="grid min-w-0 gap-1 text-sm">
+            </CardTitle>
+            <Alert role="alert" variant="destructive" className="mt-2">
+              <AlertDescription>{error.message}</AlertDescription>
+            </Alert>
+          </CardHeader>
+          <CardContent className="grid min-w-0 gap-1 px-4 text-sm">
             <span className="font-medium">Active data path</span>
-            <code className="min-w-0 break-all rounded bg-muted p-2 text-xs">
+            <code className="min-w-0 break-all rounded-sm bg-muted p-2 text-xs">
               {activePath}
             </code>
             <p className="m-0 text-xs text-muted-foreground">
@@ -70,12 +78,12 @@ function RecoveryOverview({
               it unchanged before replacing it if you may need the original
               bytes.
             </p>
-          </div>
-          <div className="grid min-w-0 gap-2">
+          </CardContent>
+          <CardFooter className="grid w-full min-w-0 gap-2 px-4">
             <Button
               type="button"
               variant="outline"
-              className="h-auto min-w-0 whitespace-normal"
+              className="w-full min-w-0"
               disabled={busy}
               onClick={chooseImport}
             >
@@ -84,7 +92,7 @@ function RecoveryOverview({
             <Button
               type="button"
               variant="outline"
-              className="h-auto min-w-0 whitespace-normal"
+              className="w-full min-w-0"
               disabled={busy}
               onClick={exportDamaged}
             >
@@ -93,19 +101,19 @@ function RecoveryOverview({
             <Button
               type="button"
               variant="destructive"
-              className="h-auto min-w-0 whitespace-normal"
+              className="w-full min-w-0"
               disabled={busy}
               onClick={createStore}
             >
               Create new store
             </Button>
-          </div>
-          {message === null ? null : (
-            <p role="status" className="m-0 text-sm">
-              {message}
-            </p>
-          )}
-        </section>
+            {message === null ? null : (
+              <Alert role="status" className="mt-2">
+                <AlertDescription>{message}</AlertDescription>
+              </Alert>
+            )}
+          </CardFooter>
+        </Card>
       </div>
     </ScrollArea>
   );

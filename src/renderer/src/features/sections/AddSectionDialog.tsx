@@ -45,7 +45,7 @@ export function AddSectionDialog(props: AddSectionDialogProps = {}) {
     <Dialog {...dialogOverlay}>
       {controlled ? null : (
         <DialogTrigger asChild>
-          <Button type="button" variant="ghost" size="xs">
+          <Button type="button" variant="ghost" size="sm">
             Add section
           </Button>
         </DialogTrigger>

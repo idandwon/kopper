@@ -81,7 +81,7 @@ describe("SettingsPage", () => {
     );
 
     const back = screen.getByRole("button", { name: "Back to notes" });
-    expect(back).toHaveClass("size-8");
+    expect(back).toHaveAttribute("data-size", "icon-sm");
     expect(back).not.toHaveTextContent("Back");
     await user.hover(back);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(

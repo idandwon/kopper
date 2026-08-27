@@ -18,6 +18,7 @@ import {
   AlertDialogTitle,
 } from "../../components/ui/alert-dialog";
 import { Button } from "../../components/ui/button";
+import { FieldError } from "../../components/ui/field";
 import { Textarea } from "../../components/ui/textarea";
 import { useNotesSurfaceOverlay } from "../notes/NotesSurfaceVisibility";
 
@@ -137,14 +138,14 @@ export function MarkdownEditor({
         onKeyDown={handleKeyDown}
       />
       {validationMessage === null ? null : (
-        <p role="alert" className="m-0 text-xs text-destructive">
+        <FieldError role="alert">
           {validationMessage}
-        </p>
+        </FieldError>
       )}
       <div className="flex min-w-0 flex-wrap justify-end gap-2">
         <Button
           type="button"
-          size="xs"
+          size="sm"
           variant="ghost"
           disabled={saving}
           onClick={requestDiscard}
@@ -153,7 +154,7 @@ export function MarkdownEditor({
         </Button>
         <Button
           type="button"
-          size="xs"
+          size="sm"
           disabled={disabled || saving || draft.trim().length === 0}
           onClick={() => void save()}
         >

@@ -83,6 +83,8 @@ describe("CaptureToast", () => {
 
     const status = screen.getByRole("status");
     expect(status).toHaveTextContent("Kopper could not capture the selection.");
+    expect(status).toHaveAttribute("data-slot", "alert");
+    expect(status).toHaveClass("bg-primary", "text-primary-foreground");
     expect(status).toHaveClass(
       "pointer-events-none",
       "fixed",
@@ -94,7 +96,6 @@ describe("CaptureToast", () => {
       "whitespace-normal",
       "break-words",
       "text-center",
-      "leading-tight",
     );
     expect(status).not.toHaveAttribute("tabindex");
     expect(status.querySelectorAll("button, a, input, [tabindex]")).toHaveLength(

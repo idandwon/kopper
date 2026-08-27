@@ -58,8 +58,7 @@ export function PanelMenu({ openSettings, triggerRef }: PanelMenuProps) {
                   ref={triggerRef}
                   type="button"
                   variant="ghost"
-                  size="icon-sm"
-                  className="size-10 rounded-lg border border-border bg-card"
+                  size="icon"
                   aria-label="Panel menu"
                 >
                   <VerticalOverflowIcon className="size-4" />

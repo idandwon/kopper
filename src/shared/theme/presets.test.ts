@@ -59,6 +59,12 @@ describe("bundled themes", () => {
         ok: true,
         value: complete,
       });
+      for (const mode of [theme.light, theme.dark]) {
+        expect(mode.radius).toBe("0.625rem");
+        expect(mode.capture).toBe(mode.primary);
+        expect(mode.organized).toBe(mode.accent);
+        expect(mode.completed).toBe(mode["muted-foreground"]);
+      }
     },
   );
 });

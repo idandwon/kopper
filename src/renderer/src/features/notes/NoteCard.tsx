@@ -2,6 +2,7 @@ import { useState, type KeyboardEvent, type MouseEvent } from "react";
 
 import type { Note, Section } from "../../../../shared/domain/document";
 import { Button } from "../../components/ui/button";
+import { Card, CardContent } from "../../components/ui/card";
 import {
   Tooltip,
   TooltipContent,
@@ -149,7 +150,7 @@ export function NoteCard({
           if (!interactionDisabled) onContextSelect(note.id);
         }}
       >
-        <article
+        <Card
           role="option"
           aria-label={`Note: ${note.body}`}
           aria-selected={selected}
@@ -162,50 +163,55 @@ export function NoteCard({
           data-preview-clamped={!editing}
           tabIndex={tabbable ? 0 : -1}
           className={cn(
-            "kopper-note-card kopper-note-card-preview rounded-[calc(var(--radius)+0.25rem)] border border-border bg-card py-3 pr-3 pl-10 text-[13px] leading-relaxed text-card-foreground outline-none transition-colors motion-reduce:transition-none",
-            "focus-visible:ring-2 focus-visible:ring-ring/50",
+            "kopper-note-card-preview gap-4 py-4 outline-none transition-colors motion-reduce:transition-none",
+            "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
             focused && "ring-1 ring-ring/40",
-            selected && "border-primary bg-card ring-2 ring-primary/35",
+            selected && "border-primary ring-[3px] ring-primary/30",
             captureHighlighted &&
-              "border-[var(--capture)] ring-2 ring-[var(--capture)]/35 motion-safe:animate-[captured-note-settle_180ms_ease-out]",
+              "border-primary ring-[3px] ring-primary/30 motion-safe:animate-[captured-note-settle_180ms_ease-out]",
             interactionDisabled && "opacity-60",
           )}
           onClick={handleClick}
           onDoubleClick={handleDoubleClick}
           onKeyDown={handleKeyDown}
         >
-          <span className="sr-only">
-            {view === "completed" ? "Completed" : "Captured"}
-          </span>
-          <MarkdownEditor
-            noteId={note.id}
-            body={note.body}
-            editing={editing}
-            disabled={interactionDisabled}
-            autoFocus
-            onEditingChange={onEditingChange ?? ignoreEditingChange}
-            onSave={onSave ?? rejectSave}
-          />
-        </article>
+          <CardContent className="pr-3 pl-12 text-sm leading-relaxed">
+            <span className="sr-only">
+              {view === "completed" ? "Completed" : "Captured"}
+            </span>
+            <MarkdownEditor
+              noteId={note.id}
+              body={note.body}
+              editing={editing}
+              disabled={interactionDisabled}
+              autoFocus
+              onEditingChange={onEditingChange ?? ignoreEditingChange}
+              onSave={onSave ?? rejectSave}
+            />
+          </CardContent>
+        </Card>
         <TooltipProvider>
           <Tooltip {...tooltipOverlay}>
             <TooltipTrigger asChild>
               <Button
                 type="button"
                 variant="ghost"
-                size="icon-xs"
+                size="icon-sm"
                 aria-label={statusLabel}
                 disabled={interactionDisabled}
-                className={cn(
-                  "absolute top-4 left-4 size-3.5 rounded-full border-2 p-0",
-                  completedMarker
-                    ? "border-[var(--completed)] bg-[var(--completed)] hover:bg-[var(--completed)] dark:hover:bg-[var(--completed)]"
-                    : "border-[var(--capture)] hover:bg-[var(--capture)]",
-                )}
+                className="absolute top-2 left-2"
                 onClick={() =>
                   onAction({ type: statusAction, noteIds: effectiveNoteIds })
                 }
-              />
+              >
+                <span
+                  data-slot="note-state-icon"
+                  className={cn(
+                    "size-4 rounded-full border-2 border-primary",
+                    completedMarker && "bg-primary",
+                  )}
+                />
+              </Button>
             </TooltipTrigger>
             <TooltipContent>{statusLabel}</TooltipContent>
           </Tooltip>

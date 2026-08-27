@@ -58,7 +58,7 @@ export function SectionGroup({
   });
   return (
     <section aria-labelledby={`section-${section.id}`}>
-      <div className="mb-2 flex min-w-0 items-center gap-2 font-mono text-[10px] tracking-[0.13em] text-muted-foreground uppercase">
+      <div className="mb-2 flex min-w-0 items-center gap-2 text-xs font-medium tracking-widest text-muted-foreground uppercase">
         <h2
           id={`section-${section.id}`}
           className="m-0 min-w-0 text-inherit"
@@ -66,7 +66,7 @@ export function SectionGroup({
           <Button
             type="button"
             variant="ghost"
-            size="xs"
+            size="sm"
             className={cn(
               "h-auto min-w-0 max-w-full shrink whitespace-normal break-all rounded-sm p-0 text-left text-inherit hover:bg-transparent hover:text-foreground",
               active && "text-foreground",

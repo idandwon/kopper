@@ -320,9 +320,11 @@ describe("Oxide Ledger App", () => {
     );
     const view = render(<App />);
 
-    expect(
-      screen.getByRole("progressbar", { name: "Loading note" }),
-    ).toBeVisible();
+    const loadingNote = screen.getByRole("progressbar", {
+      name: "Loading note",
+    });
+    expect(loadingNote).toBeVisible();
+    expect(loadingNote).not.toHaveAttribute("aria-valuenow");
     expect(
       screen.queryByRole("button", { name: "Hide Kopper" }),
     ).not.toBeInTheDocument();
@@ -373,9 +375,7 @@ describe("Oxide Ledger App", () => {
     const completedView = screen.getByRole("tab", {
       name: "Completed notes",
     });
-    expect(lifecycleTabs).toHaveClass("gap-1");
-    expect(activeView).toHaveClass("px-3");
-    expect(completedView).toHaveClass("px-3");
+    expect(lifecycleTabs).toBeVisible();
     expect(activeView).toHaveAttribute("aria-selected", "true");
     expect(completedView).toHaveAttribute("aria-selected", "false");
     const tabPanels = screen.getAllByRole("tabpanel", { hidden: true });
@@ -1100,7 +1100,7 @@ describe("Oxide Ledger App", () => {
     render(<App />);
 
     const pin = screen.getByRole("button", { name: "Pin panel" });
-    expect(pin).toHaveClass("size-10");
+    expect(pin).toHaveAttribute("data-size", "icon");
     expect(pin).toHaveAttribute("aria-pressed", "false");
     await user.click(pin);
     expect(setPinned).toHaveBeenCalledWith(true);
@@ -1255,6 +1255,7 @@ describe("Oxide Ledger App", () => {
       name: "Loading notes",
     });
     expect(progress).toBeVisible();
+    expect(progress).not.toHaveAttribute("aria-valuenow");
     expect(progress.closest('[data-panel-shell="true"]')).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Hide Kopper" })).toBeVisible();
   });

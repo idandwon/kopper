@@ -27,7 +27,7 @@ function validTheme(): ThemeFile {
 }
 
 describe("ThemeFileSchema", () => {
-  it("accepts the exact versioned external shape with optional lifecycle tokens", () => {
+  it("accepts legacy geometry and lifecycle tokens but normalizes them to the core system", () => {
     const input = {
       $schema: THEME_FILE_SCHEMA_URL,
       version: 1,
@@ -36,7 +36,13 @@ describe("ThemeFileSchema", () => {
       dark: validMode(),
     };
 
-    expect(ThemeFileSchema.parse(input)).toEqual(input);
+    const parsed = ThemeFileSchema.parse(input);
+
+    expect(parsed.light.radius).toBe("0.625rem");
+    expect(parsed.dark.radius).toBe("0.625rem");
+    expect(parsed.light.capture).toBeUndefined();
+    expect(parsed.light.organized).toBeUndefined();
+    expect(parsed.light.completed).toBeUndefined();
   });
 
   it("rejects unknown schema versions, empty names, and unknown top-level keys", () => {
@@ -128,7 +134,7 @@ describe("ThemeFileSchema", () => {
     if (result.success) expect(result.data.light.background).toBe(background);
   });
 
-  it("normalizes raw zero radius and enforces the inclusive 0rem through 2rem range", () => {
+  it("accepts legacy radii within the v1 range and normalizes them to the system default", () => {
     const theme = validTheme();
 
     expect(
@@ -136,15 +142,14 @@ describe("ThemeFileSchema", () => {
         ...theme,
         light: { ...theme.light, radius: "0" },
       }).light.radius,
-    ).toBe("0rem");
+    ).toBe("0.625rem");
     for (const radius of ["0rem", "0.25rem", "1rem", "1.5rem", "2rem", "2.0rem"]) {
-      expect(
-        ThemeFileSchema.safeParse({
+      const result = ThemeFileSchema.safeParse({
           ...theme,
           light: { ...theme.light, radius },
-        }).success,
-        radius,
-      ).toBe(true);
+        });
+      expect(result.success, radius).toBe(true);
+      if (result.success) expect(result.data.light.radius).toBe("0.625rem");
     }
     for (const radius of ["-0.1rem", "2.01rem", "1px", "1", ".5em"]) {
       expect(

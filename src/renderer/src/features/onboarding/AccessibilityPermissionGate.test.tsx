@@ -113,6 +113,7 @@ describe("AccessibilityPermissionGate", () => {
     const progress = screen.getByRole("progressbar", {
       name: "Loading capture setup",
     });
+    expect(progress).not.toHaveAttribute("aria-valuenow");
     expect(progress.closest('[data-panel-shell="true"]')).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Hide Kopper" })).toBeVisible();
   });

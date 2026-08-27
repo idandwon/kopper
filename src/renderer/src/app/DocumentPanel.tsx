@@ -8,6 +8,7 @@ import {
 
 import type { KopperDocument } from "../../../shared/domain/document";
 import type { KopperError } from "../../../shared/domain/errors";
+import { Alert, AlertDescription } from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import { DismissButton } from "../components/ui/dismiss-button";
 import { Tabs, TabsContent } from "../components/ui/tabs";
@@ -42,15 +43,16 @@ function DocumentError({ error, disabled, retry, dismiss }: DocumentErrorProps) 
   };
 
   return (
-    <div
+    <Alert
       role="alert"
-      className="mx-4 mb-2 flex items-center gap-3 rounded-lg border border-destructive bg-card p-3 text-sm text-card-foreground"
+      variant="destructive"
+      className="mx-4 mb-2 flex w-auto items-center gap-3"
     >
       <p className="m-0 min-w-0 flex-1">{error.message}</p>
       {error.retryable ? (
         <Button
           type="button"
-          size="xs"
+          size="sm"
           variant="outline"
           disabled={disabled}
           onClick={retryAction}
@@ -59,7 +61,7 @@ function DocumentError({ error, disabled, retry, dismiss }: DocumentErrorProps) 
         </Button>
       ) : null}
       <DismissButton label="Dismiss error" onClick={dismiss} />
-    </div>
+    </Alert>
   );
 }
 
@@ -86,25 +88,25 @@ function CaptureAccessPanel({
   };
 
   return (
-    <section
+    <Alert
       aria-label="Capture access"
       aria-busy={busy}
-      className="mx-4 mb-2 grid gap-2 rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground"
+      className="mx-4 mb-2 w-auto"
     >
-      <p role="status" aria-live="polite">
+      <p className="m-0 font-medium" role="status" aria-live="polite">
         {statusMessage}
       </p>
-      <p>
+      <AlertDescription>
         If Kopper already appears enabled, remove it with the minus button, add
         the current Kopper app again, then check again.
-      </p>
+      </AlertDescription>
       {controls.operationError === null ? null : (
-        <p role="alert">{controls.operationError}</p>
+        <AlertDescription role="alert">{controls.operationError}</AlertDescription>
       )}
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
-          size="xs"
+          size="sm"
           variant="outline"
           disabled={busy}
           onClick={openSettings}
@@ -113,7 +115,7 @@ function CaptureAccessPanel({
         </Button>
         <Button
           type="button"
-          size="xs"
+          size="sm"
           variant="outline"
           disabled={busy}
           onClick={checkAccess}
@@ -121,7 +123,7 @@ function CaptureAccessPanel({
           Check access
         </Button>
       </div>
-    </section>
+    </Alert>
   );
 }
 

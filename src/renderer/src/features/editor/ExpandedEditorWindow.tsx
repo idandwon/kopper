@@ -1,6 +1,8 @@
 import { useState, type ReactNode } from "react";
 
 import { Button } from "../../components/ui/button";
+import { Alert, AlertDescription } from "../../components/ui/alert";
+import { Progress } from "../../components/ui/progress";
 import { ScrollArea } from "../../components/ui/scroll-area";
 import { useKopperDocument } from "../../app/DocumentProvider";
 import { MarkdownEditor } from "./MarkdownEditor";
@@ -38,14 +40,12 @@ export function ExpandedEditorWindow({ noteId }: { noteId: string }) {
   if (pendingAction === "load") {
     return (
       <EditorStatus>
-        <div
-          role="progressbar"
+        <Progress
           aria-label="Loading note"
           aria-valuetext="Loading note"
-          className="h-1 w-24 overflow-hidden rounded-full bg-muted"
-        >
-          <div className="h-full w-1/2 rounded-full bg-primary motion-safe:animate-pulse" />
-        </div>
+          className="w-24 motion-safe:animate-pulse"
+          value={50}
+        />
       </EditorStatus>
     );
   }
@@ -53,7 +53,9 @@ export function ExpandedEditorWindow({ noteId }: { noteId: string }) {
   if (!ready && error !== null) {
     return (
       <EditorStatus>
-        <p role="alert">{error.message}</p>
+        <Alert role="alert" variant="destructive">
+          <AlertDescription>{error.message}</AlertDescription>
+        </Alert>
       </EditorStatus>
     );
   }
@@ -61,7 +63,9 @@ export function ExpandedEditorWindow({ noteId }: { noteId: string }) {
   if (note === undefined) {
     return (
       <EditorStatus>
-        <p role="alert">This note no longer exists.</p>
+        <Alert role="alert" variant="destructive">
+          <AlertDescription>This note no longer exists.</AlertDescription>
+        </Alert>
       </EditorStatus>
     );
   }

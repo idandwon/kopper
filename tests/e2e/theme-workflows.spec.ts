@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import type { Locator, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 
 import { createEmptyDocument } from "../../src/shared/domain/document";
 
@@ -15,6 +15,7 @@ import {
   expectSurfaceContained,
   setSurfaceSize,
 } from "./helpers/surfaceGeometry";
+import { fillExactly } from "./helpers/formInteractions";
 
 const CANONICAL_ROOT_THEME_PROPERTIES = [
   "--background",
@@ -37,9 +38,6 @@ const CANONICAL_ROOT_THEME_PROPERTIES = [
   "--input",
   "--ring",
   "--radius",
-  "--capture",
-  "--organized",
-  "--completed",
 ] as const;
 
 interface RootThemeSnapshot {
@@ -47,13 +45,6 @@ interface RootThemeSnapshot {
   dark: boolean;
   colorScheme: { value: string; priority: string };
   properties: Record<string, { value: string; priority: string }>;
-}
-
-async function fillExactly(locator: Locator, value: string): Promise<void> {
-  await expect(async () => {
-    await locator.fill(value);
-    await expect(locator).toHaveValue(value);
-  }).toPass();
 }
 
 async function readRootThemeSnapshot(page: Page): Promise<RootThemeSnapshot> {
@@ -236,11 +227,8 @@ test("persists modes, presets, edited custom theme, and imported preview decisio
     editDialog.getByLabel("primary", { exact: true }),
     "#285F54",
   );
-  await fillExactly(
-    editDialog.getByLabel("capture", { exact: true }),
-    "#A05030",
-  );
-  await fillExactly(editDialog.getByLabel("radius", { exact: true }), "1rem");
+  await expect(editDialog.getByLabel("capture", { exact: true })).toHaveCount(0);
+  await expect(editDialog.getByLabel("radius", { exact: true })).toHaveCount(0);
   await expect(editDialog.getByText("Theme is readable in both modes.")).toBeVisible();
   const saveEditedTheme = editDialog.getByRole("button", { name: "Save theme" });
   await saveEditedTheme.focus();
@@ -252,11 +240,11 @@ test("persists modes, presets, edited custom theme, and imported preview decisio
   await page.getByRole("menuitem", { name: "Export" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Theme exported." })).toBeVisible();
   const exported = JSON.parse(await readFile(exportedTheme, "utf8")) as {
-    light: { capture: string; primary: string; radius: string };
+    light: { capture?: string; primary: string; radius: string };
   };
-  expect(exported.light.capture).toBe("#A05030");
+  expect(exported.light.capture).toBeUndefined();
   expect(exported.light.primary).toBe("#285F54");
-  expect(exported.light.radius).toBe("1rem");
+  expect(exported.light.radius).toBe("0.625rem");
 
   await chooseAppearanceMode(page, "Light");
   await page.getByRole("button", { name: "Activate Oxide Ledger", exact: true }).click();
@@ -296,9 +284,9 @@ test("persists modes, presets, edited custom theme, and imported preview decisio
     ({ id }) => id === persisted.appearance.activeThemeId,
   );
   expect(active?.name).toBe("Oxide Ledger Custom");
-  expect(active?.light.capture).toBe("#A05030");
+  expect(active?.light.capture).toBe("#285F54");
   expect(active?.light.primary).toBe("#285F54");
-  expect(active?.light.radius).toBe("1rem");
+  expect(active?.light.radius).toBe("0.625rem");
 
   const relaunched = await kopper.relaunchKopper();
   await continueWithoutCaptureIfNeeded(relaunched);

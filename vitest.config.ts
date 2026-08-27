@@ -1,6 +1,15 @@
+import { fileURLToPath } from "node:url";
+
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  resolve: {
+    alias: {
+      "@renderer": fileURLToPath(
+        new URL("./src/renderer/src", import.meta.url),
+      ),
+    },
+  },
   test: {
     projects: [
       {
@@ -14,6 +23,7 @@ export default defineConfig({
         },
       },
       {
+        extends: true,
         test: {
           name: "renderer",
           environment: "jsdom",

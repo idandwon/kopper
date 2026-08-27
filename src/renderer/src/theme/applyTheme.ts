@@ -1,4 +1,5 @@
 import type { CompleteThemeMode } from "../../../shared/theme/themeSchema";
+import { DEFAULT_THEME_RADIUS } from "../../../shared/theme/tokens";
 
 const CANONICAL_THEME_PROPERTIES = [
   ["background", "--background"],
@@ -21,9 +22,6 @@ const CANONICAL_THEME_PROPERTIES = [
   ["input", "--input"],
   ["ring", "--ring"],
   ["radius", "--radius"],
-  ["capture", "--capture"],
-  ["organized", "--organized"],
-  ["completed", "--completed"],
 ] as const satisfies ReadonlyArray<
   readonly [keyof CompleteThemeMode, `--${string}`]
 >;
@@ -91,7 +89,10 @@ export function applyTheme(
       root.style.removeProperty(property);
     }
     for (const [token, property] of CANONICAL_THEME_PROPERTIES) {
-      root.style.setProperty(property, tokens[token]);
+      root.style.setProperty(
+        property,
+        token === "radius" ? DEFAULT_THEME_RADIUS : tokens[token],
+      );
     }
   });
 

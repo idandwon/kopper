@@ -1,7 +1,7 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 
 import type { DocumentCommand } from "../domain/commands";
-import { createEmptyDocument } from "../domain/document";
+import { createEmptyDocument, ThemeDefinitionSchema } from "../domain/document";
 import { OXIDE_LEDGER_THEME } from "../theme/presets";
 import {
   AccessibilitySessionResultSchema,
@@ -179,9 +179,9 @@ describe("IPC contract", () => {
       id: "custom:preview",
     };
     const preview = {
-      theme: customTheme,
-      derivedTokens: {
-        light: ["capture", "organized"] as const,
+      theme: ThemeDefinitionSchema.parse(customTheme),
+      normalizedTokens: {
+        light: ["radius", "capture", "organized"] as const,
         dark: ["completed"] as const,
       },
     };
@@ -190,15 +190,15 @@ describe("IPC contract", () => {
     );
     for (const malformed of [
       { ...preview, unexpected: true },
-      { ...preview, theme: { ...customTheme, unexpected: true } },
+      { ...preview, theme: { ...preview.theme, unexpected: true } },
       {
         ...preview,
-        derivedTokens: { ...preview.derivedTokens, light: ["primary"] },
+        normalizedTokens: { ...preview.normalizedTokens, light: ["primary"] },
       },
       {
         ...preview,
-        derivedTokens: {
-          ...preview.derivedTokens,
+        normalizedTokens: {
+          ...preview.normalizedTokens,
           dark: ["completed", "completed"],
         },
       },

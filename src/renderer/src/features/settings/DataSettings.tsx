@@ -17,6 +17,7 @@ import {
   SettingsFeedback,
   type SettingsFeedbackValue,
 } from "./SettingsFeedback";
+import { SettingsSection } from "./SettingsSection";
 
 export function DataSettings({
   api = window.kopper,
@@ -89,19 +90,13 @@ export function DataSettings({
   };
 
   return (
-    <section
-      className="grid min-w-0 gap-5"
-      aria-labelledby="data-settings-title"
+    <SettingsSection
+      title="Data files"
+      description="Export a snapshot or replace this store from a validated Kopper file."
+      headingId="data-settings-title"
+      separated
+      className="min-w-0 gap-5"
     >
-      <div>
-        <h2 id="data-settings-title" className="m-0 text-sm font-semibold">
-          Data files
-        </h2>
-        <p className="m-0 break-words text-xs text-muted-foreground">
-          Export a snapshot or replace this store from a validated Kopper file.
-        </p>
-      </div>
-      <Separator />
       <div className="flex min-w-0 flex-wrap gap-2">
         <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void exportData()}>
           Export data
@@ -133,6 +128,6 @@ export function DataSettings({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </section>
+    </SettingsSection>
   );
 }

@@ -4,7 +4,8 @@ import type { KopperError } from "../../../../shared/domain/errors";
 import type { KopperApi, ThemeImportPreview } from "../../../../shared/ipc/contract";
 import { measureThemeContrast } from "../../../../shared/theme/deriveTheme";
 import { THEME_FILE_SCHEMA_URL } from "../../../../shared/theme/themeSchema";
-import type { ThemeToken } from "../../../../shared/theme/tokens";
+import type { ShadcnThemeToken } from "../../../../shared/theme/tokens";
+import { Alert, AlertDescription } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../../components/ui/dialog";
 import { Separator } from "../../components/ui/separator";
@@ -13,18 +14,18 @@ import {
   type ThemePreviewOwner,
 } from "../../theme/ThemeProvider";
 
-const PREVIEW_TOKENS: readonly ThemeToken[] = [
+const PREVIEW_TOKENS: readonly ShadcnThemeToken[] = [
   "background",
   "foreground",
+  "card",
   "primary",
   "accent",
-  "capture",
-  "completed",
+  "muted",
 ];
 
 function ModePreview({ mode, preview }: { mode: "light" | "dark"; preview: ThemeImportPreview }) {
   const tokens = preview.theme[mode];
-  const derived = preview.derivedTokens[mode];
+  const normalized = preview.normalizedTokens[mode];
   const measured = measureThemeContrast({
     $schema: THEME_FILE_SCHEMA_URL,
     version: 1,
@@ -36,7 +37,7 @@ function ModePreview({ mode, preview }: { mode: "light" | "dark"; preview: Theme
     <section className="grid min-w-0 gap-2 py-3" aria-labelledby={`import-${mode}`}>
       <Separator />
       <h3 id={`import-${mode}`} className="m-0 font-mono text-xs font-semibold capitalize">{mode}</h3>
-      <ul className="m-0 grid list-none gap-1 p-0 text-[11px] text-muted-foreground" aria-label={`${mode} contrast measurements`}>
+      <ul className="m-0 grid list-none gap-1 p-0 text-xs text-muted-foreground" aria-label={`${mode} contrast measurements`}>
         {measured.map(({ backgroundToken, foregroundToken, ratio, meetsMinimum }) => (
           <li
             key={`${backgroundToken}:${foregroundToken}`}
@@ -48,13 +49,13 @@ function ModePreview({ mode, preview }: { mode: "light" | "dark"; preview: Theme
       </ul>
       <ul className="m-0 grid min-w-0 list-none grid-cols-2 gap-1.5 p-0" aria-label={`${mode} theme swatches`}>
         {PREVIEW_TOKENS.map((token) => (
-          <li key={token} className="flex min-w-0 items-center gap-1.5 font-mono text-[10px]">
+          <li key={token} className="flex min-w-0 items-center gap-1.5 font-mono text-xs">
             <span aria-hidden="true" className="h-5 w-5 shrink-0 border border-border" style={{ backgroundColor: tokens[token] }} />
             <span className="truncate">{token}: {tokens[token]}</span>
           </li>
         ))}
       </ul>
-      <p className="m-0 break-words text-[11px] text-muted-foreground">Derived lifecycle tokens: {derived.length === 0 ? "None" : derived.join(", ")}</p>
+      <p className="m-0 break-words text-xs text-muted-foreground">Normalized to system defaults: {normalized.length === 0 ? "None" : normalized.join(", ")}</p>
     </section>
   );
 }
@@ -137,7 +138,12 @@ export function ThemeImportDialog({ api = window.kopper }: { api?: Pick<KopperAp
     <>
       <Button type="button" size="sm" variant="outline" disabled={busy} onClick={() => void chooseImport()}>Import theme</Button>
       {message !== null && preview === null && (
-        <div role={error ? "alert" : "status"} className="m-0 min-w-0 break-words text-[11px] text-muted-foreground">
+        <Alert
+          role={error ? "alert" : "status"}
+          variant={error ? "destructive" : "default"}
+          className="min-w-0"
+        >
+          <AlertDescription className="break-words">
           <p className="m-0">{message}</p>
           {importError?.failures !== undefined && importError.failures.length > 0 && (
             <ul className="m-0 list-disc pl-5">
@@ -151,7 +157,8 @@ export function ThemeImportDialog({ api = window.kopper }: { api?: Pick<KopperAp
           {importError?.opaqueBackgroundModes?.map((mode) => (
             <p className="m-0" key={mode}>{mode}: background must be opaque.</p>
           ))}
-        </div>
+          </AlertDescription>
+        </Alert>
       )}
       <Dialog open={preview !== null} onOpenChange={(open) => !open && !busy && close()}>
         <DialogContent
@@ -164,7 +171,11 @@ export function ThemeImportDialog({ api = window.kopper }: { api?: Pick<KopperAp
             <DialogTitle className="break-words">{preview?.theme.name ?? "Imported theme"}</DialogTitle>
             <DialogDescription className="break-words">Validated preview only. Nothing is persisted until you save.</DialogDescription>
           </DialogHeader>
-          {message !== null && <p role={error ? "alert" : "status"} className="m-0 break-words text-[11px] text-muted-foreground">{message}</p>}
+          {message !== null && (
+            <Alert role={error ? "alert" : "status"} variant={error ? "destructive" : "default"}>
+              <AlertDescription className="break-words">{message}</AlertDescription>
+            </Alert>
+          )}
           {preview !== null && <div className="min-w-0"><ModePreview mode="light" preview={preview} /><ModePreview mode="dark" preview={preview} /></div>}
           <DialogFooter className="flex-wrap">
             <Button type="button" size="sm" variant="ghost" disabled={busy} onClick={close}>Cancel</Button>

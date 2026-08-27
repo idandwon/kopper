@@ -10,7 +10,7 @@ import type {
   ThemeFile,
   ThemeMode,
 } from "./themeSchema";
-import { SHADCN_THEME_TOKENS } from "./tokens";
+import { DEFAULT_THEME_RADIUS, SHADCN_THEME_TOKENS } from "./tokens";
 
 export interface CompleteThemeFile
   extends Omit<ThemeFile, "light" | "dark"> {
@@ -41,10 +41,12 @@ const toRgb = converter("rgb");
 
 function deriveMode(mode: ThemeMode): CompleteThemeMode {
   const complete = {} as CompleteThemeMode;
-  for (const token of SHADCN_THEME_TOKENS) complete[token] = mode[token];
-  complete.capture = mode.capture ?? mode.primary;
-  complete.organized = mode.organized ?? mode.accent;
-  complete.completed = mode.completed ?? mode["muted-foreground"];
+  for (const token of SHADCN_THEME_TOKENS) {
+    complete[token] = token === "radius" ? DEFAULT_THEME_RADIUS : mode[token];
+  }
+  complete.capture = complete.primary;
+  complete.organized = complete.accent;
+  complete.completed = complete["muted-foreground"];
   return complete;
 }
 

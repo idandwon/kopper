@@ -94,7 +94,6 @@ export function SettingsPage({
                   type="button"
                   size="icon-sm"
                   variant="ghost"
-                  className="size-8"
                   ref={backButtonRef}
                   autoFocus
                   aria-label="Back to notes"

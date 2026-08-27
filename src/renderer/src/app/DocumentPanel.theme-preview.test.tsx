@@ -31,7 +31,7 @@ const importedTheme = {
 };
 const importedPreview: ThemeImportPreview = {
   theme: importedTheme,
-  derivedTokens: { light: [], dark: [] },
+  normalizedTokens: { light: [], dark: [] },
 };
 
 let openSettingsListener: (() => void) | undefined;

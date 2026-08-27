@@ -1,7 +1,10 @@
 import type { IpcRendererEvent } from "electron";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createEmptyDocument } from "../shared/domain/document";
+import {
+  createEmptyDocument,
+  ThemeDefinitionSchema,
+} from "../shared/domain/document";
 import { OXIDE_LEDGER_THEME } from "../shared/theme/presets";
 import type { KopperApi } from "../shared/ipc/contract";
 import { IPC_CHANNELS } from "../shared/ipc/contract";
@@ -209,10 +212,10 @@ describe("preload bridge", () => {
   });
 
   it("validates theme and native-appearance IPC in both directions", async () => {
-    const customTheme = {
+    const customTheme = ThemeDefinitionSchema.parse({
       ...structuredClone(OXIDE_LEDGER_THEME),
       id: "custom:preview",
-    };
+    });
     const readabilityError = {
       code: "validation_failed" as const,
       message: "Theme readability validation found 1 problem.",
@@ -229,7 +232,7 @@ describe("preload bridge", () => {
     };
     const importPreview = {
       theme: customTheme,
-      derivedTokens: { light: ["capture"], dark: [] },
+      normalizedTokens: { light: ["capture"], dark: [] },
     };
     electron.invoke
       .mockResolvedValueOnce({ ok: true, value: importPreview })

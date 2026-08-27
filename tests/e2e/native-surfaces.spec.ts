@@ -4,6 +4,7 @@ import {
   test,
   type KopperE2E,
 } from "./fixtures/electronApp";
+import { createEmptyDocument } from "../../src/shared/domain/document";
 import { setSurfaceSize } from "./helpers/surfaceGeometry";
 
 const OPEN_SETTINGS_CHANNEL = "kopper:settings:open";
@@ -88,7 +89,9 @@ test("hides through the panel X without quitting and restores the tab session", 
 test("renders the actual focusless 340x72 HUD anchored to a hidden panel", async ({
   kopper,
 }) => {
-  const page = await kopper.launchKopper();
+  const initial = createEmptyDocument(new Date("2026-08-16T12:00:00.000Z"));
+  initial.appearance.mode = "light";
+  const page = await kopper.launchKopper(initial);
   await continueWithoutCaptureIfNeeded(page);
   await setSurfaceSize(page, 340, 480);
   await kopper.electronApp.evaluate(({ systemPreferences }) => {
@@ -199,6 +202,12 @@ test("renders the actual focusless 340x72 HUD anchored to a hidden panel", async
   expect(geometry.statusBounds?.top).toBeGreaterThanOrEqual(0);
   expect(geometry.statusBounds?.right).toBeLessThanOrEqual(340);
   expect(geometry.statusBounds?.bottom).toBeLessThanOrEqual(72);
+  await hud.mouse.move(1, 36);
+  await expect(hud).toHaveScreenshot("capture-hud-light-340x72.png", {
+    animations: "disabled",
+    caret: "hide",
+    maxDiffPixelRatio: 0.01,
+  });
 
   await expect
     .poll(async () => {
