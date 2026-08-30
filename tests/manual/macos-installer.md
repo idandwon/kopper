@@ -19,14 +19,20 @@ BASH
 
 ## Pre-promotion draft acceptance
 
-Run this exact procedure in the first clean account. It downloads the three exact draft assets, but deliberately does **not** run the draft `install.sh`: its fixed `releases/latest` origin cannot address an unpublished draft. The temporary cleanup trap accepts only the two `mktemp` paths with the expected bounded prefixes and never removes a mounted directory.
+Run this exact procedure in the first clean account. It downloads the five exact draft assets, verifies both architecture packages, but deliberately does **not** run the draft `install.sh`: its fixed `releases/latest` origin cannot address an unpublished draft. The temporary cleanup trap accepts only the two `mktemp` paths with the expected bounded prefixes and never removes a mounted directory.
 
 ```bash
 bash <<'BASH'
 set -euo pipefail
 
-TAG="v0.1.1"
+TAG="v0.1.5"
 VERSION="${TAG#v}"
+MACHINE_ARCHITECTURE="$(uname -m)"
+case "$MACHINE_ARCHITECTURE" in
+  arm64) ASSET_ARCHITECTURE="arm64"; EXPECTED_BINARY_ARCHITECTURE="arm64" ;;
+  x86_64) ASSET_ARCHITECTURE="x64"; EXPECTED_BINARY_ARCHITECTURE="x86_64" ;;
+  *) echo "Unsupported Mac architecture." >&2; exit 1 ;;
+esac
 TEMP_ROOT="${TMPDIR:-/tmp}"
 TEMP_ROOT="${TEMP_ROOT%/}"
 test -d "$TEMP_ROOT"
@@ -86,40 +92,34 @@ asset_entries=()
 while IFS= read -r -d '' asset_entry; do
   asset_entries+=("$asset_entry")
 done < <(find "$ASSET_DIRECTORY" -mindepth 1 -maxdepth 1 -print0)
-test "${#asset_entries[@]}" -eq 3
-DMG="$ASSET_DIRECTORY/Kopper-${VERSION}-universal.dmg"
-CHECKSUM="$ASSET_DIRECTORY/Kopper-${VERSION}-universal.dmg.sha256"
+test "${#asset_entries[@]}" -eq 5
+ARM64_DMG="$ASSET_DIRECTORY/Kopper-${VERSION}-arm64.dmg"
+ARM64_CHECKSUM="$ASSET_DIRECTORY/Kopper-${VERSION}-arm64.dmg.sha256"
+X64_DMG="$ASSET_DIRECTORY/Kopper-${VERSION}-x64.dmg"
+X64_CHECKSUM="$ASSET_DIRECTORY/Kopper-${VERSION}-x64.dmg.sha256"
 INSTALLER="$ASSET_DIRECTORY/install.sh"
-for asset in "$DMG" "$CHECKSUM" "$INSTALLER"; do
+for asset in "$ARM64_DMG" "$ARM64_CHECKSUM" "$X64_DMG" "$X64_CHECKSUM" "$INSTALLER"; do
   test -f "$asset"
   test ! -L "$asset"
 done
 bash -n "$INSTALLER"
-checksum_line="$(cat "$CHECKSUM")"
-checksum_pattern="^[0-9a-f]{64}[[:space:]][[:space:]]Kopper-${VERSION}-universal.dmg$"
-[[ "$checksum_line" =~ $checksum_pattern ]]
-(cd "$ASSET_DIRECTORY" && shasum -a 256 -c "${CHECKSUM##*/}")
+for architecture in arm64 x64; do
+  case "$architecture" in
+    arm64) checksum="$ARM64_CHECKSUM" ;;
+    x64) checksum="$X64_CHECKSUM" ;;
+  esac
+  checksum_line="$(cat "$checksum")"
+  checksum_pattern="^[0-9a-f]{64}[[:space:]][[:space:]]Kopper-${VERSION}-${architecture}.dmg$"
+  [[ "$checksum_line" =~ $checksum_pattern ]]
+  (cd "$ASSET_DIRECTORY" && shasum -a 256 -c "${checksum##*/}")
+done
 
 mkdir -p "$(dirname "$STORE")" "$HOME/Applications"
 printf '%s\n' '{"schemaVersion":1,"notes":[]}' > "$STORE"
 STORE_BEFORE="$(shasum -a 256 "$STORE" | awk '{print $1}')"
-hdiutil attach -readonly -nobrowse -mountpoint "$MOUNT_POINT" "$DMG"
-mounted=1
-APP="$MOUNT_POINT/Kopper.app"
-root_apps=()
-while IFS= read -r -d '' root_app; do
-  root_apps+=("$root_app")
-done < <(find "$MOUNT_POINT" -mindepth 1 -maxdepth 1 -name '*.app' -print0)
-test "${#root_apps[@]}" -eq 1
-test "${root_apps[0]}" = "$APP"
-test -d "$APP"
-test ! -L "$APP"
-test "$(plutil -extract CFBundleIdentifier raw -o - "$APP/Contents/Info.plist")" = "com.kopper.app"
-test "$(plutil -extract CFBundleShortVersionString raw -o - "$APP/Contents/Info.plist")" = "$VERSION"
-test "$(plutil -extract LSMinimumSystemVersion raw -o - "$APP/Contents/Info.plist")" = "14.0"
-
-assert_exact_architectures() {
+assert_exact_architecture() {
   binary="$1"
+  expected_architecture="$2"
   architecture_set="$(
     lipo -archs "$binary" |
       tr ' ' '\n' |
@@ -127,15 +127,38 @@ assert_exact_architectures() {
       sort |
       paste -sd ' ' -
   )"
-  test "$architecture_set" = "arm64 x86_64"
+  test "$architecture_set" = "$expected_architecture"
   printf '%s: %s\n' "$binary" "$architecture_set"
 }
-assert_exact_architectures "$APP/Contents/MacOS/Kopper"
-assert_exact_architectures "$APP/Contents/Resources/app.asar.unpacked/node_modules/uiohook-napi/build/Release/uiohook_napi.node"
 
-ditto "$APP" "$TARGET"
-hdiutil detach "$MOUNT_POINT"
-mounted=0
+for architecture in arm64 x64; do
+  case "$architecture" in
+    arm64) dmg="$ARM64_DMG"; binary_architecture="arm64" ;;
+    x64) dmg="$X64_DMG"; binary_architecture="x86_64" ;;
+  esac
+  mkdir -p "$MOUNT_POINT"
+  hdiutil attach -readonly -nobrowse -mountpoint "$MOUNT_POINT" "$dmg"
+  mounted=1
+  APP="$MOUNT_POINT/Kopper.app"
+  root_apps=()
+  while IFS= read -r -d '' root_app; do
+    root_apps+=("$root_app")
+  done < <(find "$MOUNT_POINT" -mindepth 1 -maxdepth 1 -name '*.app' -print0)
+  test "${#root_apps[@]}" -eq 1
+  test "${root_apps[0]}" = "$APP"
+  test -d "$APP"
+  test ! -L "$APP"
+  test "$(plutil -extract CFBundleIdentifier raw -o - "$APP/Contents/Info.plist")" = "com.kopper.app"
+  test "$(plutil -extract CFBundleShortVersionString raw -o - "$APP/Contents/Info.plist")" = "$VERSION"
+  test "$(plutil -extract LSMinimumSystemVersion raw -o - "$APP/Contents/Info.plist")" = "14.0"
+  assert_exact_architecture "$APP/Contents/MacOS/Kopper" "$binary_architecture"
+  assert_exact_architecture "$APP/Contents/Resources/app.asar.unpacked/node_modules/uiohook-napi/build/Release/uiohook_napi.node" "$binary_architecture"
+  if [[ "$architecture" = "$ASSET_ARCHITECTURE" ]]; then
+    ditto "$APP" "$TARGET"
+  fi
+  hdiutil detach "$MOUNT_POINT"
+  mounted=0
+done
 test ! -e "$MOUNT_POINT" || rmdir -- "$MOUNT_POINT"
 test "$(shasum -a 256 "$STORE" | awk '{print $1}')" = "$STORE_BEFORE"
 if open "$TARGET"; then
@@ -147,7 +170,7 @@ printf 'Initial open command exit status: %s\n' "$launch_status"
 BASH
 ```
 
-The two architecture assertions must print exactly `arm64 x86_64`. The `open` status is evidence, but even status 0 does not prove the visible Gatekeeper result. Complete the observation through Finder: open `~/Applications/Kopper.app`; if macOS blocks it, open **System Settings → Privacy & Security** and choose **Open Anyway** once for Kopper. Record the direct or Open Anyway result and never use a shell security bypass.
+The architecture assertions must print exactly `arm64` for the arm64 DMG and `x86_64` for the x64 DMG. The matching build is copied for the physical launch check. The `open` status is evidence, but even status 0 does not prove the visible Gatekeeper result. Complete the observation through Finder: open `~/Applications/Kopper.app`; if macOS blocks it, open **System Settings → Privacy & Security** and choose **Open Anyway** once for Kopper. Record the direct or Open Anyway result and never use a shell security bypass.
 
 The trap removes only the validated temporary paths after detaching the image. It intentionally keeps the clean-account `TARGET` and inert store for the manual observation. After evidence capture, remove only that exact target. Never remove the store unless the tester created it solely as this inert fixture and records that cleanup.
 
@@ -159,8 +182,14 @@ After explicit approval promotes the exact draft, use a second clean standard ac
 bash <<'BASH'
 set -euo pipefail
 
-TAG="v0.1.1"
+TAG="v0.1.5"
 VERSION="${TAG#v}"
+MACHINE_ARCHITECTURE="$(uname -m)"
+case "$MACHINE_ARCHITECTURE" in
+  arm64) ASSET_ARCHITECTURE="arm64"; EXPECTED_BINARY_ARCHITECTURE="arm64" ;;
+  x86_64) ASSET_ARCHITECTURE="x64"; EXPECTED_BINARY_ARCHITECTURE="x86_64" ;;
+  *) echo "Unsupported Mac architecture." >&2; exit 1 ;;
+esac
 STORE="$HOME/Library/Application Support/Kopper/kopper.json"
 APP="$HOME/Applications/Kopper.app"
 test ! -e "$STORE"
@@ -182,7 +211,7 @@ test "$(plutil -extract CFBundleShortVersionString raw -o - "$APP/Contents/Info.
 test "$(plutil -extract LSMinimumSystemVersion raw -o - "$APP/Contents/Info.plist")" = "14.0"
 test "$(shasum -a 256 "$STORE" | awk '{print $1}')" = "$STORE_BEFORE"
 
-assert_exact_architectures() {
+assert_exact_architecture() {
   binary="$1"
   architecture_set="$(
     lipo -archs "$binary" |
@@ -191,11 +220,11 @@ assert_exact_architectures() {
       sort |
       paste -sd ' ' -
   )"
-  test "$architecture_set" = "arm64 x86_64"
+  test "$architecture_set" = "$EXPECTED_BINARY_ARCHITECTURE"
   printf '%s: %s\n' "$binary" "$architecture_set"
 }
-assert_exact_architectures "$APP/Contents/MacOS/Kopper"
-assert_exact_architectures "$APP/Contents/Resources/app.asar.unpacked/node_modules/uiohook-napi/build/Release/uiohook_napi.node"
+assert_exact_architecture "$APP/Contents/MacOS/Kopper"
+assert_exact_architecture "$APP/Contents/Resources/app.asar.unpacked/node_modules/uiohook-napi/build/Release/uiohook_napi.node"
 BASH
 ```
 
@@ -205,9 +234,14 @@ The canonical installer must leave no exact versioned Kopper DMG mounted and no 
 bash <<'BASH'
 set -euo pipefail
 
-TAG="v0.1.1"
+TAG="v0.1.5"
 VERSION="${TAG#v}"
-EXPECTED_DMG="Kopper-${VERSION}-universal.dmg"
+case "$(uname -m)" in
+  arm64) ASSET_ARCHITECTURE="arm64" ;;
+  x86_64) ASSET_ARCHITECTURE="x64" ;;
+  *) echo "Unsupported Mac architecture." >&2; exit 1 ;;
+esac
+EXPECTED_DMG="Kopper-${VERSION}-${ASSET_ARCHITECTURE}.dmg"
 TEMP_ROOT="${TMPDIR:-/tmp}"
 TEMP_ROOT="${TEMP_ROOT%/}"
 test -d "$TEMP_ROOT"
@@ -371,8 +405,8 @@ If the installed app is blocked on first launch, use the documented **Open Anywa
 
 | ID | Required observation |
 | --- | --- |
-| UNSIGNED-01 | The exact draft contains only the versioned universal DMG, its matching SHA-256 file, and the tagged `install.sh`; checksum verification succeeds. |
-| UNSIGNED-02 | The root-level real `Kopper.app` reports the exact version, bundle identifier `com.kopper.app`, minimum macOS `14.0`, and exactly the `arm64` and `x86_64` runtime architecture sets. |
+| UNSIGNED-01 | The exact draft contains only the versioned arm64 and x64 DMGs, their matching SHA-256 files, and the tagged `install.sh`; both checksum verifications succeed. |
+| UNSIGNED-02 | Each root-level real `Kopper.app` reports the exact version, bundle identifier `com.kopper.app`, minimum macOS `14.0`, and only the runtime architecture declared by its DMG filename. |
 | UNSIGNED-03 | A manual draft installation to `~/Applications/Kopper.app` preserves the inert `kopper.json` hash and first launch either opens directly or succeeds after one System Settings → Privacy & Security → Open Anyway approval; no shell security bypass is used. |
 | UNSIGNED-04 | After publication, the canonical installer leaves exactly `~/Applications/Kopper.app`, no mounted Kopper DMG, and no `.Kopper.app.install.*` or `.Kopper.app.rollback.*` artifact. |
 | UNSIGNED-05 | After publication, the explicitly recorded nonzero running-process refusal and subsequent zero-status quit-and-upgrade preserve the app transaction and inert `kopper.json` SHA-256. |

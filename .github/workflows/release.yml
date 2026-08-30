@@ -63,30 +63,43 @@ jobs:
       - name: Audit application source
         run: pnpm audit:source
 
-      - name: Build unsigned universal DMG
+      - name: Build unsigned architecture-specific DMGs
         run: pnpm package:beta
 
-      - name: Verify unsigned package
-        run: pnpm verify:package "release/mac-universal/Kopper.app"
+      - name: Verify unsigned packages
+        run: |
+          pnpm verify:package "release/mac-arm64/Kopper.app" --architecture arm64
+          pnpm verify:package "release/mac/Kopper.app" --architecture x64
 
       - name: Stage exact release candidate
         run: |
           version="$(node -p "require('./package.json').version")"
-          dmg_name="Kopper-${version}-universal.dmg"
-          checksum_name="${dmg_name}.sha256"
+          arm64_dmg_name="Kopper-${version}-arm64.dmg"
+          arm64_checksum_name="${arm64_dmg_name}.sha256"
+          x64_dmg_name="Kopper-${version}-x64.dmg"
+          x64_checksum_name="${x64_dmg_name}.sha256"
           staging_directory="$RUNNER_TEMP/kopper-release-candidate"
           rm -rf -- "$staging_directory"
           mkdir -p "$staging_directory"
-          test -f "release/$dmg_name"
+          test -f "release/$arm64_dmg_name"
+          test -f "release/$x64_dmg_name"
           test -f install.sh
           bash -n install.sh
-          cp -- "release/$dmg_name" "$staging_directory/$dmg_name"
+          cp -- "release/$arm64_dmg_name" "$staging_directory/$arm64_dmg_name"
+          cp -- "release/$x64_dmg_name" "$staging_directory/$x64_dmg_name"
           cp -- install.sh "$staging_directory/install.sh"
           (
             cd "$staging_directory"
-            shasum -a 256 "$dmg_name" > "$checksum_name"
+            shasum -a 256 "$arm64_dmg_name" > "$arm64_checksum_name"
+            shasum -a 256 "$x64_dmg_name" > "$x64_checksum_name"
           )
-          node - "$staging_directory" "$dmg_name" "$checksum_name" install.sh <<'NODE'
+          node - \
+            "$staging_directory" \
+            "$arm64_dmg_name" \
+            "$arm64_checksum_name" \
+            "$x64_dmg_name" \
+            "$x64_checksum_name" \
+            install.sh <<'NODE'
           const { readdirSync } = require("node:fs");
           const [directory, ...expectedAssets] = process.argv.slice(2);
           const entries = readdirSync(directory, { withFileTypes: true });
@@ -96,7 +109,7 @@ jobs:
             entries.some((entry) => !entry.isFile()) ||
             JSON.stringify(names) !== JSON.stringify(expectedAssets)
           ) {
-            throw new Error("Staged release candidate must contain exactly three regular files.");
+            throw new Error("Staged release candidate must contain exactly five regular files.");
           }
           NODE
 
@@ -143,14 +156,24 @@ jobs:
             exit 1
           fi
           version="${GITHUB_REF_NAME#v}"
-          dmg_name="Kopper-${version}-universal.dmg"
-          checksum_name="${dmg_name}.sha256"
-          DMG_PATH="$CANDIDATE_DIRECTORY/$dmg_name"
-          CHECKSUM_PATH="$CANDIDATE_DIRECTORY/$checksum_name"
+          arm64_dmg_name="Kopper-${version}-arm64.dmg"
+          arm64_checksum_name="${arm64_dmg_name}.sha256"
+          x64_dmg_name="Kopper-${version}-x64.dmg"
+          x64_checksum_name="${x64_dmg_name}.sha256"
+          ARM64_DMG_PATH="$CANDIDATE_DIRECTORY/$arm64_dmg_name"
+          ARM64_CHECKSUM_PATH="$CANDIDATE_DIRECTORY/$arm64_checksum_name"
+          X64_DMG_PATH="$CANDIDATE_DIRECTORY/$x64_dmg_name"
+          X64_CHECKSUM_PATH="$CANDIDATE_DIRECTORY/$x64_checksum_name"
           INSTALLER_PATH="$CANDIDATE_DIRECTORY/install.sh"
           tagged_installer="$RUNNER_TEMP/tagged-install.sh"
           git show "$GITHUB_SHA:install.sh" > "$tagged_installer"
-          node - "$CANDIDATE_DIRECTORY" "$dmg_name" "$checksum_name" install.sh <<'NODE'
+          node - \
+            "$CANDIDATE_DIRECTORY" \
+            "$arm64_dmg_name" \
+            "$arm64_checksum_name" \
+            "$x64_dmg_name" \
+            "$x64_checksum_name" \
+            install.sh <<'NODE'
           const { readdirSync } = require("node:fs");
           const [directory, ...expectedAssets] = process.argv.slice(2);
           const entries = readdirSync(directory, { withFileTypes: true });
@@ -160,22 +183,30 @@ jobs:
             entries.some((entry) => !entry.isFile()) ||
             JSON.stringify(names) !== JSON.stringify(expectedAssets)
           ) {
-            throw new Error("Downloaded candidate must contain exactly three regular files.");
+            throw new Error("Downloaded candidate must contain exactly five regular files.");
           }
           NODE
           bash -n "$INSTALLER_PATH"
           cmp "$INSTALLER_PATH" "$tagged_installer"
-          test "$(wc -l < "$CHECKSUM_PATH" | tr -d ' ')" = "1"
-          expected_line="$(cat "$CHECKSUM_PATH")"
-          checksum_pattern="^[0-9a-f]{64}[[:space:]][[:space:]]${dmg_name}$"
-          [[ "$expected_line" =~ $checksum_pattern ]]
-          (
-            cd "$CANDIDATE_DIRECTORY"
-            shasum -a 256 -c "$checksum_name"
-          )
+          for architecture in arm64 x64; do
+            dmg_name_variable="${architecture}_dmg_name"
+            checksum_name_variable="${architecture}_checksum_name"
+            dmg_name="${!dmg_name_variable}"
+            checksum_name="${!checksum_name_variable}"
+            test "$(wc -l < "$CANDIDATE_DIRECTORY/$checksum_name" | tr -d ' ')" = "1"
+            expected_line="$(cat "$CANDIDATE_DIRECTORY/$checksum_name")"
+            checksum_pattern="^[0-9a-f]{64}[[:space:]][[:space:]]${dmg_name}$"
+            [[ "$expected_line" =~ $checksum_pattern ]]
+            (
+              cd "$CANDIDATE_DIRECTORY"
+              shasum -a 256 -c "$checksum_name"
+            )
+          done
           {
-            printf 'DMG_PATH=%s\n' "$DMG_PATH"
-            printf 'CHECKSUM_PATH=%s\n' "$CHECKSUM_PATH"
+            printf 'ARM64_DMG_PATH=%s\n' "$ARM64_DMG_PATH"
+            printf 'ARM64_CHECKSUM_PATH=%s\n' "$ARM64_CHECKSUM_PATH"
+            printf 'X64_DMG_PATH=%s\n' "$X64_DMG_PATH"
+            printf 'X64_CHECKSUM_PATH=%s\n' "$X64_CHECKSUM_PATH"
             printf 'INSTALLER_PATH=%s\n' "$INSTALLER_PATH"
           } >> "$GITHUB_ENV"
 
@@ -200,8 +231,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
-            "$DMG_PATH" \
-            "$CHECKSUM_PATH" \
+            "$ARM64_DMG_PATH" \
+            "$ARM64_CHECKSUM_PATH" \
+            "$X64_DMG_PATH" \
+            "$X64_CHECKSUM_PATH" \
             "$INSTALLER_PATH" \
             --verify-tag \
             --draft \

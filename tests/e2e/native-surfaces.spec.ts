@@ -110,7 +110,15 @@ test("renders the actual focusless 340x72 HUD anchored to a hidden panel", async
     window?.hide();
   });
 
-  const hudWindowCreated = kopper.electronApp.waitForEvent("window");
+  const existingHud = kopper.electronApp
+    .windows()
+    .find((candidate) => candidate.url().endsWith("#capture-hud"));
+  const hudWindowCreated =
+    existingHud === undefined
+      ? kopper.electronApp.waitForEvent("window", {
+          predicate: (candidate) => candidate.url().endsWith("#capture-hud"),
+        })
+      : Promise.resolve(existingHud);
   const outcome = await page.evaluate(() => window.kopper.requestCapture());
   expect(outcome).toMatchObject({
     status: "failed",

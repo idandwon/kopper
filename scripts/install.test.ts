@@ -31,6 +31,7 @@ type InstallerFailure =
   | "signal-during-rollback-cleanup";
 
 type InstallerFixtureOptions = {
+  architecture?: string;
   bundleIdentifier?: string;
   bundleVersion?: string;
   curlFails?: boolean;
@@ -91,6 +92,7 @@ function createInstallerFixture(options: InstallerFixtureOptions = {}) {
   writeFileSync(
     configurationPath,
     JSON.stringify({
+      architecture: options.architecture ?? "arm64",
       bundleIdentifier: options.bundleIdentifier ?? "com.kopper.app",
       bundleVersion: options.bundleVersion ?? "0.1.0",
       curlFails: options.curlFails ?? false,
@@ -128,7 +130,9 @@ appendFileSync(
 );
 
 if (command === "uname") {
-  process.stdout.write(configuration.platform + "\\n");
+  process.stdout.write(
+    (args.includes("-m") ? configuration.architecture : configuration.platform) + "\\n",
+  );
 } else if (command === "sw_vers") {
   process.stdout.write(configuration.macosVersion + "\\n");
 } else if (command === "id") {
@@ -364,6 +368,17 @@ describe("public macOS installer preflight", () => {
     expect(result.status).toBe(1);
     expect(result.stderr).toContain("GitHub returned an invalid Kopper release tag.");
   });
+
+  it("rejects an unsupported Mac architecture before contacting GitHub", () => {
+    const fixture = createInstallerFixture({ architecture: "powerpc" });
+    const result = fixture.run();
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("Kopper supports Apple Silicon and Intel Macs only.");
+    expect(fixture.calls()).not.toContainEqual(
+      expect.objectContaining({ command: "curl" }),
+    );
+  });
 });
 
 describe("verified transactional installation", { timeout: 30_000 }, () => {
@@ -372,9 +387,15 @@ describe("verified transactional installation", { timeout: 30_000 }, () => {
     const result = fixture.run();
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("Verifying Kopper download and application identity...");
-    expect(result.stdout).toContain("Kopper installed at");
+    expect(result.stdout).toContain("Kopper Installer");
+    expect(result.stdout).toContain("v0.1.0 • Apple Silicon");
+    expect(result.stdout).toContain("[1/4] Downloading");
+    expect(result.stdout).toContain("[2/4] Verifying");
+    expect(result.stdout).toContain("[3/4] Installing");
+    expect(result.stdout).toContain("[4/4] Launching");
+    expect(result.stdout).toContain("Kopper v0.1.0 is ready.");
     expect(result.stdout).toContain("System Settings → Privacy & Security → Open Anyway");
+    expect(result.stdout).not.toContain("\u001B[");
     expect(fixture.calls().map(({ command }) => command)).not.toContain("codesign");
     expect(fixture.calls().map(({ command }) => command)).not.toContain("spctl");
     expect(fixture.installedMarker()).toBe("new-v0.1.0");
@@ -382,8 +403,8 @@ describe("verified transactional installation", { timeout: 30_000 }, () => {
     expect(fixture.temporaryArtifacts()).toEqual([]);
     expect(fixture.sentinel()).toBe("preserve-me");
     expect(fixture.downloadCalls().map(({ args }) => args.at(-1))).toEqual([
-      "https://github.com/idandwon/kopper/releases/download/v0.1.0/Kopper-0.1.0-universal.dmg",
-      "https://github.com/idandwon/kopper/releases/download/v0.1.0/Kopper-0.1.0-universal.dmg.sha256",
+      "https://github.com/idandwon/kopper/releases/download/v0.1.0/Kopper-0.1.0-arm64.dmg",
+      "https://github.com/idandwon/kopper/releases/download/v0.1.0/Kopper-0.1.0-arm64.dmg.sha256",
     ]);
     for (const { args } of fixture.downloadCalls()) {
       expect(args).toEqual(
@@ -397,6 +418,11 @@ describe("verified transactional installation", { timeout: 30_000 }, () => {
         ]),
       );
     }
+    expect(fixture.downloadCalls()[0].args).toContain("--progress-bar");
+    expect(fixture.downloadCalls()[1].args).toEqual(
+      expect.arrayContaining(["--silent", "--show-error"]),
+    );
+    expect(fixture.downloadCalls()[1].args).not.toContain("--progress-bar");
     expectCallSubsequence(fixture.callsInOrder(), [
       "shasum",
       "hdiutil-attach",
@@ -410,6 +436,18 @@ describe("verified transactional installation", { timeout: 30_000 }, () => {
       "plutil-version",
       "hdiutil-detach",
       "open",
+    ]);
+  });
+
+  it("downloads the Intel assets on an x86_64 Mac", () => {
+    const fixture = createInstallerFixture({ architecture: "x86_64" });
+    const result = fixture.run();
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("v0.1.0 • Intel");
+    expect(fixture.downloadCalls().map(({ args }) => args.at(-1))).toEqual([
+      "https://github.com/idandwon/kopper/releases/download/v0.1.0/Kopper-0.1.0-x64.dmg",
+      "https://github.com/idandwon/kopper/releases/download/v0.1.0/Kopper-0.1.0-x64.dmg.sha256",
     ]);
   });
 
@@ -467,7 +505,7 @@ describe("verified transactional installation", { timeout: 30_000 }, () => {
     const result = fixture.run();
 
     expect(result.status).toBe(0);
-    expect(result.stdout).toContain("Kopper installed at");
+    expect(result.stdout).toContain("Kopper v0.1.0 is ready.");
     expect(result.stdout).toContain(
       "Unsigned updates can leave macOS Accessibility tied to the previous Kopper build.",
     );
@@ -489,7 +527,7 @@ describe("verified transactional installation", { timeout: 30_000 }, () => {
     expect(fixture.installedMarker()).toBe("new-v0.1.0");
     expect(fixture.store()).toContain('"notes":[]');
     expect(fixture.temporaryArtifacts()).toEqual([]);
-    expect(result.stdout).toContain("Kopper installed at");
+    expect(result.stdout).toContain("Kopper v0.1.0 is ready.");
     expect(result.stdout).toContain("System Settings → Privacy & Security → Open Anyway");
     expect(result.stderr).toContain("could not be opened automatically");
   });
@@ -542,7 +580,7 @@ describe("verified transactional installation", { timeout: 30_000 }, () => {
     const result = fixture.run();
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("Could not download Kopper-0.1.0-universal.dmg.");
+    expect(result.stderr).toContain("Could not download Kopper-0.1.0-arm64.dmg.");
     expect(fixture.temporaryArtifacts()).toEqual([]);
   });
 

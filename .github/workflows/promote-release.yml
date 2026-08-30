@@ -12,8 +12,12 @@ name: Promote Release
         description: Exact accepted 40-character lowercase release commit SHA
         required: true
         type: string
-      expected_dmg_sha256:
-        description: Exact accepted 64-character lowercase DMG SHA-256
+      expected_arm64_dmg_sha256:
+        description: Exact accepted 64-character lowercase arm64 DMG SHA-256
+        required: true
+        type: string
+      expected_x64_dmg_sha256:
+        description: Exact accepted 64-character lowercase x64 DMG SHA-256
         required: true
         type: string
 
@@ -39,7 +43,8 @@ jobs:
         id: candidate
         env:
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
-          EXPECTED_DMG_SHA256: ${{ inputs.expected_dmg_sha256 }}
+          EXPECTED_ARM64_DMG_SHA256: ${{ inputs.expected_arm64_dmg_sha256 }}
+          EXPECTED_X64_DMG_SHA256: ${{ inputs.expected_x64_dmg_sha256 }}
           INPUT_TAG: ${{ inputs.tag }}
         run: |
           if [[ ! "$INPUT_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -50,8 +55,12 @@ jobs:
             echo "Promotion expected_commit format must be 40 lowercase hexadecimal characters." >&2
             exit 1
           fi
-          if [[ ! "$EXPECTED_DMG_SHA256" =~ ^([0-9a-f]{64})$ ]]; then
-            echo "Promotion expected_dmg_sha256 format must be 64 lowercase hexadecimal characters." >&2
+          if [[ ! "$EXPECTED_ARM64_DMG_SHA256" =~ ^([0-9a-f]{64})$ ]]; then
+            echo "Promotion expected_arm64_dmg_sha256 format must be 64 lowercase hexadecimal characters." >&2
+            exit 1
+          fi
+          if [[ ! "$EXPECTED_X64_DMG_SHA256" =~ ^([0-9a-f]{64})$ ]]; then
+            echo "Promotion expected_x64_dmg_sha256 format must be 64 lowercase hexadecimal characters." >&2
             exit 1
           fi
           version="${INPUT_TAG#v}"
@@ -71,15 +80,19 @@ jobs:
             ' "$package_json"
           )"
           test "$package_version" = "$version"
-          artifact="Kopper-${version}-universal.dmg"
-          checksum="${artifact}.sha256"
+          arm64_artifact="Kopper-${version}-arm64.dmg"
+          arm64_checksum="${arm64_artifact}.sha256"
+          x64_artifact="Kopper-${version}-x64.dmg"
+          x64_checksum="${x64_artifact}.sha256"
           {
-            printf 'artifact=%s\n' "$artifact"
+            printf 'arm64_artifact=%s\n' "$arm64_artifact"
+            printf 'arm64_checksum=%s\n' "$arm64_checksum"
             printf 'checked_out_commit=%s\n' "$checked_out_commit"
-            printf 'checksum=%s\n' "$checksum"
             printf 'installer=install.sh\n'
             printf 'package_version=%s\n' "$package_version"
             printf 'tag_commit=%s\n' "$tag_commit"
+            printf 'x64_artifact=%s\n' "$x64_artifact"
+            printf 'x64_checksum=%s\n' "$x64_checksum"
           } >> "$GITHUB_OUTPUT"
 
       - name: Prepare trusted candidate validator
@@ -95,8 +108,9 @@ jobs:
           const {
             CHECKED_OUT_COMMIT,
             EXPECTED_COMMIT,
-            EXPECTED_DMG_SHA256,
+            EXPECTED_ARM64_DMG_SHA256,
             EXPECTED_RELEASE_DRAFT,
+            EXPECTED_X64_DMG_SHA256,
             INPUT_TAG,
             PACKAGE_VERSION,
             REMOTE_TAG_COMMIT,
@@ -112,8 +126,11 @@ jobs:
           if (!/^[0-9a-f]{40}$/.test(EXPECTED_COMMIT ?? "")) {
             fail("expected commit format is invalid");
           }
-          if (!/^[0-9a-f]{64}$/.test(EXPECTED_DMG_SHA256 ?? "")) {
-            fail("expected DMG SHA-256 format is invalid");
+          if (!/^[0-9a-f]{64}$/.test(EXPECTED_ARM64_DMG_SHA256 ?? "")) {
+            fail("expected arm64 DMG SHA-256 format is invalid");
+          }
+          if (!/^[0-9a-f]{64}$/.test(EXPECTED_X64_DMG_SHA256 ?? "")) {
+            fail("expected x64 DMG SHA-256 format is invalid");
           }
           if (!["true", "false"].includes(EXPECTED_RELEASE_DRAFT ?? "")) {
             fail("expected draft state format is invalid");
@@ -123,10 +140,23 @@ jobs:
           }
 
           const version = INPUT_TAG?.slice(1) ?? "";
-          const artifact = `Kopper-${version}-universal.dmg`;
-          const checksum = `${artifact}.sha256`;
+          const packages = [
+            {
+              architecture: "arm64",
+              artifact: `Kopper-${version}-arm64.dmg`,
+              expectedSha256: EXPECTED_ARM64_DMG_SHA256,
+            },
+            {
+              architecture: "x64",
+              artifact: `Kopper-${version}-x64.dmg`,
+              expectedSha256: EXPECTED_X64_DMG_SHA256,
+            },
+          ].map((entry) => ({ ...entry, checksum: `${entry.artifact}.sha256` }));
           const installer = "install.sh";
-          const expectedAssets = [artifact, checksum, installer].sort();
+          const expectedAssets = [
+            ...packages.flatMap(({ artifact, checksum }) => [artifact, checksum]),
+            installer,
+          ].sort();
           let release = {};
           try {
             release = JSON.parse(readFileSync(releasePath, "utf8"));
@@ -177,26 +207,33 @@ jobs:
             fail("downloaded candidate does not contain the exact asset set");
           }
 
+          for (const { architecture, artifact, checksum, expectedSha256 } of packages) {
+            try {
+              const dmg = readFileSync(join(assetDirectory, artifact));
+              const actualDmgSha256 = createHash("sha256").update(dmg).digest("hex");
+              const checksumLine = readFileSync(
+                join(assetDirectory, checksum),
+                "utf8",
+              );
+              const escapedArtifact = artifact.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+              const match = checksumLine.match(
+                new RegExp(`^([0-9a-f]{64})  ${escapedArtifact}\\n$`),
+              );
+              if (match === null || match[1] !== actualDmgSha256) {
+                fail(`${architecture} checksum file does not match the downloaded DMG`);
+              }
+              if (
+                actualDmgSha256 !== expectedSha256 ||
+                match?.[1] !== expectedSha256
+              ) {
+                fail(`downloaded candidate does not match the expected ${architecture} DMG SHA-256`);
+              }
+            } catch (error) {
+              fail(`${architecture} candidate files cannot be validated: ${error.message}`);
+            }
+          }
+
           try {
-            const dmg = readFileSync(join(assetDirectory, artifact));
-            const actualDmgSha256 = createHash("sha256").update(dmg).digest("hex");
-            const checksumLine = readFileSync(
-              join(assetDirectory, checksum),
-              "utf8",
-            );
-            const escapedArtifact = artifact.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-            const match = checksumLine.match(
-              new RegExp(`^([0-9a-f]{64})  ${escapedArtifact}\\n$`),
-            );
-            if (match === null || match[1] !== actualDmgSha256) {
-              fail("checksum file does not match the downloaded DMG");
-            }
-            if (
-              actualDmgSha256 !== EXPECTED_DMG_SHA256 ||
-              match?.[1] !== EXPECTED_DMG_SHA256
-            ) {
-              fail("downloaded candidate does not match the expected DMG SHA-256");
-            }
             const downloadedInstaller = readFileSync(join(assetDirectory, installer));
             const taggedInstaller = readFileSync(taggedInstallerPath);
             if (!downloadedInstaller.equals(taggedInstaller)) {
@@ -216,16 +253,19 @@ jobs:
         env:
           CHECKED_OUT_COMMIT: ${{ steps.candidate.outputs.checked_out_commit }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
-          EXPECTED_DMG_SHA256: ${{ inputs.expected_dmg_sha256 }}
+          EXPECTED_ARM64_DMG_SHA256: ${{ inputs.expected_arm64_dmg_sha256 }}
           EXPECTED_RELEASE_DRAFT: "true"
+          EXPECTED_X64_DMG_SHA256: ${{ inputs.expected_x64_dmg_sha256 }}
           GH_TOKEN: ${{ github.token }}
           INPUT_TAG: ${{ inputs.tag }}
           PACKAGE_VERSION: ${{ steps.candidate.outputs.package_version }}
           REQUIRE_IMMUTABLE: "false"
           TAG_COMMIT: ${{ steps.candidate.outputs.tag_commit }}
-          ARTIFACT: ${{ steps.candidate.outputs.artifact }}
-          CHECKSUM: ${{ steps.candidate.outputs.checksum }}
+          ARM64_ARTIFACT: ${{ steps.candidate.outputs.arm64_artifact }}
+          ARM64_CHECKSUM: ${{ steps.candidate.outputs.arm64_checksum }}
           INSTALLER: ${{ steps.candidate.outputs.installer }}
+          X64_ARTIFACT: ${{ steps.candidate.outputs.x64_artifact }}
+          X64_CHECKSUM: ${{ steps.candidate.outputs.x64_checksum }}
         run: |
           release_json="$RUNNER_TEMP/kopper-release-before.json"
           download_directory="$RUNNER_TEMP/kopper-release-assets-before"
@@ -236,9 +276,11 @@ jobs:
             --json tagName,isDraft,isImmutable,assets > "$release_json"
           gh release download "$INPUT_TAG" \
             --dir "$download_directory" \
-            --pattern "$ARTIFACT" \
-            --pattern "$CHECKSUM" \
-            --pattern "$INSTALLER"
+            --pattern "$ARM64_ARTIFACT" \
+            --pattern "$ARM64_CHECKSUM" \
+            --pattern "$INSTALLER" \
+            --pattern "$X64_ARTIFACT" \
+            --pattern "$X64_CHECKSUM"
           git show "$EXPECTED_COMMIT:install.sh" > "$tagged_installer"
           bash -n "$download_directory/$INSTALLER"
           remote_tag_refs="$(
@@ -286,16 +328,19 @@ jobs:
         env:
           CHECKED_OUT_COMMIT: ${{ steps.candidate.outputs.checked_out_commit }}
           EXPECTED_COMMIT: ${{ inputs.expected_commit }}
-          EXPECTED_DMG_SHA256: ${{ inputs.expected_dmg_sha256 }}
+          EXPECTED_ARM64_DMG_SHA256: ${{ inputs.expected_arm64_dmg_sha256 }}
           EXPECTED_RELEASE_DRAFT: "false"
+          EXPECTED_X64_DMG_SHA256: ${{ inputs.expected_x64_dmg_sha256 }}
           GH_TOKEN: ${{ github.token }}
           INPUT_TAG: ${{ inputs.tag }}
           PACKAGE_VERSION: ${{ steps.candidate.outputs.package_version }}
           REQUIRE_IMMUTABLE: "true"
           TAG_COMMIT: ${{ steps.candidate.outputs.tag_commit }}
-          ARTIFACT: ${{ steps.candidate.outputs.artifact }}
-          CHECKSUM: ${{ steps.candidate.outputs.checksum }}
+          ARM64_ARTIFACT: ${{ steps.candidate.outputs.arm64_artifact }}
+          ARM64_CHECKSUM: ${{ steps.candidate.outputs.arm64_checksum }}
           INSTALLER: ${{ steps.candidate.outputs.installer }}
+          X64_ARTIFACT: ${{ steps.candidate.outputs.x64_artifact }}
+          X64_CHECKSUM: ${{ steps.candidate.outputs.x64_checksum }}
         run: |
           release_json="$RUNNER_TEMP/kopper-release-after.json"
           download_directory="$RUNNER_TEMP/kopper-release-assets-after"
@@ -306,9 +351,11 @@ jobs:
             > "$release_json"
           gh release download "$INPUT_TAG" \
             --dir "$download_directory" \
-            --pattern "$ARTIFACT" \
-            --pattern "$CHECKSUM" \
-            --pattern "$INSTALLER"
+            --pattern "$ARM64_ARTIFACT" \
+            --pattern "$ARM64_CHECKSUM" \
+            --pattern "$INSTALLER" \
+            --pattern "$X64_ARTIFACT" \
+            --pattern "$X64_CHECKSUM"
           git show "$EXPECTED_COMMIT:install.sh" > "$tagged_installer"
           bash -n "$download_directory/$INSTALLER"
           remote_tag_refs="$(

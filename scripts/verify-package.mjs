@@ -14,7 +14,7 @@ import * as ts from "typescript/unstable/ast";
 import { API as TypeScriptApi } from "typescript/unstable/sync";
 
 const execFile = promisify(execFileCallback);
-const REQUIRED_ARCHITECTURES = ["arm64", "x86_64"];
+const UNIVERSAL_ARCHITECTURES = ["arm64", "x86_64"];
 const PACKAGE_VERSION = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ).version;
@@ -143,14 +143,17 @@ function hasBooleanEntitlement(source, entitlement) {
   );
 }
 
-function hasRequiredArchitectures(architectures) {
+function hasRequiredArchitectures(
+  architectures,
+  requiredArchitectures = UNIVERSAL_ARCHITECTURES,
+) {
   return (
-    architectures.length === REQUIRED_ARCHITECTURES.length &&
+    architectures.length === requiredArchitectures.length &&
     [...architectures]
       .sort()
       .every(
         (architecture, index) =>
-          architecture === [...REQUIRED_ARCHITECTURES].sort()[index],
+          architecture === [...requiredArchitectures].sort()[index],
       )
   );
 }
@@ -1355,7 +1358,11 @@ export async function verifySource(root = process.cwd()) {
   };
 }
 
-export async function verifyPackage(appPath, injectedPorts = {}) {
+export async function verifyPackage(
+  appPath,
+  injectedPorts = {},
+  requiredArchitectures = UNIVERSAL_ARCHITECTURES,
+) {
   const ports = { ...defaultPorts, ...injectedPorts };
   const absoluteAppPath = resolve(appPath);
   const contentsPath = join(absoluteAppPath, "Contents");
@@ -1569,11 +1576,11 @@ export async function verifyPackage(appPath, injectedPorts = {}) {
       mainArchitectures = await ports.readArchitectures(
         join(contentsPath, "MacOS", executableName),
       );
-      if (!hasRequiredArchitectures(mainArchitectures)) {
+      if (!hasRequiredArchitectures(mainArchitectures, requiredArchitectures)) {
         failures.push(
           failure(
             "main_executable_not_universal",
-            "The main executable must contain arm64 and x86_64 slices.",
+            `The main executable must contain exactly ${requiredArchitectures.join(" and ")} slices.`,
           ),
         );
       }
@@ -1592,11 +1599,11 @@ export async function verifyPackage(appPath, injectedPorts = {}) {
       const nativeArchitectures = await ports.readArchitectures(
         nativeBinaries[0],
       );
-      if (!hasRequiredArchitectures(nativeArchitectures)) {
+      if (!hasRequiredArchitectures(nativeArchitectures, requiredArchitectures)) {
         failures.push(
           failure(
             "uiohook_native_module_not_universal",
-            "The uiohook native module must contain arm64 and x86_64 slices.",
+            `The uiohook native module must contain exactly ${requiredArchitectures.join(" and ")} slices.`,
           ),
         );
       }
@@ -1617,8 +1624,11 @@ export async function verifyPackage(appPath, injectedPorts = {}) {
       appleEventsAutomation: appleEventsAutomationEnabled
         ? "enabled"
         : "missing",
-      architectures: hasRequiredArchitectures(mainArchitectures)
-        ? REQUIRED_ARCHITECTURES
+      architectures: hasRequiredArchitectures(
+        mainArchitectures,
+        requiredArchitectures,
+      )
+        ? requiredArchitectures
         : mainArchitectures,
       asarEntries: entries.length,
       codeSignature: codeSignatureValid ? "valid" : "invalid",
@@ -1637,12 +1647,14 @@ export async function verifyPackage(appPath, injectedPorts = {}) {
 }
 
 export async function runCli(args, injectedPorts = {}) {
+  const { packagePorts = {}, ...cliPorts } = injectedPorts;
   const ports = {
-    verify: verifyPackage,
+    verify: (appPath, requiredArchitectures) =>
+      verifyPackage(appPath, packagePorts, requiredArchitectures),
     verifySource,
     stdout: (line) => console.log(line),
     stderr: (line) => console.error(line),
-    ...injectedPorts,
+    ...cliPorts,
   };
 
   if (args.length === 1 && args[0] === "--source") {
@@ -1665,7 +1677,20 @@ export async function runCli(args, injectedPorts = {}) {
     }
   }
 
-  if (args.length !== 1 || !args[0].endsWith(".app")) {
+  let requiredArchitectures = UNIVERSAL_ARCHITECTURES;
+  const hasArchitectureFlag =
+    args.length === 3 && args[1] === "--architecture";
+  if (hasArchitectureFlag) {
+    if (args[2] === "arm64") requiredArchitectures = ["arm64"];
+    else if (args[2] === "x64") requiredArchitectures = ["x86_64"];
+    else requiredArchitectures = [];
+  }
+
+  if (
+    !args[0]?.endsWith(".app") ||
+    requiredArchitectures.length === 0 ||
+    (args.length !== 1 && !hasArchitectureFlag)
+  ) {
     ports.stderr(
       JSON.stringify({
         ok: false,
@@ -1674,7 +1699,7 @@ export async function runCli(args, injectedPorts = {}) {
         failures: [
           failure(
             "invalid_arguments",
-            "Usage: verify-package.mjs <path-to-application.app> | --source",
+            "Usage: verify-package.mjs <path-to-application.app> [--architecture arm64|x64] | --source",
           ),
         ],
       }),
@@ -1683,7 +1708,7 @@ export async function runCli(args, injectedPorts = {}) {
   }
 
   try {
-    const result = await ports.verify(args[0]);
+    const result = await ports.verify(args[0], requiredArchitectures);
     const output = JSON.stringify(result, null, 2);
     if (result.ok) ports.stdout(output);
     else ports.stderr(output);

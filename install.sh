@@ -7,6 +7,18 @@ readonly KOPPER_INSTALL_DIRECTORY="${HOME}/Applications"
 readonly KOPPER_TARGET="${KOPPER_INSTALL_DIRECTORY}/Kopper.app"
 readonly KOPPER_BUNDLE_IDENTIFIER="com.kopper.app"
 
+if [[ -t 1 && -z "${NO_COLOR:-}" && "${TERM:-}" != "dumb" ]]; then
+  readonly KOPPER_BOLD=$'\033[1m'
+  readonly KOPPER_DIM=$'\033[2m'
+  readonly KOPPER_GREEN=$'\033[32m'
+  readonly KOPPER_RESET=$'\033[0m'
+else
+  readonly KOPPER_BOLD=""
+  readonly KOPPER_DIM=""
+  readonly KOPPER_GREEN=""
+  readonly KOPPER_RESET=""
+fi
+
 fail() {
   printf 'Kopper installer: %s\n' "$1" >&2
   exit 1
@@ -20,6 +32,10 @@ version_major() {
   printf '%s\n' "${1%%.*}"
 }
 
+print_step() {
+  printf '%s[%s/4]%s %s...\n' "$KOPPER_DIM" "$1" "$KOPPER_RESET" "$2"
+}
+
 [[ "$(uname -s)" == "Darwin" ]] || fail "Kopper requires macOS 14 or newer."
 [[ "$(id -u)" != "0" ]] || fail "Do not run the Kopper installer as root or with sudo."
 
@@ -27,11 +43,25 @@ macos_version="$(sw_vers -productVersion)"
 [[ "$(version_major "$macos_version")" =~ ^[0-9]+$ ]] || fail "Could not determine the macOS version."
 (( $(version_major "$macos_version") >= 14 )) || fail "Kopper requires macOS 14 or newer."
 
+machine_architecture="$(uname -m)"
+case "$machine_architecture" in
+  arm64)
+    asset_architecture="arm64"
+    architecture_label="Apple Silicon"
+    ;;
+  x86_64)
+    asset_architecture="x64"
+    architecture_label="Intel"
+    ;;
+  *)
+    fail "Kopper supports Apple Silicon and Intel Macs only."
+    ;;
+esac
+
 for command_name in curl hdiutil shasum plutil ditto open pgrep mktemp sw_vers; do
   require_command "$command_name"
 done
 
-printf 'Finding latest Kopper release...\n'
 latest_url="$(curl -fsSL -o /dev/null -w '%{url_effective}' "${KOPPER_RELEASES_URL}/latest")" \
   || fail "Could not find a published Kopper release."
 tag="${latest_url##*/}"
@@ -41,9 +71,13 @@ tag="${latest_url##*/}"
   || fail "GitHub returned an invalid Kopper release tag."
 
 version="${tag#v}"
-dmg_name="Kopper-${version}-universal.dmg"
+dmg_name="Kopper-${version}-${asset_architecture}.dmg"
 checksum_name="${dmg_name}.sha256"
 asset_base="${KOPPER_RELEASES_URL}/download/${tag}"
+
+printf '\n%sKopper Installer%s\n' "$KOPPER_BOLD" "$KOPPER_RESET"
+printf '%s%s • %s%s\n' "$KOPPER_DIM" "$tag" "$architecture_label" "$KOPPER_RESET"
+printf '%s%s%s\n\n' "$KOPPER_DIM" "$KOPPER_TARGET" "$KOPPER_RESET"
 
 temporary_directory="$(mktemp -d "${TMPDIR:-/tmp}/kopper-install.XXXXXX")"
 mount_point="${temporary_directory}/mount"
@@ -158,15 +192,15 @@ installer_cleanup() {
 trap installer_cleanup EXIT
 trap handle_signal HUP INT TERM
 
-printf 'Downloading Kopper %s...\n' "$tag"
-curl -fL --retry 3 --proto '=https' --tlsv1.2 \
+print_step 1 "Downloading"
+curl -fL --retry 3 --proto '=https' --tlsv1.2 --progress-bar \
   -o "${temporary_directory}/${dmg_name}" "${asset_base}/${dmg_name}" \
   || fail "Could not download ${dmg_name}."
-curl -fL --retry 3 --proto '=https' --tlsv1.2 \
+curl -fL --retry 3 --proto '=https' --tlsv1.2 --silent --show-error \
   -o "${temporary_directory}/${checksum_name}" "${asset_base}/${checksum_name}" \
   || fail "Could not download ${checksum_name}."
 
-printf 'Verifying Kopper download and application identity...\n'
+print_step 2 "Verifying"
 checksum_lines=()
 while IFS= read -r checksum_line || [[ -n "$checksum_line" ]]; do
   checksum_lines+=("$checksum_line")
@@ -199,6 +233,7 @@ mounted_app="${mounted_apps[0]}"
 verify_app_identity "$mounted_app" \
   || fail "The Kopper application on the disk image failed verification."
 
+print_step 3 "Installing"
 pgrep -x Kopper >/dev/null 2>&1 &&
   fail "Quit Kopper, then run this command again."
 
@@ -244,6 +279,7 @@ begin_transaction_update
 transaction_phase="committed"
 finish_transaction_update
 
+print_step 4 "Launching"
 if ! open "$KOPPER_TARGET"; then
   printf 'Kopper installer: Kopper was installed but could not be opened automatically.\n' >&2
 fi
@@ -259,7 +295,7 @@ if [[ -n "$rollback_target" && -e "$rollback_target" ]]; then
   finish_transaction_update
 fi
 
-printf 'Kopper installed at %s.\n' "$KOPPER_TARGET"
+printf '\n%s✓%s Kopper %s is ready.\n' "$KOPPER_GREEN" "$KOPPER_RESET" "$tag"
 if [[ "$upgrading" == "1" ]]; then
   printf 'Unsigned updates can leave macOS Accessibility tied to the previous Kopper build.\n'
   printf 'If capture is unavailable, open System Settings → Privacy & Security → Accessibility, remove Kopper with the minus button, add the current Kopper app again, and enable it.\n'

@@ -183,7 +183,20 @@ class IsolatedKopper implements KopperE2E {
       args: [MAIN_PATH, `--user-data-dir=${this.userDataDirectory}`],
     });
     this.closed = false;
-    this.currentPage = await this.application.firstWindow();
+    await expect
+      .poll(() =>
+        this.application
+          ?.windows()
+          .find((candidate) => candidate.url().endsWith("/index.html"))
+          ?.url(),
+      )
+      .toMatch(/\/index\.html$/u);
+    this.currentPage = this.application
+      .windows()
+      .find((candidate) => candidate.url().endsWith("/index.html"));
+    if (this.currentPage === undefined) {
+      throw new Error("Kopper content window did not open.");
+    }
     await expect(this.currentPage).toHaveTitle("Kopper");
     return this.currentPage;
   }

@@ -83,8 +83,10 @@ function expectExactReleaseCreateCommand(workflow: string) {
     "release",
     "create",
     '"$GITHUB_REF_NAME"',
-    '"$DMG_PATH"',
-    '"$CHECKSUM_PATH"',
+    '"$ARM64_DMG_PATH"',
+    '"$ARM64_CHECKSUM_PATH"',
+    '"$X64_DMG_PATH"',
+    '"$X64_CHECKSUM_PATH"',
     '"$INSTALLER_PATH"',
     "--verify-tag",
     "--draft",
@@ -108,8 +110,8 @@ const acceptedCommit = "a".repeat(40);
 const movedCommit = "b".repeat(40);
 
 interface CandidateFixtureOptions {
+  arm64Dmg?: string;
   assetNames?: string[];
-  assetDmg?: string;
   assetInstaller?: string;
   checkedOutCommit?: string;
   downloadedAssetMutation?:
@@ -118,7 +120,7 @@ interface CandidateFixtureOptions {
     | "installer-symlink"
     | "missing-installer";
   expectedCommit?: string;
-  expectedDmgSha256?: string;
+  expectedArm64DmgSha256?: string;
   expectedReleaseDraft?: "true" | "false";
   packageVersion?: string;
   releaseDraft?: boolean;
@@ -127,6 +129,8 @@ interface CandidateFixtureOptions {
   requireImmutable?: "true" | "false";
   tagCommit?: string;
   taggedInstaller?: string;
+  x64Dmg?: string;
+  expectedX64DmgSha256?: string;
 }
 
 function runCandidateValidator(options: CandidateFixtureOptions = {}) {
@@ -136,13 +140,25 @@ function runCandidateValidator(options: CandidateFixtureOptions = {}) {
   mkdirSync(assetDirectory);
 
   const tag = "v0.1.0";
-  const artifact = "Kopper-0.1.0-universal.dmg";
-  const checksum = `${artifact}.sha256`;
+  const arm64Artifact = "Kopper-0.1.0-arm64.dmg";
+  const arm64Checksum = `${arm64Artifact}.sha256`;
+  const x64Artifact = "Kopper-0.1.0-x64.dmg";
+  const x64Checksum = `${x64Artifact}.sha256`;
   const installer = "install.sh";
-  const dmg = options.assetDmg ?? "accepted dmg bytes";
-  const dmgSha256 = createHash("sha256").update(dmg).digest("hex");
-  writeFileSync(join(assetDirectory, artifact), dmg);
-  writeFileSync(join(assetDirectory, checksum), `${dmgSha256}  ${artifact}\n`);
+  const arm64Dmg = options.arm64Dmg ?? "accepted arm64 dmg bytes";
+  const arm64DmgSha256 = createHash("sha256").update(arm64Dmg).digest("hex");
+  const x64Dmg = options.x64Dmg ?? "accepted x64 dmg bytes";
+  const x64DmgSha256 = createHash("sha256").update(x64Dmg).digest("hex");
+  writeFileSync(join(assetDirectory, arm64Artifact), arm64Dmg);
+  writeFileSync(
+    join(assetDirectory, arm64Checksum),
+    `${arm64DmgSha256}  ${arm64Artifact}\n`,
+  );
+  writeFileSync(join(assetDirectory, x64Artifact), x64Dmg);
+  writeFileSync(
+    join(assetDirectory, x64Checksum),
+    `${x64DmgSha256}  ${x64Artifact}\n`,
+  );
   writeFileSync(
     join(assetDirectory, installer),
     options.assetInstaller ?? "#!/bin/bash\nexit 0\n",
@@ -158,7 +174,7 @@ function runCandidateValidator(options: CandidateFixtureOptions = {}) {
       break;
     case "installer-symlink":
       rmSync(join(assetDirectory, installer));
-      symlinkSync(artifact, join(assetDirectory, installer));
+      symlinkSync(arm64Artifact, join(assetDirectory, installer));
       break;
     case "missing-installer":
       rmSync(join(assetDirectory, installer));
@@ -172,9 +188,15 @@ function runCandidateValidator(options: CandidateFixtureOptions = {}) {
       tagName: tag,
       isDraft: options.releaseDraft ?? true,
       isImmutable: options.releaseImmutable ?? false,
-      assets: (options.assetNames ?? [artifact, checksum, installer]).map(
-        (name) => ({ name }),
-      ),
+      assets: (
+        options.assetNames ?? [
+          arm64Artifact,
+          arm64Checksum,
+          x64Artifact,
+          x64Checksum,
+          installer,
+        ]
+      ).map((name) => ({ name })),
     }),
   );
   const taggedInstaller = join(directory, "tagged-install.sh");
@@ -201,8 +223,11 @@ function runCandidateValidator(options: CandidateFixtureOptions = {}) {
         ...process.env,
         CHECKED_OUT_COMMIT: options.checkedOutCommit ?? acceptedCommit,
         EXPECTED_COMMIT: options.expectedCommit ?? acceptedCommit,
-        EXPECTED_DMG_SHA256: options.expectedDmgSha256 ?? dmgSha256,
+        EXPECTED_ARM64_DMG_SHA256:
+          options.expectedArm64DmgSha256 ?? arm64DmgSha256,
         EXPECTED_RELEASE_DRAFT: options.expectedReleaseDraft ?? "true",
+        EXPECTED_X64_DMG_SHA256:
+          options.expectedX64DmgSha256 ?? x64DmgSha256,
         INPUT_TAG: tag,
         PACKAGE_VERSION: options.packageVersion ?? "0.1.0",
         REMOTE_TAG_COMMIT: options.remoteTagCommit ?? acceptedCommit,
@@ -266,11 +291,12 @@ describe("workflow security semantics", () => {
     },
   );
 
-  it("builds an ad-hoc signed release without Apple credentials or notarization", () => {
+  it("builds ad-hoc signed architecture-specific releases without Apple credentials or notarization", () => {
     expect(release).not.toMatch(/secrets\.|APPLE_|CSC_|notarytool|stapler/u);
-    const build = step(release, "Build unsigned universal DMG");
+    const build = step(release, "Build unsigned architecture-specific DMGs");
     expect(build).toContain("run: pnpm package:beta");
-    expect(packageJson.scripts["package:beta"]).toContain("--mac dmg --universal");
+    expect(packageJson.scripts["package:beta"]).toContain("--mac dmg --arm64 --x64");
+    expect(packageJson.scripts["package:beta"]).not.toContain("--universal");
     expect(packageJson.scripts["package:beta"]).toContain("-c.mac.identity=-");
     expect(packageJson.scripts["package:beta"]).toContain("-c.mac.notarize=false");
   });
@@ -319,7 +345,7 @@ describe("workflow security semantics", () => {
       "Audit production dependencies",
       "Audit application source",
     ];
-    const packageStep = step(release, "Build unsigned universal DMG");
+    const packageStep = step(release, "Build unsigned architecture-specific DMGs");
     for (const name of names) {
       expect(release.indexOf(step(release, name))).toBeLessThan(
         release.indexOf(packageStep),
@@ -327,28 +353,32 @@ describe("workflow security semantics", () => {
     }
   });
 
-  it("verifies unsigned package metadata before draft creation", () => {
-    const verify = step(release, "Verify unsigned package");
+  it("verifies both unsigned package architectures before draft creation", () => {
+    const verify = step(release, "Verify unsigned packages");
     expect(verify).toContain(
-      'pnpm verify:package "release/mac-universal/Kopper.app"',
+      'pnpm verify:package "release/mac-arm64/Kopper.app" --architecture arm64',
+    );
+    expect(verify).toContain(
+      'pnpm verify:package "release/mac/Kopper.app" --architecture x64',
     );
     expect(release.indexOf(verify)).toBeLessThan(
       release.indexOf(step(release, "Create draft GitHub Release")),
     );
   });
 
-  it("stages and uploads exactly the three release assets", () => {
+  it("stages and uploads exactly the five release assets", () => {
     const stage = step(release, "Stage exact release candidate");
     const upload = step(release, "Upload exact release candidate");
 
-    expect(stage).toContain("Kopper-${version}-universal.dmg");
+    expect(stage).toContain("Kopper-${version}-arm64.dmg");
+    expect(stage).toContain("Kopper-${version}-x64.dmg");
     expect(stage).toContain("expectedAssets");
     expect(stage).toContain("entry.isFile()");
     expect(upload).toContain("if-no-files-found: error");
     expect(upload).toContain("include-hidden-files: false");
   });
 
-  it("creates a draft from only the three staged asset arguments", () => {
+  it("creates a draft from only the five staged asset arguments", () => {
     const createRelease = step(release, "Create draft GitHub Release");
     expect(createRelease).toContain('gh release create "$GITHUB_REF_NAME"');
     expectExactReleaseCreateCommand(release);
@@ -356,7 +386,7 @@ describe("workflow security semantics", () => {
     expect(createRelease).not.toContain("--draft=false");
   });
 
-  it("rejects a fourth asset on the release-create command line", () => {
+  it("rejects a sixth asset on the release-create command line", () => {
     const mutated = release.replace(
       'gh release create "$GITHUB_REF_NAME" \\',
       'gh release create "$GITHUB_REF_NAME" "release-notes.txt" \\',
@@ -434,7 +464,8 @@ describe("workflow security semantics", () => {
   it("publishes only an exact inspected unsigned draft", () => {
     expect(promote).toContain("workflow_dispatch:");
     expect(promote).toContain("expected_commit:");
-    expect(promote).toContain("expected_dmg_sha256:");
+    expect(promote).toContain("expected_arm64_dmg_sha256:");
+    expect(promote).toContain("expected_x64_dmg_sha256:");
     expect(promote).toContain("environment: release");
     expect(promote).toContain("permissions:\n  contents: write");
     const checkout = step(promote, "Check out exact release tag");
@@ -452,7 +483,7 @@ describe("workflow security semantics", () => {
     expect(promote).not.toMatch(/(?:^|\s)(?:\.\/)?scripts\//mu);
   });
 
-  it("binds promotion to exact commit and DMG hash inputs", () => {
+  it("binds promotion to exact commit and both DMG hash inputs", () => {
     const verify = step(promote, "Verify exact tag version and commit");
     const inspect = step(promote, "Inspect draft and verify exact candidate assets");
 
@@ -466,7 +497,8 @@ describe("workflow security semantics", () => {
     expect(inspect).toContain(
       "TAG_COMMIT: ${{ steps.candidate.outputs.tag_commit }}",
     );
-    expect(inspect).toContain("EXPECTED_DMG_SHA256:");
+    expect(inspect).toContain("EXPECTED_ARM64_DMG_SHA256:");
+    expect(inspect).toContain("EXPECTED_X64_DMG_SHA256:");
   });
 
   it("downloads and compares the installer with the expected commit Git object", () => {
@@ -490,8 +522,10 @@ describe("workflow security semantics", () => {
       "a missing asset",
       {
         assetNames: [
-          "Kopper-0.1.0-universal.dmg",
-          "Kopper-0.1.0-universal.dmg.sha256",
+          "Kopper-0.1.0-arm64.dmg",
+          "Kopper-0.1.0-arm64.dmg.sha256",
+          "Kopper-0.1.0-x64.dmg",
+          "Kopper-0.1.0-x64.dmg.sha256",
         ],
       },
       "exact asset set",
@@ -500,8 +534,10 @@ describe("workflow security semantics", () => {
       "an extra asset",
       {
         assetNames: [
-          "Kopper-0.1.0-universal.dmg",
-          "Kopper-0.1.0-universal.dmg.sha256",
+          "Kopper-0.1.0-arm64.dmg",
+          "Kopper-0.1.0-arm64.dmg.sha256",
+          "Kopper-0.1.0-x64.dmg",
+          "Kopper-0.1.0-x64.dmg.sha256",
           "install.sh",
           "release-notes.txt",
         ],
@@ -515,18 +551,28 @@ describe("workflow security semantics", () => {
     ],
     [
       "an expected-hash mismatch",
-      { expectedDmgSha256: "b".repeat(64) },
-      "expected DMG SHA-256",
+      { expectedArm64DmgSha256: "b".repeat(64) },
+      "expected arm64 DMG SHA-256",
     ],
     [
-      "a replaced DMG even with its replacement checksum",
+      "a replaced arm64 DMG even with its replacement checksum",
       {
-        assetDmg: "replacement dmg bytes",
-        expectedDmgSha256: createHash("sha256")
-          .update("accepted dmg bytes")
+        arm64Dmg: "replacement arm64 dmg bytes",
+        expectedArm64DmgSha256: createHash("sha256")
+          .update("accepted arm64 dmg bytes")
           .digest("hex"),
       },
-      "expected DMG SHA-256",
+      "expected arm64 DMG SHA-256",
+    ],
+    [
+      "a replaced x64 DMG even with its replacement checksum",
+      {
+        x64Dmg: "replacement x64 dmg bytes",
+        expectedX64DmgSha256: createHash("sha256")
+          .update("accepted x64 dmg bytes")
+          .digest("hex"),
+      },
+      "expected x64 DMG SHA-256",
     ],
     [
       "a replaced installer",
@@ -560,7 +606,8 @@ describe("workflow security semantics", () => {
 
   it.each([
     ["expected commit", { expectedCommit: "A".repeat(40) }],
-    ["expected DMG SHA-256", { expectedDmgSha256: "not-a-hash" }],
+    ["expected arm64 DMG SHA-256", { expectedArm64DmgSha256: "not-a-hash" }],
+    ["expected x64 DMG SHA-256", { expectedX64DmgSha256: "not-a-hash" }],
   ] as const)("rejects malformed %s input", (_description, options) => {
     const result = runCandidateValidator(options);
 
@@ -576,7 +623,8 @@ describe("workflow security semantics", () => {
     expect(verify).toContain('gh release download "$INPUT_TAG"');
     expect(verify).toContain('EXPECTED_RELEASE_DRAFT: "false"');
     expect(verify).toContain('REQUIRE_IMMUTABLE: "true"');
-    expect(verify).toContain("EXPECTED_DMG_SHA256:");
+    expect(verify).toContain("EXPECTED_ARM64_DMG_SHA256:");
+    expect(verify).toContain("EXPECTED_X64_DMG_SHA256:");
     expect(promote.indexOf(publish)).toBeLessThan(promote.indexOf(verify));
   });
 

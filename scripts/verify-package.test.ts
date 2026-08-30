@@ -1429,6 +1429,66 @@ describe("package verifier", () => {
     ]);
   });
 
+  it.each([
+    ["arm64", "arm64"],
+    ["x64", "x86_64"],
+  ])("accepts a complete %s-only release package", async (_assetArch, binaryArch) => {
+    const fixture = await createFixture();
+    fixture.ports.readArchitectures.mockResolvedValue([binaryArch]);
+
+    const result = await verifyPackage(
+      fixture.appPath,
+      fixture.ports,
+      [binaryArch],
+    );
+
+    expect(result.ok).toBe(true);
+    expect(result.checks.architectures).toEqual([binaryArch]);
+  });
+
+  it("accepts an architecture-specific package through the CLI", async () => {
+    const fixture = await createFixture();
+    fixture.ports.readArchitectures.mockResolvedValue(["arm64"]);
+    const output: string[] = [];
+    const errors: string[] = [];
+
+    const exitCode = await runCli(
+      [fixture.appPath, "--architecture", "arm64"],
+      {
+        packagePorts: fixture.ports,
+        stdout: (line) => output.push(line),
+        stderr: (line) => errors.push(line),
+      },
+    );
+
+    expect(exitCode).toBe(0);
+    expect(errors).toEqual([]);
+    expect(JSON.parse(output.join("\n")).checks.architectures).toEqual([
+      "arm64",
+    ]);
+  });
+
+  it("rejects an unsupported package architecture through the CLI", async () => {
+    const fixture = await createFixture();
+    const errors: string[] = [];
+
+    const exitCode = await runCli(
+      [fixture.appPath, "--architecture", "powerpc"],
+      {
+        verify: () => {
+          throw new Error("verification must not run");
+        },
+        stdout: () => undefined,
+        stderr: (line) => errors.push(line),
+      },
+    );
+
+    expect(exitCode).toBe(1);
+    expect(JSON.parse(errors.join("\n")).failures).toContainEqual(
+      expect.objectContaining({ code: "invalid_arguments" }),
+    );
+  });
+
   it("returns a safe structured JSON summary for a complete fake bundle", async () => {
     const fixture = await createFixture();
     const output: string[] = [];

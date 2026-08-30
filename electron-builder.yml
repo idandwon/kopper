@@ -26,7 +26,8 @@ mac:
   target:
     - target: dmg
       arch:
-        - universal
+        - arm64
+        - x64
   extendInfo:
     NSAppleEventsUsageDescription: >-
       Kopper uses System Events only when you invoke capture, so it can copy the
