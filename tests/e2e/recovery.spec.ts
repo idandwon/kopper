@@ -42,6 +42,10 @@ test("preserves malformed bytes and requires UI confirmation for every recovery 
 }) => {
   const malformed = Buffer.from([0x7b, 0x62, 0x72, 0x6f, 0x6b, 0x65, 0x6e, 0xff, 0x0a]);
   const page = await kopper.launchKopper(malformed);
+  await kopper.electronApp.evaluate(({ nativeTheme }) => {
+    nativeTheme.themeSource = "light";
+  });
+  await page.reload();
   await setSurfaceSize(page, 340, 480);
   await expectSurfaceContained(page, "recovery");
   await expect(page.getByRole("alert")).toHaveText(
@@ -53,7 +57,7 @@ test("preserves malformed bytes and requires UI confirmation for every recovery 
   await expect(page).toHaveScreenshot("recovery-340x480.png", {
     animations: "disabled",
     caret: "hide",
-    maxDiffPixelRatio: 0.01,
+    maxDiffPixelRatio: 0.015,
     mask: [activePath],
   });
   const exportedBytes = fixturePath(kopper, "damaged-export.bin");

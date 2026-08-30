@@ -171,8 +171,9 @@ async function expectVisualBaselines(
       {
         animations: "disabled",
         caret: "hide",
-        // Match the minimum-size notes tolerance without masking layout drift.
-        maxDiffPixelRatio: width === 340 && height === 480 ? 0.015 : 0.01,
+        // macOS 14 and 26 rasterize SF Pro glyph edges differently while
+        // preserving the same measured layout.
+        maxDiffPixelRatio: 0.015,
       },
     );
   }
@@ -417,7 +418,8 @@ test("renders the compact capture onboarding baseline", async ({ kopper }) => {
   await expect(page).toHaveScreenshot("capture-onboarding-light-340x480.png", {
     animations: "disabled",
     caret: "hide",
-    maxDiffPixelRatio: 0.01,
+    // Keep this aligned with the cross-macOS Settings tolerance above.
+    maxDiffPixelRatio: 0.015,
   });
 });
 
