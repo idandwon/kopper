@@ -396,6 +396,56 @@ test("keeps control, tab, radius, and overlay geometry on the shared system", as
   expect(dialogGeometry.dialogZ).toBeGreaterThan(dialogGeometry.shellZ ?? 0);
 });
 
+test("centers note state indicators on the first rendered text line", async ({
+  kopper,
+}) => {
+  const page = await kopper.launchKopper(demoDocument("light"));
+  await continueWithoutCaptureIfNeeded(page);
+  await setSurfaceSize(page, 340, 480);
+
+  const centerOffsets = await page
+    .locator("[data-note-owner-id]")
+    .evaluateAll((noteOwners) =>
+      noteOwners.map((noteOwner) => {
+        const stateIcon = noteOwner.querySelector<HTMLElement>(
+          '[data-slot="note-state-icon"]',
+        );
+        const markdown = noteOwner.querySelector<HTMLElement>(
+          "[data-note-markdown]",
+        );
+        if (stateIcon === null || markdown === null) return null;
+
+        const walker = document.createTreeWalker(
+          markdown,
+          NodeFilter.SHOW_TEXT,
+        );
+        let textNode = walker.nextNode();
+        while (
+          textNode !== null &&
+          (textNode.textContent ?? "").trim().length === 0
+        ) {
+          textNode = walker.nextNode();
+        }
+        if (!(textNode instanceof Text)) return null;
+
+        const firstCharacter = textNode.data.search(/\S/u);
+        if (firstCharacter < 0) return null;
+        const range = document.createRange();
+        range.setStart(textNode, firstCharacter);
+        range.setEnd(textNode, firstCharacter + 1);
+        const textRect = range.getBoundingClientRect();
+        const iconRect = stateIcon.getBoundingClientRect();
+        return iconRect.y + iconRect.height / 2 - (textRect.y + textRect.height / 2);
+      }),
+    );
+
+  expect(centerOffsets).not.toContain(null);
+  expect(centerOffsets.length).toBeGreaterThan(0);
+  for (const offset of centerOffsets) {
+    expect(Math.abs(offset ?? Number.POSITIVE_INFINITY)).toBeLessThanOrEqual(1);
+  }
+});
+
 test("renders the compact capture onboarding baseline", async ({ kopper }) => {
   const page = await kopper.launchKopper(demoDocument("light"));
   await kopper.electronApp.evaluate(({ systemPreferences }) => {

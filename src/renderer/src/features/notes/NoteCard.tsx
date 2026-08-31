@@ -199,7 +199,7 @@ export function NoteCard({
                 size="icon-sm"
                 aria-label={statusLabel}
                 disabled={interactionDisabled}
-                className="absolute top-2 left-2"
+                className="absolute top-3 left-2"
                 onClick={() =>
                   onAction({ type: statusAction, noteIds: effectiveNoteIds })
                 }
