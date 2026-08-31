@@ -25,7 +25,7 @@ Run this exact procedure in the first clean account. It downloads the five exact
 bash <<'BASH'
 set -euo pipefail
 
-TAG="v0.1.6"
+TAG="v0.1.7"
 VERSION="${TAG#v}"
 MACHINE_ARCHITECTURE="$(uname -m)"
 case "$MACHINE_ARCHITECTURE" in
@@ -182,7 +182,7 @@ After explicit approval promotes the exact draft, use a second clean standard ac
 bash <<'BASH'
 set -euo pipefail
 
-TAG="v0.1.6"
+TAG="v0.1.7"
 VERSION="${TAG#v}"
 MACHINE_ARCHITECTURE="$(uname -m)"
 case "$MACHINE_ARCHITECTURE" in
@@ -234,7 +234,7 @@ The canonical installer must leave no exact versioned Kopper DMG mounted and no 
 bash <<'BASH'
 set -euo pipefail
 
-TAG="v0.1.6"
+TAG="v0.1.7"
 VERSION="${TAG#v}"
 case "$(uname -m)" in
   arm64) ASSET_ARCHITECTURE="arm64" ;;
