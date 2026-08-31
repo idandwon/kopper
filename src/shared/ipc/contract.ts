@@ -33,6 +33,7 @@ export const IPC_CHANNELS = {
   getNativeAppearance: "kopper:appearance:native:get",
   nativeAppearanceChanged: "kopper:appearance:native:changed",
   getAccessibilityPermission: "kopper:permission:get",
+  repairAccessibilityPermission: "kopper:permission:repair",
   getAccessibilitySession: "kopper:permission:session:get",
   openAccessibilitySettings: "kopper:permission:settings:open",
   continueWithoutCapture: "kopper:onboarding:continue-without-capture",
@@ -352,6 +353,9 @@ export interface KopperApi {
   getAccessibilityPermission(
     prompt: boolean,
   ): Promise<Result<PermissionState, KopperError>>;
+  repairAccessibilityPermission(): Promise<
+    Result<PermissionState, KopperError>
+  >;
   getAccessibilitySession(): Promise<
     Result<AccessibilitySessionState, KopperError>
   >;

@@ -66,6 +66,7 @@ describe("preload bridge", () => {
       "onOpenSettings",
       "openAccessibilitySettings",
       "openEditorWindow",
+      "repairAccessibilityPermission",
       "requestCapture",
       "saveShortcuts",
       "setPinned",
@@ -298,6 +299,7 @@ describe("preload bridge", () => {
     electron.invoke
       .mockResolvedValueOnce({ ok: true, value: "unknown" })
       .mockResolvedValueOnce({ ok: true, value: "denied" })
+      .mockResolvedValueOnce({ ok: true, value: "denied" })
       .mockResolvedValueOnce({
         ok: true,
         value: { continuedWithoutCapture: false },
@@ -311,6 +313,10 @@ describe("preload bridge", () => {
     await expect(
       exposedApi().getAccessibilityPermission(true),
     ).resolves.toEqual({ ok: true, value: "denied" });
+    await expect(exposedApi().repairAccessibilityPermission()).resolves.toEqual({
+      ok: true,
+      value: "denied",
+    });
     await expect(exposedApi().getAccessibilitySession()).resolves.toEqual({
       ok: true,
       value: { continuedWithoutCapture: false },
@@ -326,6 +332,7 @@ describe("preload bridge", () => {
     expect(electron.invoke.mock.calls).toEqual([
       [IPC_CHANNELS.getAccessibilityPermission, false],
       [IPC_CHANNELS.getAccessibilityPermission, true],
+      [IPC_CHANNELS.repairAccessibilityPermission],
       [IPC_CHANNELS.getAccessibilitySession],
       [IPC_CHANNELS.openAccessibilitySettings],
       [IPC_CHANNELS.continueWithoutCapture],
@@ -338,6 +345,8 @@ describe("preload bridge", () => {
     await expect(
       exposedApi().getAccessibilityPermission(false),
     ).rejects.toThrow();
+    electron.invoke.mockResolvedValueOnce({ ok: true, value: "authorized" });
+    await expect(exposedApi().repairAccessibilityPermission()).rejects.toThrow();
     electron.invoke.mockResolvedValueOnce({ ok: true, value: {} });
     await expect(exposedApi().getAccessibilitySession()).rejects.toThrow();
     electron.invoke.mockResolvedValueOnce({ ok: true, value: {} });

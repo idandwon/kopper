@@ -32,6 +32,7 @@ const DOCUMENTED_BRIDGE_METHODS = [
   "onOpenSettings",
   "openAccessibilitySettings",
   "openEditorWindow",
+  "repairAccessibilityPermission",
   "requestCapture",
   "saveShortcuts",
   "setPinned",

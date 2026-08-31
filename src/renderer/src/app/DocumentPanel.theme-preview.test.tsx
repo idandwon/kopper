@@ -53,7 +53,7 @@ function renderPanel() {
           permission: "granted",
           operationError: null,
           pendingAction: null,
-          checkAccess: vi.fn(),
+          repairAccess: vi.fn(),
           openSettings: vi.fn(),
         }}
       />

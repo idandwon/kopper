@@ -73,6 +73,7 @@ export interface IpcThemeFiles {
 
 export interface IpcPermissionManager {
   openSettings(): Promise<void>;
+  resetAccess(): Promise<void>;
 }
 
 export interface IpcPermissionObserver {
@@ -386,6 +387,77 @@ export function registerIpcHandlers(
     }
   };
 
+  const repairAccessibilityPermission = async (
+    _event: IpcMainInvokeEvent,
+    ...args: unknown[]
+  ) => {
+    if (
+      !NoArgumentsSchema.safeParse(args).success ||
+      services.permissionManager === undefined ||
+      services.permissionObserver === undefined
+    ) {
+      return PermissionResultSchema.parse(
+        unavailable("The Accessibility repair request was invalid."),
+      );
+    }
+
+    try {
+      await services.permissionManager.resetAccess();
+    } catch {
+      return PermissionResultSchema.parse({
+        ok: false,
+        error: {
+          code: "permission_denied",
+          message: "Kopper could not reset Accessibility access.",
+          retryable: true,
+          recoveryAction: "open_settings",
+        },
+      });
+    }
+
+    let state: PermissionState;
+    try {
+      state = await services.permissionObserver.observe(true);
+    } catch {
+      let settingsOpened = true;
+      try {
+        await services.permissionManager.openSettings();
+      } catch {
+        settingsOpened = false;
+      }
+      return PermissionResultSchema.parse({
+        ok: false,
+        error: {
+          code: "permission_denied",
+          message: settingsOpened
+            ? "Kopper reset Accessibility access, but could not confirm the new permission state."
+            : "Kopper reset Accessibility access, but could not open System Settings.",
+          retryable: true,
+          recoveryAction: "open_settings",
+        },
+      });
+    }
+
+    if (state !== "granted") {
+      try {
+        await services.permissionManager.openSettings();
+      } catch {
+        return PermissionResultSchema.parse({
+          ok: false,
+          error: {
+            code: "permission_denied",
+            message:
+              "Kopper reset Accessibility access, but could not open System Settings.",
+            retryable: true,
+            recoveryAction: "open_settings",
+          },
+        });
+      }
+    }
+
+    return PermissionResultSchema.parse({ ok: true, value: state });
+  };
+
   const getAccessibilitySession = (
     _event: IpcMainInvokeEvent,
     ...args: unknown[]
@@ -570,6 +642,10 @@ export function registerIpcHandlers(
     [IPC_CHANNELS.exportTheme, exportTheme],
     [IPC_CHANNELS.getNativeAppearance, getNativeAppearance],
     [IPC_CHANNELS.getAccessibilityPermission, getAccessibilityPermission],
+    [
+      IPC_CHANNELS.repairAccessibilityPermission,
+      repairAccessibilityPermission,
+    ],
     [IPC_CHANNELS.getAccessibilitySession, getAccessibilitySession],
     [IPC_CHANNELS.openAccessibilitySettings, openAccessibilitySettings],
     [IPC_CHANNELS.continueWithoutCapture, continueWithoutCapture],

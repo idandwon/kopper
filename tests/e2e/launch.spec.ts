@@ -63,19 +63,19 @@ test.describe.serial("isolated Electron fixture", () => {
     const openSettings = page.getByRole("button", {
       name: "Open System Settings",
     });
-    const checkAgain = page.getByRole("button", { name: "Check again" });
-    const [openBounds, checkBounds] = await Promise.all([
+    const repairAccess = page.getByRole("button", { name: "Repair access" });
+    const [repairBounds, openBounds] = await Promise.all([
+      repairAccess.boundingBox(),
       openSettings.boundingBox(),
-      checkAgain.boundingBox(),
     ]);
+    expect(repairBounds).not.toBeNull();
     expect(openBounds).not.toBeNull();
-    expect(checkBounds).not.toBeNull();
-    if (openBounds !== null && checkBounds !== null) {
-      expect(checkBounds.y).toBeGreaterThanOrEqual(
-        openBounds.y + openBounds.height,
+    if (repairBounds !== null && openBounds !== null) {
+      expect(openBounds.y).toBeGreaterThanOrEqual(
+        repairBounds.y + repairBounds.height,
       );
-      expect(checkBounds.x).toBe(openBounds.x);
-      expect(checkBounds.width).toBe(openBounds.width);
+      expect(openBounds.x).toBe(repairBounds.x);
+      expect(openBounds.width).toBe(repairBounds.width);
     }
     await continueWithoutCaptureIfNeeded(page);
     await expectSurfaceContained(page, "notes");

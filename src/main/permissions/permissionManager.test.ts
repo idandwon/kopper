@@ -12,6 +12,7 @@ function adapters(
     platform: "darwin",
     isTrustedAccessibilityClient: vi.fn(() => false),
     openAccessibilitySettings: vi.fn(async () => undefined),
+    resetAccessibilityAccess: vi.fn(async () => undefined),
     ...overrides,
   };
 }
@@ -62,6 +63,16 @@ describe("PermissionManager", () => {
     await expect(manager.openSettings()).resolves.toBeUndefined();
     expect(
       dependencies.openAccessibilitySettings,
+    ).toHaveBeenCalledExactlyOnceWith();
+  });
+
+  it("delegates an explicit reset without accepting renderer-controlled input", async () => {
+    const dependencies = adapters();
+    const manager = new PermissionManager(dependencies);
+
+    await expect(manager.resetAccess()).resolves.toBeUndefined();
+    expect(
+      dependencies.resetAccessibilityAccess,
     ).toHaveBeenCalledExactlyOnceWith();
   });
 });

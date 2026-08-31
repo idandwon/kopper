@@ -5,17 +5,18 @@ import { LoadingPanel } from "../panel/PanelShell";
 import { AccessibilityOnboarding } from "./AccessibilityOnboarding";
 
 const CHECK_ERROR = "Kopper could not check Accessibility access.";
+const REPAIR_ERROR = "Kopper could not repair Accessibility access.";
 const SESSION_ERROR = "Kopper could not load the capture setup state.";
 const SETTINGS_ERROR = "Kopper could not open Accessibility settings.";
 const CONTINUE_ERROR = "Kopper could not continue without capture.";
 
-export type PermissionPanelPendingAction = "check" | "open-settings" | null;
+export type PermissionPanelPendingAction = "repair" | "open-settings" | null;
 
 export interface AccessibilityPermissionPanelControls {
   permission: PermissionState | null;
   operationError: string | null;
   pendingAction: PermissionPanelPendingAction;
-  checkAccess(): Promise<void>;
+  repairAccess(): Promise<void>;
   openSettings(): Promise<void>;
 }
 
@@ -39,6 +40,8 @@ export function AccessibilityPermissionGate({
     useState<PermissionPanelPendingAction>(null);
   const mountedRef = useRef(false);
   const requestIdRef = useRef(0);
+  const repairRequestIdRef = useRef(0);
+  const permissionEventVersionRef = useRef(0);
   const passiveCheckPendingRef = useRef(false);
 
   const applyPermission = useCallback((state: PermissionState) => {
@@ -93,7 +96,7 @@ export function AccessibilityPermissionGate({
 
   useEffect(() => {
     setPanelPendingAction((current) =>
-      current === "check" ? null : current,
+      current === "repair" ? null : current,
     );
   }, [permissionEventVersion]);
 
@@ -109,15 +112,44 @@ export function AccessibilityPermissionGate({
     }
   }, []);
 
-  const checkAccess = useCallback(async () => {
+  const repairAccess = useCallback(async () => {
     if (panelPendingAction !== null) return;
-    setPanelPendingAction("check");
+    invalidatePassiveCheck();
+    const repairRequestId = ++repairRequestIdRef.current;
+    const eventVersionAtStart = permissionEventVersionRef.current;
+    setOperationError(null);
+    setPanelPendingAction("repair");
     try {
-      await checkPermission(false);
+      const result = await window.kopper.repairAccessibilityPermission();
+      if (
+        !mountedRef.current ||
+        repairRequestId !== repairRequestIdRef.current
+      ) {
+        return;
+      }
+      if (result.ok) {
+        if (eventVersionAtStart === permissionEventVersionRef.current) {
+          applyPermission(result.value);
+        }
+      } else {
+        setOperationError(result.error.message);
+      }
+    } catch {
+      if (
+        mountedRef.current &&
+        repairRequestId === repairRequestIdRef.current
+      ) {
+        setOperationError(REPAIR_ERROR);
+      }
     } finally {
-      if (mountedRef.current) setPanelPendingAction(null);
+      if (
+        mountedRef.current &&
+        repairRequestId === repairRequestIdRef.current
+      ) {
+        setPanelPendingAction(null);
+      }
     }
-  }, [checkPermission, panelPendingAction]);
+  }, [applyPermission, invalidatePassiveCheck, panelPendingAction]);
 
   const openPanelSettings = useCallback(async () => {
     if (panelPendingAction !== null) return;
@@ -190,6 +222,7 @@ export function AccessibilityPermissionGate({
     const unsubscribe = window.kopper.onAccessibilityPermissionChanged(
       (state) => {
         requestIdRef.current += 1;
+        permissionEventVersionRef.current += 1;
         passiveCheckPendingRef.current = false;
         setPermissionEventVersion((version) => version + 1);
         applyPermission(state);
@@ -219,6 +252,7 @@ export function AccessibilityPermissionGate({
       active = false;
       mountedRef.current = false;
       requestIdRef.current += 1;
+      repairRequestIdRef.current += 1;
       passiveCheckPendingRef.current = false;
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("focus", handleWindowFocus);
@@ -285,7 +319,7 @@ export function AccessibilityPermissionGate({
       permission,
       operationError,
       pendingAction: panelPendingAction,
-      checkAccess,
+      repairAccess,
       openSettings: openPanelSettings,
     });
   }
@@ -295,9 +329,7 @@ export function AccessibilityPermissionGate({
       permission={permission}
       operationError={operationError}
       permissionEventVersion={permissionEventVersion}
-      checkPermission={async (prompt) => {
-        await checkPermission(prompt);
-      }}
+      repairAccess={repairAccess}
       openSettings={openSettings}
       continueWithoutCapture={continueWithoutCapture}
     />

@@ -510,7 +510,7 @@ describe("verified transactional installation", { timeout: 30_000 }, () => {
       "Unsigned updates can leave macOS Accessibility tied to the previous Kopper build.",
     );
     expect(result.stdout).toContain(
-      "remove Kopper with the minus button, add the current Kopper app again, and enable it.",
+      "If capture is unavailable, click Repair access in Kopper, then enable Kopper in System Settings → Privacy & Security → Accessibility.",
     );
     expect(fixture.installedMarker()).toBe("new-v0.1.0");
     expect(fixture.callsInOrder()).toContain("open");

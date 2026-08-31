@@ -8,7 +8,11 @@ import {
 
 import type { KopperDocument } from "../../../shared/domain/document";
 import type { KopperError } from "../../../shared/domain/errors";
-import { Alert, AlertDescription } from "../components/ui/alert";
+import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
+} from "../components/ui/alert";
 import { Button } from "../components/ui/button";
 import { DismissButton } from "../components/ui/dismiss-button";
 import { Tabs, TabsContent } from "../components/ui/tabs";
@@ -70,21 +74,21 @@ function CaptureAccessPanel({
 }: {
   controls: AccessibilityPermissionPanelControls;
 }) {
-  const checkingAccess = controls.pendingAction === "check";
+  const repairingAccess = controls.pendingAction === "repair";
   const openingSettings = controls.pendingAction === "open-settings";
-  const statusMessage = checkingAccess
-    ? "Checking Accessibility access…"
+  const statusMessage = repairingAccess
+    ? "Repairing access…"
     : openingSettings
-      ? "Opening System Settings…"
-      : "Capture unavailable — Accessibility access has not been granted.";
+      ? "Opening Settings…"
+      : "Capture unavailable";
   const busy = controls.pendingAction !== null;
 
   const openSettings = () => {
     void controls.openSettings();
   };
 
-  const checkAccess = () => {
-    void controls.checkAccess();
+  const repairAccess = () => {
+    void controls.repairAccess();
   };
 
   return (
@@ -93,36 +97,37 @@ function CaptureAccessPanel({
       aria-busy={busy}
       className="mx-4 mb-2 w-auto"
     >
-      <p className="m-0 font-medium" role="status" aria-live="polite">
+      <AlertTitle role="status" aria-live="polite">
         {statusMessage}
-      </p>
-      <AlertDescription>
-        If Kopper already appears enabled, remove it with the minus button, add
-        the current Kopper app again, then check again.
+      </AlertTitle>
+      <AlertDescription className="gap-3">
+        <p>
+          macOS must approve this Kopper build. Repair access, then enable
+          Kopper in System Settings.
+        </p>
+        {controls.operationError === null ? null : (
+          <p>{controls.operationError}</p>
+        )}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            disabled={busy}
+            onClick={repairAccess}
+          >
+            Repair access
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busy}
+            onClick={openSettings}
+          >
+            Open Settings
+          </Button>
+        </div>
       </AlertDescription>
-      {controls.operationError === null ? null : (
-        <AlertDescription role="alert">{controls.operationError}</AlertDescription>
-      )}
-      <div className="flex flex-wrap gap-2">
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={busy}
-          onClick={openSettings}
-        >
-          Open System Settings
-        </Button>
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          disabled={busy}
-          onClick={checkAccess}
-        >
-          Check access
-        </Button>
-      </div>
     </Alert>
   );
 }

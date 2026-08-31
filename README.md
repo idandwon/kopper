@@ -14,7 +14,7 @@ The installer detects Apple Silicon or Intel, downloads only that Mac's build, v
 
 No `sudo`, `xattr`, Gatekeeper disablement, Node.js, or Homebrew is needed. The SHA-256 check protects the download against corruption or replacement within the immutable release; it does not make the app Apple-verified.
 
-To upgrade, quit Kopper and run the same command again. Because each unsigned build has a new macOS code identity, an upgrade may require one fresh Accessibility approval: remove the existing Kopper entry with the minus button, add `~/Applications/Kopper.app` again, and enable it. To uninstall the application, move `~/Applications/Kopper.app` to Trash. Your local notes remain at `~/Library/Application Support/Kopper/kopper.json` unless you deliberately remove that file.
+To upgrade, quit Kopper and run the same command again. Because each unsigned build has a new macOS code identity, an upgrade may require one fresh Accessibility approval. If capture is unavailable after upgrading, click **Repair access** in Kopper, then enable Kopper in **System Settings → Privacy & Security → Accessibility**. To uninstall the application, move `~/Applications/Kopper.app` to Trash. Your local notes remain at `~/Library/Application Support/Kopper/kopper.json` unless you deliberately remove that file.
 
 ## Privacy and local data
 

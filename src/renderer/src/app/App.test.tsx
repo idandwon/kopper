@@ -26,6 +26,8 @@ let openSettingsListener: (() => void) | undefined;
 const onboardingMock = vi.hoisted(() => ({
   mode: "grant" as "grant" | "hold",
   mounts: 0,
+  pendingAction: null as "repair" | "open-settings" | null,
+  operationError: null as string | null,
 }));
 
 vi.mock("./DocumentProvider", () => ({ useKopperDocument: vi.fn() }));
@@ -44,9 +46,9 @@ vi.mock("../features/onboarding/AccessibilityPermissionGate", async () => {
       const [continued, setContinued] = useState(false);
       const controls = {
         permission: continued ? ("denied" as const) : ("granted" as const),
-        operationError: null,
-        pendingAction: null,
-        checkAccess: async () => undefined,
+        operationError: onboardingMock.operationError,
+        pendingAction: onboardingMock.pendingAction,
+        repairAccess: async () => undefined,
         openSettings: async () => undefined,
       };
       if (onboardingMock.mode === "grant") return renderPanel(false, controls);
@@ -209,6 +211,8 @@ beforeEach(() => {
   globalThis.location.hash = "";
   onboardingMock.mode = "grant";
   onboardingMock.mounts = 0;
+  onboardingMock.pendingAction = null;
+  onboardingMock.operationError = null;
   HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
   HTMLElement.prototype.releasePointerCapture = vi.fn();
   HTMLElement.prototype.scrollIntoView = scrollIntoView;
@@ -259,16 +263,20 @@ describe("Oxide Ledger App", () => {
       screen.getByRole("button", { name: "Continue mock without capture" }),
     );
     expect(screen.getByText("Captured note")).toBeVisible();
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Capture unavailable — Accessibility access has not been granted.",
+    const accessAlert = screen.getByLabelText("Capture access");
+    expect(screen.getByText("Capture unavailable")).toBeVisible();
+    expect(accessAlert).toHaveTextContent(
+      "macOS must approve this Kopper build. Repair access, then enable Kopper in System Settings.",
     );
-    expect(screen.getByText(/If Kopper already appears enabled/)).toHaveTextContent(
-      "remove it with the minus button, add the current Kopper app again, then check again.",
-    );
+    expect(Array.from(accessAlert.children).map((child) => child.getAttribute("data-slot"))).toEqual([
+      "alert-title",
+      "alert-description",
+    ]);
     expect(
-      screen.getByRole("button", { name: "Open System Settings" }),
+      screen.getByRole("button", { name: "Open Settings" }),
     ).toBeVisible();
-    expect(screen.getByRole("button", { name: "Check access" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Repair access" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Check access" })).not.toBeInTheDocument();
 
     view.unmount();
     onboardingMock.mode = "hold";
@@ -311,6 +319,32 @@ describe("Oxide Ledger App", () => {
     expect(editorOwner).not.toContainElement(header);
     expect(visiblePrimaryScrollOwners()).toEqual([editorOwner]);
     expect(onboardingMock.mounts).toBe(0);
+  });
+
+  it("announces compact repair and Settings progress without exposing controls", async () => {
+    onboardingMock.mode = "hold";
+    onboardingMock.pendingAction = "repair";
+    const user = userEvent.setup();
+    const view = render(<App />);
+    await user.click(
+      screen.getByRole("button", { name: "Continue mock without capture" }),
+    );
+
+    expect(screen.getByText("Repairing access…")).toBeVisible();
+    expect(screen.getByRole("button", { name: "Repair access" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Open Settings" })).toBeDisabled();
+
+    onboardingMock.pendingAction = "open-settings";
+    view.rerender(<App />);
+    expect(screen.getByText("Opening Settings…")).toBeVisible();
+
+    onboardingMock.pendingAction = null;
+    onboardingMock.operationError = "Kopper could not reset Accessibility access.";
+    view.rerender(<App />);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Kopper could not reset Accessibility access.",
+    );
+    expect(screen.getByRole("button", { name: "Repair access" })).toBeEnabled();
   });
 
   it("keeps panel-owned controls out of expanded editor loading and failure states", () => {

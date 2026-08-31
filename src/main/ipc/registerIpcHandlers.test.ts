@@ -431,7 +431,10 @@ describe("registerIpcHandlers", () => {
       ipcMain,
       makeClipboardWriter(),
       {
-        permissionManager: { openSettings },
+        permissionManager: {
+          openSettings,
+          resetAccess: vi.fn(async () => undefined),
+        },
         permissionObserver,
         getAccessibilitySession,
         continueWithoutCapture,
@@ -503,6 +506,7 @@ describe("registerIpcHandlers", () => {
       makeClipboardWriter(),
       {
         permissionManager: {
+          resetAccess: vi.fn(async () => undefined),
           openSettings: vi.fn(async () => {
             throw new Error("x-apple.systempreferences:private-detail");
           }),
@@ -532,6 +536,158 @@ describe("registerIpcHandlers", () => {
       expect(JSON.stringify(result)).not.toMatch(
         /secret|private-detail|session detail/,
       );
+    }
+  });
+
+  it("repairs Accessibility in reset, prompt, and Settings order", async () => {
+    const repository = new NoteRepository("unused.json");
+    const calls: string[] = [];
+    const resetAccess = vi.fn(async () => {
+      calls.push("reset");
+    });
+    const observe = vi.fn(async () => {
+      calls.push("prompt");
+      return "denied" as const;
+    });
+    const openSettings = vi.fn(async () => {
+      calls.push("settings");
+    });
+    const ipcMain = new FakeIpcMain();
+    registerIpcHandlers(
+      repository,
+      makeCommandExecutor(),
+      ipcMain,
+      makeClipboardWriter(),
+      {
+        permissionManager: { resetAccess, openSettings },
+        permissionObserver: { observe },
+      },
+    );
+
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.repairAccessibilityPermission),
+    ).resolves.toEqual({ ok: true, value: "denied" });
+    expect(calls).toEqual(["reset", "prompt", "settings"]);
+    expect(observe).toHaveBeenCalledExactlyOnceWith(true);
+
+    await expect(
+      ipcMain.invoke(
+        IPC_CHANNELS.repairAccessibilityPermission,
+        "renderer-controlled-input",
+      ),
+    ).resolves.toMatchObject({
+      ok: false,
+      error: { code: "validation_failed" },
+    });
+    expect(resetAccess).toHaveBeenCalledOnce();
+  });
+
+  it("does not open Settings when repair immediately reports granted access", async () => {
+    const repository = new NoteRepository("unused.json");
+    const resetAccess = vi.fn(async () => undefined);
+    const openSettings = vi.fn(async () => undefined);
+    const ipcMain = new FakeIpcMain();
+    registerIpcHandlers(
+      repository,
+      makeCommandExecutor(),
+      ipcMain,
+      makeClipboardWriter(),
+      {
+        permissionManager: { resetAccess, openSettings },
+        permissionObserver: { observe: vi.fn(async () => "granted" as const) },
+      },
+    );
+
+    await expect(
+      ipcMain.invoke(IPC_CHANNELS.repairAccessibilityPermission),
+    ).resolves.toEqual({ ok: true, value: "granted" });
+    expect(openSettings).not.toHaveBeenCalled();
+  });
+
+  it("stops after a reset failure and returns a fixed retryable error", async () => {
+    const repository = new NoteRepository("unused.json");
+    const observe = vi.fn(async () => "denied" as const);
+    const openSettings = vi.fn(async () => undefined);
+    const ipcMain = new FakeIpcMain();
+    registerIpcHandlers(
+      repository,
+      makeCommandExecutor(),
+      ipcMain,
+      makeClipboardWriter(),
+      {
+        permissionManager: {
+          resetAccess: vi.fn(async () => {
+            throw new Error("private tccutil detail");
+          }),
+          openSettings,
+        },
+        permissionObserver: { observe },
+      },
+    );
+
+    const result = await ipcMain.invoke(
+      IPC_CHANNELS.repairAccessibilityPermission,
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: {
+        code: "permission_denied",
+        message: "Kopper could not reset Accessibility access.",
+        retryable: true,
+        recoveryAction: "open_settings",
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("private tccutil detail");
+    expect(observe).not.toHaveBeenCalled();
+    expect(openSettings).not.toHaveBeenCalled();
+  });
+
+  it("reports a completed reset when prompting or opening Settings fails", async () => {
+    const repository = new NoteRepository("unused.json");
+
+    for (const failure of ["prompt", "settings"] as const) {
+      const openSettings = vi.fn(async () => {
+        if (failure === "settings") throw new Error("private settings detail");
+      });
+      const ipcMain = new FakeIpcMain();
+      registerIpcHandlers(
+        repository,
+        makeCommandExecutor(),
+        ipcMain,
+        makeClipboardWriter(),
+        {
+          permissionManager: {
+            resetAccess: vi.fn(async () => undefined),
+            openSettings,
+          },
+          permissionObserver: {
+            observe: vi.fn(async () => {
+              if (failure === "prompt") {
+                throw new Error("private prompt detail");
+              }
+              return "denied" as const;
+            }),
+          },
+        },
+      );
+
+      const result = await ipcMain.invoke(
+        IPC_CHANNELS.repairAccessibilityPermission,
+      );
+      expect(result).toEqual({
+        ok: false,
+        error: {
+          code: "permission_denied",
+          message:
+            failure === "prompt"
+              ? "Kopper reset Accessibility access, but could not confirm the new permission state."
+              : "Kopper reset Accessibility access, but could not open System Settings.",
+          retryable: true,
+          recoveryAction: "open_settings",
+        },
+      });
+      expect(JSON.stringify(result)).not.toMatch(/private prompt|private settings/);
+      expect(openSettings).toHaveBeenCalledOnce();
     }
   });
 

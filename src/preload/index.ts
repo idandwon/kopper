@@ -140,6 +140,12 @@ const api: KopperApi = {
     );
   },
 
+  async repairAccessibilityPermission() {
+    return PermissionResultSchema.parse(
+      await ipcRenderer.invoke(IPC_CHANNELS.repairAccessibilityPermission),
+    );
+  },
+
   async getAccessibilitySession() {
     return AccessibilitySessionResultSchema.parse(
       await ipcRenderer.invoke(IPC_CHANNELS.getAccessibilitySession),

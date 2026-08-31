@@ -90,7 +90,7 @@ Expected for each: output includes both `arm64` and `x86_64`.
 | --- | --- |
 | ONBOARD-01 | In Finder, launch `/Applications/Kopper.app`. Confirm it opens normally without a Gatekeeper bypass, quarantine removal, or right-click override. |
 | ONBOARD-02 | Confirm the first-run screen explains that Accessibility is used to notice configured shortcuts and copy only explicitly captured text. |
-| ONBOARD-03 | Select **Enable Capture**. If macOS does not grant access, select **Open System Settings**, enable Kopper under **Privacy & Security > Accessibility**, return to Kopper, and select **Check again**. |
+| ONBOARD-03 | Select **Repair access**, enable the current Kopper entry under **System Settings > Privacy & Security > Accessibility**, and return to Kopper. Confirm focus/polling detects the grant without a manual check button. |
 | ONBOARD-04 | Confirm the UI reaches the notes panel only after the grant is detected. |
 | ONBOARD-05 | Record whether the Accessibility grant required relaunching Kopper: **Yes** or **No**. |
 | ONBOARD-06 | Confirm Kopper is visible in the Dock with the expected app icon/name during onboarding. After the Accessibility grant is detected and onboarding continues, confirm the Dock icon is hidden and a Kopper status item is visible with **Open Kopper**, **Capture Selection**, **Settings…**, and **Quit** menu items. |
@@ -161,7 +161,7 @@ Use TextEdit unless a row names another source. For every row, verify source foc
 | CLIP-05 | Selected text is exactly equal to prior clipboard text; exactly one note is created despite equal text; clipboard remains unchanged. |
 | CLIP-06 | Whitespace-only selection; no note is created and clipboard is restored. |
 | CLIP-07 | Secure input/protected password field is active; no note is created, protected content is never shown, failure is reported, clipboard is restored. |
-| CLIP-08 | Revoke Kopper in System Settings > Privacy & Security > Accessibility while it runs, return to the source, invoke capture; no note is created, onboarding/denial is shown, clipboard is restored. Quit and relaunch while still revoked and confirm capture remains denied/onboarding remains available. Re-enable, relaunch if macOS requires it, and use Check again before later rows. |
+| CLIP-08 | Revoke Kopper in System Settings > Privacy & Security > Accessibility while it runs, return to the source, invoke capture; no note is created, onboarding/denial is shown, clipboard is restored. Quit and relaunch while still revoked and confirm capture remains denied/onboarding remains available. Use **Repair access**, re-enable the current Kopper entry, and return to Kopper before later rows. |
 | CLIP-09 | Select the fixture, invoke capture, and immediately close the disposable source window/application before copy completes; no partial/incorrect note is created, failure is bounded, clipboard is restored. |
 | CLIP-10 | Invoke two rapid double-Shift gestures while one capture is in progress; transactions serialize, notes are not corrupted or unpredictably duplicated, and the original clipboard is restored after both settle. Record exact observed note count. |
 | CLIP-11 | Invoke capture while a Kopper editor selection is active; one note is created from the selection without recursive capture; clipboard is restored. |

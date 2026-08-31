@@ -423,6 +423,87 @@ test("renders the compact capture onboarding baseline", async ({ kopper }) => {
   });
 });
 
+for (const mode of ["light", "dark"] as const) {
+  test(`keeps the compact capture repair panel contained in ${mode} mode`, async ({
+    kopper,
+  }) => {
+    const page = await kopper.launchKopper(demoDocument(mode));
+    await kopper.electronApp.evaluate(({ systemPreferences }) => {
+      Object.defineProperty(systemPreferences, "isTrustedAccessibilityClient", {
+        configurable: true,
+        value: () => false,
+      });
+    });
+    await page.reload();
+    await setSurfaceSize(page, 340, 480);
+    await continueWithoutCaptureIfNeeded(page);
+
+    const access = page.getByLabel("Capture access");
+    await expect(access).toBeVisible();
+    await kopper.electronApp.evaluate(({ ipcMain }, channel) => {
+      ipcMain.removeHandler(channel);
+      ipcMain.handle(channel, () => ({
+        ok: false,
+        error: {
+          code: "permission_denied",
+          message: "Kopper could not reset Accessibility access.",
+          retryable: true,
+          recoveryAction: "open_settings",
+        },
+      }));
+    }, "kopper:permission:repair");
+    await access.getByRole("button", { name: "Repair access" }).click();
+    await expect(access.getByText("Capture unavailable", { exact: true })).toBeVisible();
+    await expect(
+      access.getByText("Kopper could not reset Accessibility access."),
+    ).toBeVisible();
+    await expect(access.getByRole("button", { name: "Repair access" })).toBeVisible();
+    await expect(access.getByRole("button", { name: "Open Settings" })).toBeVisible();
+    const geometry = await access.evaluate((alert) => {
+      const parent = alert.getBoundingClientRect();
+      const children = Array.from(alert.children).map((child) => {
+        const rect = child.getBoundingClientRect();
+        return {
+          slot: child.getAttribute("data-slot"),
+          left: rect.left,
+          right: rect.right,
+          top: rect.top,
+          bottom: rect.bottom,
+        };
+      });
+      return {
+        parent: {
+          left: parent.left,
+          right: parent.right,
+          top: parent.top,
+          bottom: parent.bottom,
+        },
+        children,
+      };
+    });
+    expect(geometry.children.map(({ slot }) => slot)).toEqual([
+      "alert-title",
+      "alert-description",
+    ]);
+    for (const child of geometry.children) {
+      expect(child.left).toBeGreaterThanOrEqual(geometry.parent.left);
+      expect(child.right).toBeLessThanOrEqual(geometry.parent.right);
+      expect(child.top).toBeGreaterThanOrEqual(geometry.parent.top);
+      expect(child.bottom).toBeLessThanOrEqual(geometry.parent.bottom);
+    }
+    await expectSurfaceContained(page, "notes");
+    await page.mouse.move(1, 240);
+    await expect(page).toHaveScreenshot(
+      `capture-repair-${mode}-340x480.png`,
+      {
+        animations: "disabled",
+        caret: "hide",
+        maxDiffPixelRatio: 0.015,
+      },
+    );
+  });
+}
+
 test("renders the compact keyboard shortcuts baseline", async ({ kopper }) => {
   const page = await kopper.launchKopper(demoDocument("light"));
   await continueWithoutCaptureIfNeeded(page);

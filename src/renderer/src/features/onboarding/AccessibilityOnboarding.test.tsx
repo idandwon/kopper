@@ -8,7 +8,7 @@ import {
   type AccessibilityOnboardingProps,
 } from "./AccessibilityOnboarding";
 
-const checkPermission = vi.fn<AccessibilityOnboardingProps["checkPermission"]>();
+const repairAccess = vi.fn<AccessibilityOnboardingProps["repairAccess"]>();
 const openSettings = vi.fn<AccessibilityOnboardingProps["openSettings"]>();
 const continueWithoutCapture =
   vi.fn<AccessibilityOnboardingProps["continueWithoutCapture"]>();
@@ -21,7 +21,7 @@ function onboarding(
       permission="unknown"
       operationError={null}
       permissionEventVersion={0}
-      checkPermission={checkPermission}
+      repairAccess={repairAccess}
       openSettings={openSettings}
       continueWithoutCapture={continueWithoutCapture}
       {...overrides}
@@ -30,7 +30,7 @@ function onboarding(
 }
 
 beforeEach(() => {
-  checkPermission.mockReset().mockResolvedValue(undefined);
+  repairAccess.mockReset().mockResolvedValue(undefined);
   openSettings.mockReset().mockResolvedValue(undefined);
   continueWithoutCapture.mockReset().mockResolvedValue(true);
   Object.defineProperty(document, "visibilityState", {
@@ -58,11 +58,11 @@ describe("AccessibilityOnboarding", () => {
         "Kopper reads a selection only after you use your configured capture shortcut.",
       ),
     ).toBeVisible();
-    expect(screen.getByRole("button", { name: "Enable Capture" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Repair access" })).toBeVisible();
     expect(
       screen.getByRole("button", { name: "Open System Settings" }),
     ).toBeVisible();
-    expect(screen.getByRole("button", { name: "Check again" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Check again" })).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Continue without capture" }),
     ).toBeVisible();
@@ -87,31 +87,29 @@ describe("AccessibilityOnboarding", () => {
       "[data-onboarding-secondary-actions]",
     );
     expect(secondaryActions).toHaveClass("grid-cols-1");
-    expect(secondaryActions).toHaveClass("min-[380px]:grid-cols-2");
+    expect(secondaryActions).not.toHaveClass("min-[380px]:grid-cols-2");
     expect(owner).not.toContainElement(
       screen.getByRole("button", { name: "Continue without capture" }),
     );
   });
 
-  it("uses prompt only for Enable Capture and announces denial", async () => {
+  it("uses the repair flow for an ungranted build and announces concise guidance", async () => {
     const view = render(onboarding({ permission: "denied" }));
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Accessibility access is not enabled.",
+      "macOS must approve this Kopper build.",
     );
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "If Kopper already appears enabled, remove it with the minus button, add the current Kopper app again, then check again.",
+      "Repair access, then enable Kopper in System Settings.",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Enable Capture" }));
-    await waitFor(() => expect(checkPermission).toHaveBeenCalledWith(true));
-    fireEvent.click(screen.getByRole("button", { name: "Check again" }));
-    await waitFor(() => expect(checkPermission).toHaveBeenLastCalledWith(false));
+    fireEvent.click(screen.getByRole("button", { name: "Repair access" }));
+    await waitFor(() => expect(repairAccess).toHaveBeenCalledOnce());
     fireEvent.click(
       screen.getByRole("button", { name: "Open System Settings" }),
     );
     await waitFor(() => expect(openSettings).toHaveBeenCalledOnce());
     view.rerender(onboarding({ permission: "restricted" }));
-    expect(screen.getByRole("button", { name: "Enable Capture" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Repair access" })).toBeDisabled();
   });
 
   it("performs no background polling or visibility-triggered checks", async () => {
@@ -123,7 +121,7 @@ describe("AccessibilityOnboarding", () => {
     await vi.advanceTimersByTimeAsync(10_000);
 
     expect(intervalSpy).not.toHaveBeenCalled();
-    expect(checkPermission).not.toHaveBeenCalled();
+    expect(repairAccess).not.toHaveBeenCalled();
   });
 
   it("renders fixed operation errors supplied by the gate", () => {

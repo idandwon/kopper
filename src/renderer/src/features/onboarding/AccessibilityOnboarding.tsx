@@ -11,18 +11,18 @@ export interface AccessibilityOnboardingProps {
   permission: PermissionState | null;
   operationError: string | null;
   permissionEventVersion: number;
-  checkPermission(prompt: boolean): Promise<void>;
+  repairAccess(): Promise<void>;
   openSettings(): Promise<void>;
   continueWithoutCapture(): Promise<boolean>;
 }
 
-type PendingAction = "check" | "open-settings" | "continue" | null;
+type PendingAction = "repair" | "open-settings" | "continue" | null;
 
 export function AccessibilityOnboarding({
   permission,
   operationError,
   permissionEventVersion,
-  checkPermission,
+  repairAccess,
   openSettings,
   continueWithoutCapture,
 }: AccessibilityOnboardingProps) {
@@ -32,7 +32,7 @@ export function AccessibilityOnboarding({
   const completedRef = useRef(false);
 
   useEffect(() => {
-    setPendingAction((current) => (current === "check" ? null : current));
+    setPendingAction((current) => (current === "repair" ? null : current));
   }, [permissionEventVersion]);
 
   useEffect(() => {
@@ -129,10 +129,8 @@ export function AccessibilityOnboarding({
                 className="min-w-0"
               >
                 <AlertDescription>
-                  Accessibility access is not enabled. Grant access in System
-                  Settings, then check again. If Kopper already appears enabled,
-                  remove it with the minus button, add the current Kopper app
-                  again, then check again.
+                  macOS must approve this Kopper build. Repair access, then
+                  enable Kopper in System Settings.
                 </AlertDescription>
               </Alert>
             )}
@@ -150,14 +148,14 @@ export function AccessibilityOnboarding({
               type="button"
               disabled={busy || restricted}
               onClick={() =>
-                void runAction("check", () => checkPermission(true))
+                void runAction("repair", repairAccess)
               }
             >
-              Enable Capture
+              Repair access
             </Button>
             <div
               data-onboarding-secondary-actions="true"
-              className="grid min-w-0 grid-cols-1 gap-2 min-[380px]:grid-cols-2"
+              className="grid min-w-0 grid-cols-1 gap-2"
             >
               <Button
                 type="button"
@@ -168,16 +166,6 @@ export function AccessibilityOnboarding({
                 }
               >
                 Open System Settings
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={busy}
-                onClick={() =>
-                  void runAction("check", () => checkPermission(false))
-                }
-              >
-                Check again
               </Button>
             </div>
             <Button

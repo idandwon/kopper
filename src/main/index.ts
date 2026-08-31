@@ -37,6 +37,7 @@ import {
   PermissionManager,
 } from "./permissions/permissionManager";
 import { PermissionObserver } from "./permissions/permissionObserver";
+import { resetAccessibilityAccess } from "./permissions/accessibilityReset";
 import { NoteRepository } from "./persistence/noteRepository";
 import { PreferenceService } from "./preferences/preferenceService";
 import {
@@ -113,6 +114,12 @@ void app.whenReady().then(async () => {
       systemPreferences.isTrustedAccessibilityClient(prompt),
     openAccessibilitySettings: () =>
       shell.openExternal(ACCESSIBILITY_SETTINGS_URL),
+    resetAccessibilityAccess: () =>
+      resetAccessibilityAccess((file, args, options, callback) =>
+        execFile(file, args, options, (error, stdout, stderr) => {
+          callback(error, stdout, stderr);
+        }),
+      ),
   });
   const selectionCapture = new SelectionCapture({
     clipboard,

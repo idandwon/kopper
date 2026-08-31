@@ -298,6 +298,6 @@ fi
 printf '\n%s✓%s Kopper %s is ready.\n' "$KOPPER_GREEN" "$KOPPER_RESET" "$tag"
 if [[ "$upgrading" == "1" ]]; then
   printf 'Unsigned updates can leave macOS Accessibility tied to the previous Kopper build.\n'
-  printf 'If capture is unavailable, open System Settings → Privacy & Security → Accessibility, remove Kopper with the minus button, add the current Kopper app again, and enable it.\n'
+  printf 'If capture is unavailable, click Repair access in Kopper, then enable Kopper in System Settings → Privacy & Security → Accessibility.\n'
 fi
 printf 'Kopper is an unsigned friends beta. If macOS blocks the first launch, open System Settings → Privacy & Security → Open Anyway for Kopper.\n'

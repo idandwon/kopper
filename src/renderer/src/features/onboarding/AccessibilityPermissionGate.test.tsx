@@ -13,6 +13,8 @@ import {
 
 const getAccessibilityPermission =
   vi.fn<KopperApi["getAccessibilityPermission"]>();
+const repairAccessibilityPermission =
+  vi.fn<KopperApi["repairAccessibilityPermission"]>();
 const getAccessibilitySession = vi.fn<KopperApi["getAccessibilitySession"]>();
 const openAccessibilitySettings =
   vi.fn<KopperApi["openAccessibilitySettings"]>();
@@ -26,6 +28,7 @@ let visibilityState: DocumentVisibilityState;
 function installApi() {
   window.kopper = {
     getAccessibilityPermission,
+    repairAccessibilityPermission,
     getAccessibilitySession,
     openAccessibilitySettings,
     continueWithoutCapture,
@@ -44,6 +47,10 @@ beforeEach(() => {
   getAccessibilitySession.mockReset().mockResolvedValue({
     ok: true,
     value: { continuedWithoutCapture: false },
+  });
+  repairAccessibilityPermission.mockReset().mockResolvedValue({
+    ok: true,
+    value: "denied",
   });
   openAccessibilitySettings.mockReset().mockResolvedValue({
     ok: true,
@@ -90,9 +97,9 @@ function renderGate() {
               <button
                 type="button"
                 disabled={controls.pendingAction !== null}
-                onClick={() => void controls.checkAccess()}
+                onClick={() => void controls.repairAccess()}
               >
-                Check continued access
+                Repair continued access
               </button>
             </div>
           )}
@@ -275,21 +282,22 @@ describe("AccessibilityPermissionGate", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Capture unavailable");
   });
 
-  it("checks access from the continued panel and clears unavailable after a later grant", async () => {
+  it("repairs access from the continued panel and clears unavailable after a later grant", async () => {
     getAccessibilitySession.mockResolvedValue({
       ok: true,
       value: { continuedWithoutCapture: true },
     });
-    getAccessibilityPermission
-      .mockResolvedValueOnce({ ok: true, value: "unknown" })
-      .mockResolvedValueOnce({ ok: true, value: "denied" });
+    getAccessibilityPermission.mockResolvedValueOnce({
+      ok: true,
+      value: "unknown",
+    });
     const user = userEvent.setup();
     renderGate();
 
     expect(await screen.findByRole("heading", { name: "Normal panel" })).toBeVisible();
-    await user.click(screen.getByRole("button", { name: "Check continued access" }));
+    await user.click(screen.getByRole("button", { name: "Repair continued access" }));
     expect(screen.getByRole("status")).toHaveTextContent("denied");
-    expect(getAccessibilityPermission).toHaveBeenLastCalledWith(false);
+    expect(repairAccessibilityPermission).toHaveBeenCalledOnce();
 
     act(() => permissionListener?.("granted"));
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
@@ -315,22 +323,26 @@ describe("AccessibilityPermissionGate", () => {
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
-  it("settles a continued-panel check when a permission event arrives first", async () => {
+  it("settles a continued-panel repair when a permission event arrives first", async () => {
     getAccessibilitySession.mockResolvedValue({
       ok: true,
       value: { continuedWithoutCapture: true },
     });
-    getAccessibilityPermission
-      .mockResolvedValueOnce({ ok: true, value: "unknown" })
-      .mockReturnValueOnce(new Promise(() => undefined));
+    getAccessibilityPermission.mockResolvedValueOnce({
+      ok: true,
+      value: "unknown",
+    });
+    repairAccessibilityPermission.mockReturnValueOnce(
+      new Promise(() => undefined),
+    );
     const user = userEvent.setup();
     renderGate();
     expect(await screen.findByRole("heading", { name: "Normal panel" })).toBeVisible();
 
-    await user.click(screen.getByRole("button", { name: "Check continued access" }));
-    expect(screen.getByRole("button", { name: "Check continued access" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Repair continued access" }));
+    expect(screen.getByRole("button", { name: "Repair continued access" })).toBeDisabled();
     act(() => permissionListener?.("denied"));
-    expect(screen.getByRole("button", { name: "Check continued access" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Repair continued access" })).toBeEnabled();
   });
 
   it("settles continued-panel settings failures and restores its controls", async () => {
@@ -349,25 +361,33 @@ describe("AccessibilityPermissionGate", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Capture unavailable");
   });
 
-  it("settles an interactive check when a permission event arrives first", async () => {
-    getAccessibilityPermission
-      .mockResolvedValueOnce({ ok: true, value: "unknown" })
-      .mockReturnValueOnce(new Promise(() => undefined));
+  it("settles an interactive repair when a permission event arrives first", async () => {
+    getAccessibilityPermission.mockResolvedValueOnce({
+      ok: true,
+      value: "unknown",
+    });
+    repairAccessibilityPermission.mockReturnValueOnce(
+      new Promise(() => undefined),
+    );
     const user = userEvent.setup();
     renderGate();
     await screen.findByRole("heading", { name: "Enable explicit text capture" });
 
-    await user.click(screen.getByRole("button", { name: "Enable Capture" }));
-    expect(getAccessibilityPermission).toHaveBeenLastCalledWith(true);
-    expect(screen.getByRole("button", { name: "Enable Capture" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Repair access" }));
+    expect(repairAccessibilityPermission).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Repair access" })).toBeDisabled();
     act(() => permissionListener?.("denied"));
-    expect(screen.getByRole("button", { name: "Enable Capture" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Repair access" })).toBeEnabled();
   });
 
   it("maps rejected checks to fixed copy and clears the stale error after recovery", async () => {
-    getAccessibilityPermission
-      .mockRejectedValueOnce(new Error("secret transport detail"))
-      .mockResolvedValueOnce({ ok: true, value: "unknown" });
+    getAccessibilityPermission.mockRejectedValueOnce(
+      new Error("secret transport detail"),
+    );
+    repairAccessibilityPermission.mockResolvedValueOnce({
+      ok: true,
+      value: "denied",
+    });
     const user = userEvent.setup();
     renderGate();
 
@@ -375,9 +395,72 @@ describe("AccessibilityPermissionGate", () => {
       "Kopper could not check Accessibility access.",
     );
     expect(screen.getByRole("alert")).not.toHaveTextContent("secret");
-    await user.click(screen.getByRole("button", { name: "Check again" }));
+    await user.click(screen.getByRole("button", { name: "Repair access" }));
     await waitFor(() => expect(screen.queryByRole("alert")).not.toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "Check again" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Repair access" })).toBeEnabled();
+  });
+
+  it("shows fixed repair errors and restores actions", async () => {
+    repairAccessibilityPermission
+      .mockResolvedValueOnce({
+        ok: false,
+        error: {
+          code: "permission_denied",
+          message: "Kopper could not reset Accessibility access.",
+          retryable: true,
+          recoveryAction: "open_settings",
+        },
+      })
+      .mockRejectedValueOnce(new Error("private transport detail"));
+    const user = userEvent.setup();
+    renderGate();
+    await screen.findByRole("heading", { name: "Enable explicit text capture" });
+
+    await user.click(screen.getByRole("button", { name: "Repair access" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Kopper could not reset Accessibility access.",
+    );
+    await user.click(screen.getByRole("button", { name: "Repair access" }));
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Kopper could not repair Accessibility access.",
+    );
+    expect(screen.getByRole("alert")).not.toHaveTextContent("private");
+    expect(screen.getByRole("button", { name: "Repair access" })).toBeEnabled();
+  });
+
+  it("keeps a partial repair error when permission observation arrives first", async () => {
+    let resolveRepair:
+      | ((result: Awaited<ReturnType<KopperApi["repairAccessibilityPermission"]>>) => void)
+      | undefined;
+    repairAccessibilityPermission.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveRepair = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    renderGate();
+    await screen.findByRole("heading", { name: "Enable explicit text capture" });
+
+    await user.click(screen.getByRole("button", { name: "Repair access" }));
+    act(() => permissionListener?.("denied"));
+    await act(async () =>
+      resolveRepair?.({
+        ok: false,
+        error: {
+          code: "permission_denied",
+          message:
+            "Kopper reset Accessibility access, but could not open System Settings.",
+          retryable: true,
+          recoveryAction: "open_settings",
+        },
+      }),
+    );
+
+    expect(
+      screen.getByText(
+        "Kopper reset Accessibility access, but could not open System Settings.",
+      ),
+    ).toBeVisible();
   });
 
   it("settles rejected settings and continue actions and recovers", async () => {

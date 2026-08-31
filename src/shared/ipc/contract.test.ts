@@ -79,6 +79,18 @@ describe("IPC contract", () => {
     expectTypeOf<KopperApi["requestCapture"]>().toBeFunction();
   });
 
+  it("defines a no-argument Accessibility repair returning permission state", () => {
+    expect(IPC_CHANNELS.repairAccessibilityPermission).toBe(
+      "kopper:permission:repair",
+    );
+    expectTypeOf<KopperApi["repairAccessibilityPermission"]>().toBeCallableWith();
+    expectTypeOf<
+      Awaited<ReturnType<KopperApi["repairAccessibilityPermission"]>>
+    >().toEqualTypeOf<
+      Awaited<ReturnType<KopperApi["getAccessibilityPermission"]>>
+    >();
+  });
+
   it("runtime-validates clipboard arguments and result envelopes", () => {
     expect(
       CopyNotesArgumentsSchema.parse([["second", "first"], "plain"]),

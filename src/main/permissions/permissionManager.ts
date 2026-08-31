@@ -10,6 +10,7 @@ export interface PermissionManagerAdapters {
   platform: string;
   isTrustedAccessibilityClient(prompt: boolean): boolean;
   openAccessibilitySettings(): Promise<void>;
+  resetAccessibilityAccess(): Promise<void>;
 }
 
 export class PermissionManager {
@@ -33,5 +34,9 @@ export class PermissionManager {
 
   async openSettings(): Promise<void> {
     await this.adapters.openAccessibilitySettings();
+  }
+
+  async resetAccess(): Promise<void> {
+    await this.adapters.resetAccessibilityAccess();
   }
 }
