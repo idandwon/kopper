@@ -52,7 +52,7 @@ describe("AppearanceSettings", () => {
     expect(parseAppearanceMode("sepia")).toBeNull();
   });
 
-  it("announces selected and resolved mode and sends an acknowledged mode command", async () => {
+  it("announces selected and resolved mode and sends an acknowledged mode command without redundant feedback", async () => {
     const user = userEvent.setup();
     render(<AppearanceSettings />);
     expect(screen.getByRole("status")).toHaveTextContent("Selected system appearance; currently resolved to dark");
@@ -60,7 +60,9 @@ describe("AppearanceSettings", () => {
     select.focus();
     await user.keyboard("{ArrowDown}{ArrowDown}{Enter}");
     expect(execute).toHaveBeenCalledWith({ type: "appearance.setMode", mode: "light" });
-    expect(await screen.findByText("Appearance mode changed to light.")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Appearance mode changed to light."),
+    ).not.toBeInTheDocument();
 
     execute.mockResolvedValueOnce(false);
     await user.click(select);
@@ -68,6 +70,19 @@ describe("AppearanceSettings", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Appearance mode could not be changed.",
     );
+  });
+
+  it("activates a theme without redundant feedback", async () => {
+    const user = userEvent.setup();
+    render(<AppearanceSettings />);
+
+    await user.click(screen.getByRole("button", { name: "Activate Cobalt" }));
+
+    expect(execute).toHaveBeenCalledWith({
+      type: "appearance.setActiveTheme",
+      themeId: COBALT_THEME.id,
+    });
+    expect(screen.queryByText("Theme activated.")).not.toBeInTheDocument();
   });
 
   it("projects a legacy bundled active ID onto the Default row", async () => {
@@ -159,6 +174,69 @@ describe("AppearanceSettings", () => {
     expect(
       screen.getByRole("button", { name: "Delete theme" }),
     ).toBeEnabled();
+  });
+
+  it("deletes a custom theme without redundant feedback", async () => {
+    const user = userEvent.setup();
+    const customTheme = {
+      ...structuredClone(SHADCN_DEFAULT_THEME),
+      id: "custom:deletion-success",
+      name: "Deletion Success Theme",
+    };
+    vi.mocked(useKopperDocument).mockReturnValue({
+      document: { ...document, customThemes: [customTheme] },
+      ready: true,
+      pendingAction: null,
+      error: null,
+      execute,
+      undo: vi.fn(),
+      retryLastAction: vi.fn(),
+      clearError: vi.fn(),
+    });
+    render(<AppearanceSettings />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Actions for Deletion Success Theme" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Delete" }));
+    await user.click(screen.getByRole("button", { name: "Delete theme" }));
+
+    expect(execute).toHaveBeenCalledWith({
+      type: "appearance.deleteCustomTheme",
+      themeId: "custom:deletion-success",
+    });
+    expect(screen.queryByText("Custom theme deleted.")).not.toBeInTheDocument();
+  });
+
+  it("keeps completed exports visible while cancellations stay silent and failures remain alerts", async () => {
+    const user = userEvent.setup();
+    render(<AppearanceSettings />);
+
+    await user.click(screen.getByRole("button", { name: "Actions for Default" }));
+    await user.click(screen.getByRole("menuitem", { name: "Export" }));
+    expect(await screen.findByText("Theme exported.")).toBeInTheDocument();
+
+    vi.mocked(window.kopper.exportTheme).mockResolvedValueOnce({
+      ok: true,
+      value: null,
+    });
+    await user.click(screen.getByRole("button", { name: "Actions for Default" }));
+    await user.click(screen.getByRole("menuitem", { name: "Export" }));
+    expect(screen.queryByText("Export cancelled.")).not.toBeInTheDocument();
+
+    vi.mocked(window.kopper.exportTheme).mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: "write_failed",
+        message: "Theme export could not be written.",
+        retryable: true,
+      },
+    });
+    await user.click(screen.getByRole("button", { name: "Actions for Default" }));
+    await user.click(screen.getByRole("menuitem", { name: "Export" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Theme export could not be written.",
+    );
   });
 
   it("keeps a long theme name in a shrinking column with one bounded action menu", () => {

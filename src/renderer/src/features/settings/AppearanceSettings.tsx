@@ -71,12 +71,12 @@ export function AppearanceSettings() {
     setModePending(true);
     const changed = await execute({ type: "appearance.setMode", mode });
     setModePending(false);
-    setFeedback({
-      text: changed
-        ? `Appearance mode changed to ${mode}.`
-        : "Appearance mode could not be changed.",
-      tone: changed ? "status" : "error",
-    });
+    if (!changed) {
+      setFeedback({
+        text: "Appearance mode could not be changed.",
+        tone: "error",
+      });
+    }
   };
 
   const selectMode = (value: string) => {
@@ -91,10 +91,9 @@ export function AppearanceSettings() {
       type: "appearance.setActiveTheme",
       themeId,
     });
-    setFeedback({
-      text: saved ? "Theme activated." : "Theme activation failed.",
-      tone: saved ? "status" : "error",
-    });
+    if (!saved) {
+      setFeedback({ text: "Theme activation failed.", tone: "error" });
+    }
   };
 
   const exportTheme = async (themeId: string) => {
@@ -105,10 +104,9 @@ export function AppearanceSettings() {
         setFeedback({ text: result.error.message, tone: "error" });
         return;
       }
-      setFeedback({
-        text: result.value === null ? "Export cancelled." : "Theme exported.",
-        tone: "status",
-      });
+      if (result.value !== null) {
+        setFeedback({ text: "Theme exported.", tone: "status" });
+      }
     } catch {
       setFeedback({ text: "Theme export failed.", tone: "error" });
     }
@@ -120,13 +118,14 @@ export function AppearanceSettings() {
       type: "appearance.deleteCustomTheme",
       themeId: deleteTheme.id,
     });
-    setFeedback({
-      text: deleted
-        ? "Custom theme deleted."
-        : "Custom theme could not be deleted.",
-      tone: deleted ? "status" : "error",
-    });
-    if (deleted) setDeleteTheme(null);
+    if (deleted) {
+      setDeleteTheme(null);
+    } else {
+      setFeedback({
+        text: "Custom theme could not be deleted.",
+        tone: "error",
+      });
+    }
   };
 
   return (

@@ -121,7 +121,7 @@ export function ThemeImportDialog({ api = window.kopper }: { api?: Pick<KopperAp
       case "saved":
         setDidPreview(false);
         setPreview(null);
-        setMessage(`${preview.theme.name} saved and activated. Export is now available.`);
+        setMessage(null);
         return;
       case "upsert_failed":
         setError(true);

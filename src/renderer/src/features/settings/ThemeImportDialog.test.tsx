@@ -102,7 +102,10 @@ describe("ThemeImportDialog", () => {
       expect.anything(),
       preview.theme,
     );
-    expect(await screen.findByRole("status")).toHaveTextContent("Export is now available");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/saved and activated/i),
+    ).not.toBeInTheDocument();
   });
 
   it("prevents cancel, Escape, outside close, and preview while Save is pending", async () => {
