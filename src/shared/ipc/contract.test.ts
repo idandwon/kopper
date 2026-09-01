@@ -2,7 +2,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 
 import type { DocumentCommand } from "../domain/commands";
 import { createEmptyDocument, ThemeDefinitionSchema } from "../domain/document";
-import { OXIDE_LEDGER_THEME } from "../theme/presets";
+import { SHADCN_DEFAULT_THEME } from "../theme/presets";
 import {
   AccessibilitySessionResultSchema,
   CaptureOutcomeSchema,
@@ -187,7 +187,7 @@ describe("IPC contract", () => {
 
   it("runtime-validates theme and native-appearance envelopes", () => {
     const customTheme = {
-      ...structuredClone(OXIDE_LEDGER_THEME),
+      ...structuredClone(SHADCN_DEFAULT_THEME),
       id: "custom:preview",
     };
     const preview = {

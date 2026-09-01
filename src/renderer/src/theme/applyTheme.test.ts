@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { OXIDE_LEDGER_THEME } from "../../../shared/theme/presets";
+import { SHADCN_DEFAULT_THEME } from "../../../shared/theme/presets";
 import type { CompleteThemeMode } from "../../../shared/theme/themeSchema";
 import { applyTheme } from "./applyTheme";
 
@@ -45,7 +45,7 @@ describe("applyTheme", () => {
     root.style.setProperty("--background", "stale");
     root.style.setProperty("--organized", "stale");
     const mode = {
-      ...OXIDE_LEDGER_THEME.light,
+      ...SHADCN_DEFAULT_THEME.light,
       background: "rgb(1 2 3)",
       radius: "1.25rem",
       injected: "red",
@@ -69,15 +69,15 @@ describe("applyTheme", () => {
     root.style.setProperty("--capture", "prior-capture");
     root.style.setProperty("--unrelated", "untouched");
 
-    const cleanup = applyTheme(root, OXIDE_LEDGER_THEME.dark);
+    const cleanup = applyTheme(root, SHADCN_DEFAULT_THEME.dark);
     flushFrames();
     expect(root.style.getPropertyValue("--background")).toBe(
-      OXIDE_LEDGER_THEME.dark.background,
+      SHADCN_DEFAULT_THEME.dark.background,
     );
 
     cleanup();
     expect(root.style.getPropertyValue("--background")).toBe(
-      OXIDE_LEDGER_THEME.dark.background,
+      SHADCN_DEFAULT_THEME.dark.background,
     );
     flushFrames();
     expect(root.style.getPropertyValue("--background")).toBe("previous");
@@ -91,22 +91,22 @@ describe("applyTheme", () => {
     const root = document.createElement("html");
     root.style.setProperty("--background", "original");
 
-    const cleanupBeforeFrame = applyTheme(root, OXIDE_LEDGER_THEME.light);
+    const cleanupBeforeFrame = applyTheme(root, SHADCN_DEFAULT_THEME.light);
     cleanupBeforeFrame();
     flushFrames({ includeCancelled: true });
     expect(root.style.getPropertyValue("--background")).toBe("original");
 
-    const firstCleanup = applyTheme(root, OXIDE_LEDGER_THEME.light);
+    const firstCleanup = applyTheme(root, SHADCN_DEFAULT_THEME.light);
     firstCleanup();
-    const secondCleanup = applyTheme(root, OXIDE_LEDGER_THEME.dark);
+    const secondCleanup = applyTheme(root, SHADCN_DEFAULT_THEME.dark);
     flushFrames({ includeCancelled: true });
     expect(root.style.getPropertyValue("--background")).toBe(
-      OXIDE_LEDGER_THEME.dark.background,
+      SHADCN_DEFAULT_THEME.dark.background,
     );
 
     secondCleanup();
     expect(root.style.getPropertyValue("--background")).toBe(
-      OXIDE_LEDGER_THEME.dark.background,
+      SHADCN_DEFAULT_THEME.dark.background,
     );
     flushFrames();
     expect(root.style.getPropertyValue("--background")).toBe("original");
@@ -115,23 +115,23 @@ describe("applyTheme", () => {
   it("keeps the old canonical set through a cleanup/replacement transition", () => {
     const root = document.createElement("html");
     root.style.setProperty("--background", "baseline", "important");
-    const firstCleanup = applyTheme(root, OXIDE_LEDGER_THEME.light);
+    const firstCleanup = applyTheme(root, SHADCN_DEFAULT_THEME.light);
     flushFrames();
     expect(root.style.getPropertyValue("--background")).toBe(
-      OXIDE_LEDGER_THEME.light.background,
+      SHADCN_DEFAULT_THEME.light.background,
     );
 
     firstCleanup();
     expect(root.style.getPropertyValue("--background")).toBe(
-      OXIDE_LEDGER_THEME.light.background,
+      SHADCN_DEFAULT_THEME.light.background,
     );
-    const secondCleanup = applyTheme(root, OXIDE_LEDGER_THEME.dark);
+    const secondCleanup = applyTheme(root, SHADCN_DEFAULT_THEME.dark);
     expect(root.style.getPropertyValue("--background")).toBe(
-      OXIDE_LEDGER_THEME.light.background,
+      SHADCN_DEFAULT_THEME.light.background,
     );
     flushFrames({ includeCancelled: true });
     expect(root.style.getPropertyValue("--background")).toBe(
-      OXIDE_LEDGER_THEME.dark.background,
+      SHADCN_DEFAULT_THEME.dark.background,
     );
 
     secondCleanup();

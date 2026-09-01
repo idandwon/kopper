@@ -10,7 +10,7 @@ import {
   createEmptyDocument,
   ThemeDefinitionSchema,
 } from "../../shared/domain/document";
-import { OXIDE_LEDGER_THEME } from "../../shared/theme/presets";
+import { SHADCN_DEFAULT_THEME } from "../../shared/theme/presets";
 import { IPC_CHANNELS, parseDocumentResult } from "../../shared/ipc/contract";
 import type { ClipboardWriter } from "../clipboard/noteClipboard";
 import { NoteRepository } from "../persistence/noteRepository";
@@ -336,7 +336,7 @@ describe("registerIpcHandlers", () => {
     const repository = new NoteRepository(join(directory, "kopper.json"));
     const document = repository.snapshot();
     const customTheme = ThemeDefinitionSchema.parse({
-      ...structuredClone(OXIDE_LEDGER_THEME),
+      ...structuredClone(SHADCN_DEFAULT_THEME),
       id: "custom:export",
       name: "Custom export",
     });
@@ -377,12 +377,12 @@ describe("registerIpcHandlers", () => {
     });
     expect(commandExecutor.execute).not.toHaveBeenCalled();
     await expect(
-      ipcMain.invoke(IPC_CHANNELS.exportTheme, OXIDE_LEDGER_THEME.id),
+      ipcMain.invoke(IPC_CHANNELS.exportTheme, SHADCN_DEFAULT_THEME.id),
     ).resolves.toEqual({
       ok: true,
       value: { path: "/private/export.kopper-theme.json" },
     });
-    expect(themeFiles.exportTheme).toHaveBeenLastCalledWith(OXIDE_LEDGER_THEME);
+    expect(themeFiles.exportTheme).toHaveBeenLastCalledWith(SHADCN_DEFAULT_THEME);
     await ipcMain.invoke(IPC_CHANNELS.exportTheme, customTheme.id);
     expect(themeFiles.exportTheme).toHaveBeenLastCalledWith(customTheme);
     await expect(
@@ -693,7 +693,7 @@ describe("registerIpcHandlers", () => {
 
   it("returns unreadable import and appearance-upsert diagnostics as normal error envelopes", async () => {
     const repository = new NoteRepository("unused.json");
-    const unreadableTheme = structuredClone(OXIDE_LEDGER_THEME);
+    const unreadableTheme = structuredClone(SHADCN_DEFAULT_THEME);
     unreadableTheme.id = "custom:unreadable";
     unreadableTheme.light.foreground = unreadableTheme.light.background;
     const readabilityError = {
@@ -766,7 +766,7 @@ describe("registerIpcHandlers", () => {
 
     await expect(ipcMain.invoke(IPC_CHANNELS.importTheme)).rejects.toThrow();
     await expect(
-      ipcMain.invoke(IPC_CHANNELS.exportTheme, OXIDE_LEDGER_THEME.id),
+      ipcMain.invoke(IPC_CHANNELS.exportTheme, SHADCN_DEFAULT_THEME.id),
     ).rejects.toThrow();
     await expect(
       ipcMain.invoke(IPC_CHANNELS.getNativeAppearance),

@@ -8,7 +8,7 @@ import {
   createEmptyDocument,
   type KopperDocument,
 } from "../../shared/domain/document";
-import { OXIDE_LEDGER_THEME } from "../../shared/theme/presets";
+import { SHADCN_DEFAULT_THEME } from "../../shared/theme/presets";
 import { CommandService } from "../domain/commandService";
 import { MainOperationCoordinator } from "../domain/mainOperationCoordinator";
 import { NoteRepository } from "../persistence/noteRepository";
@@ -191,7 +191,7 @@ describe("DocumentFiles", () => {
     const before = repository.snapshot();
     const imported = createEmptyDocument(new Date(timestamp));
     const theme = {
-      ...structuredClone(OXIDE_LEDGER_THEME),
+      ...structuredClone(SHADCN_DEFAULT_THEME),
       id: reserved ? "builtin:collision" : "custom:unreadable",
     };
     if (!reserved) theme.light.foreground = theme.light.background;

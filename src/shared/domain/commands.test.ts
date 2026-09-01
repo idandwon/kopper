@@ -15,7 +15,6 @@ import {
 } from "./document";
 import {
   LEGACY_BUNDLED_THEME_IDS,
-  OXIDE_LEDGER_THEME,
   SHADCN_DEFAULT_THEME,
 } from "../theme/presets";
 
@@ -566,7 +565,7 @@ describe("section commands", () => {
 
 describe("appearance commands", () => {
   const customTheme = (): ThemeDefinition => ({
-    ...structuredClone(OXIDE_LEDGER_THEME),
+    ...structuredClone(SHADCN_DEFAULT_THEME),
     id: "custom:oxide",
     name: "Duplicate name allowed",
   });
@@ -630,7 +629,7 @@ describe("appearance commands", () => {
       { type: "appearance.deleteCustomTheme", themeId: "missing" },
       {
         type: "appearance.upsertCustomTheme",
-        theme: structuredClone(OXIDE_LEDGER_THEME),
+        theme: structuredClone(SHADCN_DEFAULT_THEME),
       },
       {
         type: "appearance.deleteCustomTheme",

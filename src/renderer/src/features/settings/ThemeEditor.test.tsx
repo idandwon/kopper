@@ -9,7 +9,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { OXIDE_LEDGER_THEME } from "../../../../shared/theme/presets";
+import { SHADCN_DEFAULT_THEME } from "../../../../shared/theme/presets";
 import { SHADCN_THEME_TOKENS } from "../../../../shared/theme/tokens";
 import { useTheme } from "../../theme/ThemeProvider";
 import { ThemeEditor } from "./ThemeEditor";
@@ -21,7 +21,7 @@ const cancelPreview = vi.fn();
 const savePreview = vi.fn().mockResolvedValue({ status: "saved" });
 const onOpenChange = vi.fn();
 const customTheme = {
-  ...structuredClone(OXIDE_LEDGER_THEME),
+  ...structuredClone(SHADCN_DEFAULT_THEME),
   id: "custom:editor",
   name: "Editor Theme",
 };
@@ -34,7 +34,7 @@ beforeEach(() => {
   onOpenChange.mockReset();
   vi.mocked(useTheme).mockReturnValue({
     resolvedMode: "light",
-    activeTheme: OXIDE_LEDGER_THEME,
+    activeTheme: SHADCN_DEFAULT_THEME,
     previewTheme,
     cancelPreview,
     savePreview,
@@ -330,7 +330,7 @@ describe("ThemeEditor", () => {
     vi.stubGlobal("crypto", { randomUUID: vi.fn(() => generatedId) });
     render(
       <ThemeEditor
-        baseTheme={OXIDE_LEDGER_THEME}
+        baseTheme={SHADCN_DEFAULT_THEME}
         custom={false}
         open
         onOpenChange={onOpenChange}

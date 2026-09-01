@@ -6,7 +6,7 @@ import {
   type KopperDocument,
 } from "../../shared/domain/document";
 import type { KopperError, Result } from "../../shared/domain/errors";
-import { OXIDE_LEDGER_THEME } from "../../shared/theme/presets";
+import { SHADCN_DEFAULT_THEME } from "../../shared/theme/presets";
 import { CommandService, type CommandRepository } from "./commandService";
 
 const timestamp = "2026-08-16T12:00:00.000Z";
@@ -375,7 +375,7 @@ describe("CommandService", () => {
   it("keeps the latest appearance and custom themes when undoing an older note edit", async () => {
     const { service } = makeService();
     const customTheme = {
-      ...structuredClone(OXIDE_LEDGER_THEME),
+      ...structuredClone(SHADCN_DEFAULT_THEME),
       id: "custom:newest",
       name: "Newest custom",
     };

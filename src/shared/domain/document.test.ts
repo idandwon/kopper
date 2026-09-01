@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { OXIDE_LEDGER_THEME, SHADCN_DEFAULT_THEME } from "../theme/presets";
+import { SHADCN_DEFAULT_THEME } from "../theme/presets";
 import {
   createEmptyDocument,
   parseDocument,
@@ -118,7 +118,7 @@ describe("parseDocument", () => {
     const base = withKnownSection(createEmptyDocument(new Date(timestamp)));
     const section = base.sections[0];
     const theme = {
-      ...OXIDE_LEDGER_THEME,
+      ...SHADCN_DEFAULT_THEME,
       id: "theme-1",
       name: "Theme",
     };
@@ -140,7 +140,7 @@ describe("parseDocument", () => {
   it("requires complete, strict persisted theme definitions without external metadata", () => {
     const base = withKnownSection(createEmptyDocument(new Date(timestamp)));
     const theme = {
-      ...structuredClone(OXIDE_LEDGER_THEME),
+      ...structuredClone(SHADCN_DEFAULT_THEME),
       id: "theme-1",
       name: "Custom theme",
     };
@@ -176,7 +176,7 @@ describe("parseDocument", () => {
   ])("rejects $name as invalid_document", ({ active, reserved }) => {
     const base = withKnownSection(createEmptyDocument(new Date(timestamp)));
     const theme = {
-      ...structuredClone(OXIDE_LEDGER_THEME),
+      ...structuredClone(SHADCN_DEFAULT_THEME),
       id: reserved ? "builtin:custom-collision" : "custom:unreadable",
       name: "Invalid persisted theme",
     };
@@ -203,7 +203,7 @@ describe("parseDocument", () => {
   it("rejects translucent roots with structured invalid_document details", () => {
     const base = withKnownSection(createEmptyDocument(new Date(timestamp)));
     const theme = {
-      ...structuredClone(OXIDE_LEDGER_THEME),
+      ...structuredClone(SHADCN_DEFAULT_THEME),
       id: "custom:translucent",
     };
     theme.dark.background = "rgb(0 0 0 / 0.5)";

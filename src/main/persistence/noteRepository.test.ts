@@ -8,7 +8,7 @@ import {
   createEmptyDocument,
   type KopperDocument,
 } from "../../shared/domain/document";
-import { OXIDE_LEDGER_THEME } from "../../shared/theme/presets";
+import { SHADCN_DEFAULT_THEME } from "../../shared/theme/presets";
 import { AtomicReplaceError } from "./atomicFile";
 import { NoteRepository } from "./noteRepository";
 
@@ -106,7 +106,7 @@ describe("NoteRepository", () => {
     async ({ active, reserved }) => {
       const document = createEmptyDocument(new Date(timestamp));
       const theme = {
-        ...structuredClone(OXIDE_LEDGER_THEME),
+        ...structuredClone(SHADCN_DEFAULT_THEME),
         id: reserved ? "builtin:collision" : "custom:unreadable",
       };
       if (!reserved) theme.dark.foreground = theme.dark.background;

@@ -127,7 +127,7 @@ const document: KopperDocument = {
     togglePanel: "CommandOrControl+Shift+Space",
   },
   window: { pinned: false, bounds: null },
-  appearance: { mode: "system", activeThemeId: "oxide-ledger" },
+  appearance: { mode: "system", activeThemeId: "builtin:shadcn-default" },
   customThemes: [],
   draft: null,
 };
@@ -248,7 +248,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("Oxide Ledger App", () => {
+describe("Default theme App", () => {
   it("gates only the loaded normal panel and continues without a false grant", async () => {
     onboardingMock.mode = "hold";
     const user = userEvent.setup();

@@ -5,7 +5,6 @@ import { deriveCompleteTheme, validateReadableTheme } from "./deriveTheme";
 import {
   BUNDLED_THEMES,
   LEGACY_BUNDLED_THEME_IDS,
-  OXIDE_LEDGER_THEME,
   SHADCN_DEFAULT_THEME,
   getThemeById,
   isBundledThemeId,
@@ -112,19 +111,19 @@ describe("getThemeById", () => {
 
   it("resolves reserved bundled IDs before persisted custom themes", () => {
     const impostor = {
-      ...OXIDE_LEDGER_THEME,
+      ...SHADCN_DEFAULT_THEME,
       name: "Impostor",
     };
     const document = {
       customThemes: [impostor],
     } as KopperDocument;
 
-    expect(getThemeById(document, OXIDE_LEDGER_THEME.id)).toBe(SHADCN_DEFAULT_THEME);
+    expect(getThemeById(document, SHADCN_DEFAULT_THEME.id)).toBe(SHADCN_DEFAULT_THEME);
   });
 
   it("resolves custom themes and returns null for unknown IDs", () => {
     const custom = {
-      ...OXIDE_LEDGER_THEME,
+      ...SHADCN_DEFAULT_THEME,
       id: "custom-theme-id",
       name: "Custom",
     };

@@ -9,10 +9,7 @@ import type {
   ThemeDefinition,
 } from "../../../shared/domain/document";
 import type { KopperApi } from "../../../shared/ipc/contract";
-import {
-  OXIDE_LEDGER_THEME,
-  SHADCN_DEFAULT_THEME,
-} from "../../../shared/theme/presets";
+import { SHADCN_DEFAULT_THEME } from "../../../shared/theme/presets";
 import {
   useKopperDocument,
   type KopperDocumentContextValue,
@@ -53,7 +50,7 @@ function makeDocument(
     window: { pinned: false, bounds: null },
     appearance: {
       mode: "system",
-      activeThemeId: OXIDE_LEDGER_THEME.id,
+      activeThemeId: SHADCN_DEFAULT_THEME.id,
       ...overrides,
     },
     customThemes,
@@ -63,16 +60,16 @@ function makeDocument(
 
 function customTheme(id = "custom:workshop"): ThemeDefinition {
   return {
-    ...structuredClone(OXIDE_LEDGER_THEME),
+    ...structuredClone(SHADCN_DEFAULT_THEME),
     id,
     name: "Workshop Custom",
     light: {
-      ...OXIDE_LEDGER_THEME.light,
+      ...SHADCN_DEFAULT_THEME.light,
       background: "rgb(240 241 242)",
       radius: "1.125rem",
     },
     dark: {
-      ...OXIDE_LEDGER_THEME.dark,
+      ...SHADCN_DEFAULT_THEME.dark,
       background: "rgb(20 21 22)",
       radius: "1.125rem",
     },
@@ -172,7 +169,7 @@ describe("ThemeProvider resolution and root application", () => {
     flushFrames();
     expect(
       document.documentElement.style.getPropertyValue("--background"),
-    ).toBe(OXIDE_LEDGER_THEME.light.background);
+    ).toBe(SHADCN_DEFAULT_THEME.light.background);
 
     setDocumentContext(makeDocument({ mode: "dark" }));
     rendered.rerender();
@@ -182,7 +179,7 @@ describe("ThemeProvider resolution and root application", () => {
     flushFrames();
     expect(
       document.documentElement.style.getPropertyValue("--background"),
-    ).toBe(OXIDE_LEDGER_THEME.dark.background);
+    ).toBe(SHADCN_DEFAULT_THEME.dark.background);
   });
 
   it("subscribes before getting native appearance and ignores a stale getter", async () => {
@@ -374,11 +371,11 @@ describe("ThemeProvider previews", () => {
     expect(execute).not.toHaveBeenCalled();
 
     act(() => result.current.cancelPreview(previewOwner));
-    expect(result.current.activeTheme).toBe(OXIDE_LEDGER_THEME);
+    expect(result.current.activeTheme).toBe(SHADCN_DEFAULT_THEME);
     flushFrames();
     expect(
       document.documentElement.style.getPropertyValue("--background"),
-    ).toBe(OXIDE_LEDGER_THEME.light.background);
+    ).toBe(SHADCN_DEFAULT_THEME.light.background);
     expect(execute).not.toHaveBeenCalled();
   });
 
@@ -404,7 +401,7 @@ describe("ThemeProvider previews", () => {
     expect(document.documentElement).not.toHaveClass("dark");
     flushFrames();
     expect(document.documentElement.style.getPropertyValue("--background")).toBe(
-      OXIDE_LEDGER_THEME.light.background,
+      SHADCN_DEFAULT_THEME.light.background,
     );
   });
 
@@ -478,9 +475,9 @@ describe("ThemeProvider previews", () => {
       [{ type: "appearance.upsertCustomTheme", theme }],
       [{ type: "appearance.setActiveTheme", themeId: theme.id }],
     ]);
-    expect(result.current.activeTheme).toBe(OXIDE_LEDGER_THEME);
+    expect(result.current.activeTheme).toBe(SHADCN_DEFAULT_THEME);
     expect(persistedDocument.appearance.activeThemeId).toBe(
-      OXIDE_LEDGER_THEME.id,
+      SHADCN_DEFAULT_THEME.id,
     );
     expect(persistedDocument.customThemes).toEqual([]);
   });
@@ -499,7 +496,7 @@ describe("ThemeProvider previews", () => {
         rendered.result.current.savePreview(previewOwner, persistedCopy),
       ).resolves.toEqual({ status: "saved" });
     });
-    expect(rendered.result.current.activeTheme).toBe(OXIDE_LEDGER_THEME);
+    expect(rendered.result.current.activeTheme).toBe(SHADCN_DEFAULT_THEME);
 
     setDocumentContext(
       makeDocument({ mode: "light", activeThemeId: laterTheme.id }, [
@@ -534,7 +531,7 @@ describe("ThemeProvider previews", () => {
     await act(async () => activate.resolve(true));
     await expect(saving).resolves.toEqual({ status: "saved" });
     expect(result.current.resolvedMode).toBe("light");
-    expect(result.current.activeTheme).toBe(OXIDE_LEDGER_THEME);
+    expect(result.current.activeTheme).toBe(SHADCN_DEFAULT_THEME);
   });
 
   it("lets an unmounted preview owner release only its own preview", () => {
@@ -552,7 +549,7 @@ describe("ThemeProvider previews", () => {
     expect(result.current.resolvedMode).toBe("light");
 
     act(() => result.current.cancelPreview(newerOwner));
-    expect(result.current.activeTheme).toBe(OXIDE_LEDGER_THEME);
+    expect(result.current.activeTheme).toBe(SHADCN_DEFAULT_THEME);
   });
 
   it("does not clear a newer same-ID preview object or its mode when an earlier save completes", async () => {

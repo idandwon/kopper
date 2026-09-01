@@ -7,10 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KopperDocumentContextValue } from "../../app/DocumentProvider";
 import { useKopperDocument } from "../../app/DocumentProvider";
 import { useTheme } from "../../theme/ThemeProvider";
-import {
-  OXIDE_LEDGER_THEME,
-  SHADCN_DEFAULT_THEME,
-} from "../../../../shared/theme/presets";
+import { SHADCN_DEFAULT_THEME } from "../../../../shared/theme/presets";
 import {
   AppearanceSettings,
   parseAppearanceMode,
@@ -40,7 +37,7 @@ beforeEach(() => {
   HTMLElement.prototype.releasePointerCapture = vi.fn();
   execute.mockReset().mockResolvedValue(true);
   vi.mocked(useKopperDocument).mockReturnValue({ document, ready: true, pendingAction: null, error: null, execute, undo: vi.fn(), retryLastAction: vi.fn(), clearError: vi.fn() });
-  vi.mocked(useTheme).mockReturnValue({ resolvedMode: "dark", activeTheme: OXIDE_LEDGER_THEME, previewTheme: vi.fn(), cancelPreview: vi.fn(), savePreview: vi.fn().mockResolvedValue({ status: "saved" }) });
+  vi.mocked(useTheme).mockReturnValue({ resolvedMode: "dark", activeTheme: SHADCN_DEFAULT_THEME, previewTheme: vi.fn(), cancelPreview: vi.fn(), savePreview: vi.fn().mockResolvedValue({ status: "saved" }) });
   window.kopper = { exportTheme: vi.fn().mockResolvedValue({ ok: true, value: { path: "/theme.json" } }) } as never;
 });
 
@@ -94,7 +91,7 @@ describe("AppearanceSettings", () => {
   it("keeps a failed custom-theme deletion authoritative, visible, and retryable", async () => {
     const user = userEvent.setup();
     const customTheme = {
-      ...structuredClone(OXIDE_LEDGER_THEME),
+      ...structuredClone(SHADCN_DEFAULT_THEME),
       id: "custom:deletion-failure",
       name: "Deletion Failure Theme",
     };
@@ -136,7 +133,7 @@ describe("AppearanceSettings", () => {
   it("keeps a long theme name in a shrinking column with one bounded action menu", () => {
     const name = "A very long custom theme name that must wrap without widening settings";
     const customTheme = {
-      ...structuredClone(OXIDE_LEDGER_THEME),
+      ...structuredClone(SHADCN_DEFAULT_THEME),
       id: "custom:long-theme",
       name,
     };

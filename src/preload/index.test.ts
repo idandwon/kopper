@@ -5,7 +5,7 @@ import {
   createEmptyDocument,
   ThemeDefinitionSchema,
 } from "../shared/domain/document";
-import { OXIDE_LEDGER_THEME } from "../shared/theme/presets";
+import { SHADCN_DEFAULT_THEME } from "../shared/theme/presets";
 import type { KopperApi } from "../shared/ipc/contract";
 import { IPC_CHANNELS } from "../shared/ipc/contract";
 
@@ -214,7 +214,7 @@ describe("preload bridge", () => {
 
   it("validates theme and native-appearance IPC in both directions", async () => {
     const customTheme = ThemeDefinitionSchema.parse({
-      ...structuredClone(OXIDE_LEDGER_THEME),
+      ...structuredClone(SHADCN_DEFAULT_THEME),
       id: "custom:preview",
     });
     const readabilityError = {

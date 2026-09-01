@@ -118,6 +118,3 @@ export function getThemeById(
   if (isBundledThemeId(id)) return SHADCN_DEFAULT_THEME;
   return document.customThemes.find((theme) => theme.id === id) ?? null;
 }
-
-/** @deprecated Temporary fixture bridge; remove in Task 4. */
-export const OXIDE_LEDGER_THEME = SHADCN_DEFAULT_THEME;

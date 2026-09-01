@@ -68,7 +68,7 @@ function demoDocument(mode: AppearanceMode): KopperDocument {
     activeSectionId: "demo-prompts",
     appearance: {
       mode,
-      activeThemeId: "builtin:oxide-ledger",
+      activeThemeId: "builtin:shadcn-default",
     },
     window: {
       pinned: false,
@@ -143,7 +143,7 @@ async function expectVisualBaselines(
     }
     await page.mouse.move(1, Math.floor(height / 2));
     await expect(page).toHaveScreenshot(
-      `oxide-ledger-${mode}-${width}x${height}.png`,
+      `shadcn-default-${mode}-${width}x${height}.png`,
       {
         animations: "disabled",
         caret: "hide",
@@ -165,9 +165,13 @@ async function expectVisualBaselines(
       const active = document.activeElement;
       if (active instanceof HTMLElement) active.blur();
     });
+    const modeSelect = page.getByRole("combobox", { name: "Appearance mode" });
+    await modeSelect.focus();
+    await expect(modeSelect).toBeFocused();
     await page.mouse.move(1, Math.floor(height / 2));
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
     await expect(page).toHaveScreenshot(
-      `oxide-ledger-settings-${mode}-${width}x${height}.png`,
+      `shadcn-default-settings-${mode}-${width}x${height}.png`,
       {
         animations: "disabled",
         caret: "hide",
@@ -369,7 +373,7 @@ test("keeps control, tab, radius, and overlay geometry on the shared system", as
     tab: notesGeometry.tab,
   });
 
-  await openThemeActions(page, "Oxide Ledger");
+  await openThemeActions(page, "Default");
   await page.getByRole("menuitem", { name: "Customize" }).click();
   const dialog = page.getByRole("dialog", { name: "Customize theme" });
   const dialogGeometry = await dialog.evaluate((element) => {
@@ -586,7 +590,7 @@ test("renders the compact keyboard shortcuts baseline", async ({ kopper }) => {
   }
 });
 
-test("renders deterministic Oxide Ledger Light Settings baselines", async ({
+test("renders deterministic Default Light Settings baselines", async ({
   kopper,
 }) => {
   const page = await kopper.launchKopper(demoDocument("light"));
@@ -594,7 +598,7 @@ test("renders deterministic Oxide Ledger Light Settings baselines", async ({
   await expectVisualBaselines(page, "light");
 });
 
-test("renders deterministic Oxide Ledger Dark Settings baselines", async ({
+test("renders deterministic Default Dark Settings baselines", async ({
   kopper,
 }) => {
   const page = await kopper.launchKopper(demoDocument("dark"));

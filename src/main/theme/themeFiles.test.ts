@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { ThemeDefinition } from "../../shared/domain/document";
-import { OXIDE_LEDGER_THEME } from "../../shared/theme/presets";
+import { SHADCN_DEFAULT_THEME } from "../../shared/theme/presets";
 import {
   THEME_FILE_SCHEMA_URL,
   type ThemeFile,
@@ -14,7 +14,7 @@ import {
 } from "./themeFiles";
 
 function externalTheme(
-  theme: ThemeDefinition = OXIDE_LEDGER_THEME,
+  theme: ThemeDefinition = SHADCN_DEFAULT_THEME,
 ): ThemeFile {
   return {
     $schema: THEME_FILE_SCHEMA_URL,
@@ -288,18 +288,18 @@ describe("ThemeFiles", () => {
     const nativeDialog = dialog({
       showSaveDialog: vi.fn().mockResolvedValue({
         canceled: false,
-        filePath: "/private/oxide-ledger.kopper-theme.json",
+        filePath: "/private/default.kopper-theme.json",
       }),
     });
     const files = new ThemeFiles(nativeDialog, { fileSystem: fs });
 
-    await expect(files.exportTheme(OXIDE_LEDGER_THEME)).resolves.toEqual({
+    await expect(files.exportTheme(SHADCN_DEFAULT_THEME)).resolves.toEqual({
       ok: true,
-      value: { path: "/private/oxide-ledger.kopper-theme.json" },
+      value: { path: "/private/default.kopper-theme.json" },
     });
     expect(nativeDialog.showSaveDialog).toHaveBeenCalledWith(
       expect.objectContaining({
-        defaultPath: "oxide-ledger.kopper-theme.json",
+        defaultPath: "default.kopper-theme.json",
         filters: [{ name: "Kopper theme", extensions: ["json"] }],
       }),
     );
@@ -330,7 +330,7 @@ describe("ThemeFiles", () => {
     const nativeDialog = dialog();
     const files = new ThemeFiles(nativeDialog, { fileSystem: fileSystem() });
     await files.exportTheme({
-      ...OXIDE_LEDGER_THEME,
+      ...SHADCN_DEFAULT_THEME,
       id: "custom:cafe",
       name: "Café & Copper.kopper-theme.json",
     });
@@ -346,7 +346,7 @@ describe("ThemeFiles", () => {
     async (name) => {
       const nativeDialog = dialog();
       const files = new ThemeFiles(nativeDialog, { fileSystem: fileSystem() });
-      await files.exportTheme({ ...OXIDE_LEDGER_THEME, id: "custom:x", name });
+      await files.exportTheme({ ...SHADCN_DEFAULT_THEME, id: "custom:x", name });
       expect(nativeDialog.showSaveDialog).toHaveBeenCalledWith(
         expect.objectContaining({
           defaultPath: "custom-theme.kopper-theme.json",
@@ -358,7 +358,7 @@ describe("ThemeFiles", () => {
   it("returns null success for native-dialog cancellation", async () => {
     const files = new ThemeFiles(dialog(), { fileSystem: fileSystem() });
     await expect(files.importForPreview()).resolves.toEqual({ ok: true, value: null });
-    await expect(files.exportTheme(OXIDE_LEDGER_THEME)).resolves.toEqual({
+    await expect(files.exportTheme(SHADCN_DEFAULT_THEME)).resolves.toEqual({
       ok: true,
       value: null,
     });
@@ -372,7 +372,7 @@ describe("ThemeFiles", () => {
       }),
       { fileSystem: fs },
     );
-    const unreadable = structuredClone(OXIDE_LEDGER_THEME);
+    const unreadable = structuredClone(SHADCN_DEFAULT_THEME);
     unreadable.light.foreground = unreadable.light.background;
     await expect(files.exportTheme(unreadable)).resolves.toMatchObject({
       ok: false,
@@ -381,7 +381,7 @@ describe("ThemeFiles", () => {
     expect(fs.writeFile).not.toHaveBeenCalled();
 
     fs.writeFile.mockRejectedValueOnce(new Error("denied"));
-    await expect(files.exportTheme(OXIDE_LEDGER_THEME)).resolves.toMatchObject({
+    await expect(files.exportTheme(SHADCN_DEFAULT_THEME)).resolves.toMatchObject({
       ok: false,
       error: { code: "write_failed", retryable: false },
     });

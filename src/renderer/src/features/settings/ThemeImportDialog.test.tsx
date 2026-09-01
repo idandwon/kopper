@@ -5,7 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KopperApi, ThemeImportPreview } from "../../../../shared/ipc/contract";
-import { OXIDE_LEDGER_THEME } from "../../../../shared/theme/presets";
+import { SHADCN_DEFAULT_THEME } from "../../../../shared/theme/presets";
 import { useTheme } from "../../theme/ThemeProvider";
 import { ThemeImportDialog } from "./ThemeImportDialog";
 
@@ -15,13 +15,13 @@ const previewTheme = vi.fn();
 const cancelPreview = vi.fn();
 const savePreview = vi.fn().mockResolvedValue({ status: "saved" });
 const preview: ThemeImportPreview = {
-  theme: { ...structuredClone(OXIDE_LEDGER_THEME), id: "71e13585-a167-4fe6-9819-34f3c2522237", name: "Imported Ledger" },
+  theme: { ...structuredClone(SHADCN_DEFAULT_THEME), id: "71e13585-a167-4fe6-9819-34f3c2522237", name: "Imported Ledger" },
   normalizedTokens: { light: ["radius", "capture"], dark: [] },
 };
 
 beforeEach(() => {
   previewTheme.mockReset(); cancelPreview.mockReset(); savePreview.mockReset().mockResolvedValue({ status: "saved" });
-  vi.mocked(useTheme).mockReturnValue({ resolvedMode: "light", activeTheme: OXIDE_LEDGER_THEME, previewTheme, cancelPreview, savePreview });
+  vi.mocked(useTheme).mockReturnValue({ resolvedMode: "light", activeTheme: SHADCN_DEFAULT_THEME, previewTheme, cancelPreview, savePreview });
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
