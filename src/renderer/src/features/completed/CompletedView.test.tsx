@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KopperDocument } from "../../../../shared/domain/document";
+import { SHADCN_DEFAULT_THEME } from "../../../../shared/theme/presets";
 import { useKopperDocument, type KopperDocumentContextValue } from "../../app/DocumentProvider";
 import { PanelFeedbackProvider } from "../feedback/PanelFeedback";
 import { NotePresentationProvider } from "../notes/NotePresentation";
@@ -26,7 +27,7 @@ const document: KopperDocument = {
   activeSectionId: "inbox",
   shortcuts: { capture: { kind: "double-modifier", modifier: "shift" }, togglePanel: "CommandOrControl+Shift+Space" },
   window: { pinned: false, bounds: null },
-  appearance: { mode: "system", activeThemeId: "oxide-ledger" },
+  appearance: { mode: "system", activeThemeId: SHADCN_DEFAULT_THEME.id },
   customThemes: [],
   draft: null,
 };

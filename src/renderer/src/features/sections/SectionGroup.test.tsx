@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KopperDocument } from "../../../../shared/domain/document";
 import type { KopperApi } from "../../../../shared/ipc/contract";
+import { SHADCN_DEFAULT_THEME } from "../../../../shared/theme/presets";
 import {
   useKopperDocument,
   type KopperDocumentContextValue,
@@ -64,7 +65,7 @@ const document: KopperDocument = {
     togglePanel: "CommandOrControl+Shift+Space",
   },
   window: { pinned: false, bounds: null },
-  appearance: { mode: "system", activeThemeId: "oxide-ledger" },
+  appearance: { mode: "system", activeThemeId: SHADCN_DEFAULT_THEME.id },
   customThemes: [],
   draft: null,
 };

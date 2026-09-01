@@ -6,6 +6,7 @@ import type { DocumentCommand } from "../../../shared/domain/commands";
 import type { KopperDocument } from "../../../shared/domain/document";
 import type { KopperError, Result } from "../../../shared/domain/errors";
 import type { KopperApi } from "../../../shared/ipc/contract";
+import { SHADCN_DEFAULT_THEME } from "../../../shared/theme/presets";
 import { DocumentProvider, useKopperDocument } from "./DocumentProvider";
 
 const timestamp = "2026-08-16T12:00:00.000Z";
@@ -46,7 +47,7 @@ function documentWith(body = "Before"): KopperDocument {
       togglePanel: "CommandOrControl+Shift+Space",
     },
     window: { pinned: false, bounds: null },
-    appearance: { mode: "system", activeThemeId: "oxide-ledger" },
+    appearance: { mode: "system", activeThemeId: SHADCN_DEFAULT_THEME.id },
     customThemes: [],
     draft: null,
   };

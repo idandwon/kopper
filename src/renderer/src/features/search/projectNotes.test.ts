@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { KopperDocument } from "../../../../shared/domain/document";
+import { SHADCN_DEFAULT_THEME } from "../../../../shared/theme/presets";
 import { projectNotes } from "./projectNotes";
 
 const timestamp = "2026-08-16T12:00:00.000Z";
@@ -79,7 +80,7 @@ function makeDocument(): KopperDocument {
       togglePanel: "CommandOrControl+Shift+Space",
     },
     window: { pinned: false, bounds: null },
-    appearance: { mode: "system", activeThemeId: "oxide-ledger" },
+    appearance: { mode: "system", activeThemeId: SHADCN_DEFAULT_THEME.id },
     customThemes: [],
     draft: null,
   };

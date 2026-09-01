@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { KopperDocument, Note } from "../../shared/domain/document";
 import type { KopperError, Result } from "../../shared/domain/errors";
+import { SHADCN_DEFAULT_THEME } from "../../shared/theme/presets";
 import {
   copyNotesToClipboard,
   formatNotesForClipboard,
@@ -45,7 +46,7 @@ function snapshot(notes: Note[]): KopperDocument {
       togglePanel: "CommandOrControl+Shift+Space",
     },
     window: { pinned: false, bounds: null },
-    appearance: { mode: "system", activeThemeId: "oxide-ledger" },
+    appearance: { mode: "system", activeThemeId: SHADCN_DEFAULT_THEME.id },
     customThemes: [],
     draft: null,
   };
