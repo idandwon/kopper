@@ -56,11 +56,6 @@ export const LEGACY_BUNDLED_THEME_IDS = [
   "builtin:index-drawer",
 ] as const;
 
-const bundledThemeIds = new Set<string>([
-  "builtin:shadcn-default",
-  ...LEGACY_BUNDLED_THEME_IDS,
-]);
-
 export const SHADCN_DEFAULT_THEME: ThemeDefinition = {
   id: "builtin:shadcn-default",
   version: 1,
@@ -105,16 +100,81 @@ export const SHADCN_DEFAULT_THEME: ThemeDefinition = {
   }),
 };
 
-export const BUNDLED_THEMES = [SHADCN_DEFAULT_THEME] as const;
+function createAccentTheme({
+  id,
+  name,
+  lightPrimary,
+  lightPrimaryForeground,
+  darkPrimary,
+  darkPrimaryForeground,
+}: {
+  id: string;
+  name: string;
+  lightPrimary: string;
+  lightPrimaryForeground: string;
+  darkPrimary: string;
+  darkPrimaryForeground: string;
+}): ThemeDefinition {
+  return {
+    id,
+    version: 1,
+    name,
+    light: {
+      ...SHADCN_DEFAULT_THEME.light,
+      primary: lightPrimary,
+      "primary-foreground": lightPrimaryForeground,
+      ring: lightPrimary,
+      capture: lightPrimary,
+    },
+    dark: {
+      ...SHADCN_DEFAULT_THEME.dark,
+      primary: darkPrimary,
+      "primary-foreground": darkPrimaryForeground,
+      ring: darkPrimary,
+      capture: darkPrimary,
+    },
+  };
+}
+
+export const COBALT_THEME = createAccentTheme({
+  id: "builtin:shadcn-cobalt",
+  name: "Cobalt",
+  lightPrimary: "oklch(0.488 0.243 264.376)",
+  lightPrimaryForeground: "oklch(0.985 0 0)",
+  darkPrimary: "oklch(0.707 0.165 254.624)",
+  darkPrimaryForeground: "oklch(0.205 0 0)",
+});
+
+export const VIOLET_THEME = createAccentTheme({
+  id: "builtin:shadcn-violet",
+  name: "Violet",
+  lightPrimary: "oklch(0.491 0.27 292.581)",
+  lightPrimaryForeground: "oklch(0.985 0 0)",
+  darkPrimary: "oklch(0.702 0.183 293.541)",
+  darkPrimaryForeground: "oklch(0.205 0 0)",
+});
+
+export const BUNDLED_THEMES = [
+  SHADCN_DEFAULT_THEME,
+  COBALT_THEME,
+  VIOLET_THEME,
+] as const;
+
+const bundledThemesById = new Map<string, ThemeDefinition>(
+  BUNDLED_THEMES.map((theme) => [theme.id, theme]),
+);
+const legacyBundledThemeIds = new Set<string>(LEGACY_BUNDLED_THEME_IDS);
 
 export function isBundledThemeId(id: string): boolean {
-  return bundledThemeIds.has(id);
+  return bundledThemesById.has(id) || legacyBundledThemeIds.has(id);
 }
 
 export function getThemeById(
   document: Pick<KopperDocument, "customThemes">,
   id: string,
 ): ThemeDefinition | null {
-  if (isBundledThemeId(id)) return SHADCN_DEFAULT_THEME;
+  const bundled = bundledThemesById.get(id);
+  if (bundled !== undefined) return bundled;
+  if (legacyBundledThemeIds.has(id)) return SHADCN_DEFAULT_THEME;
   return document.customThemes.find((theme) => theme.id === id) ?? null;
 }

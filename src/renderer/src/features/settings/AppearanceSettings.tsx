@@ -6,7 +6,7 @@ import type {
 } from "../../../../shared/domain/document";
 import {
   BUNDLED_THEMES,
-  isBundledThemeId,
+  getThemeById,
   SHADCN_DEFAULT_THEME,
 } from "../../../../shared/theme/presets";
 import { useKopperDocument } from "../../app/DocumentProvider";
@@ -61,6 +61,9 @@ export function AppearanceSettings() {
   const [modePending, setModePending] = useState(false);
   const busy = pendingAction !== null || modePending;
   const themes = [...BUNDLED_THEMES, ...document.customThemes];
+  const activeThemeId =
+    getThemeById(document, document.appearance.activeThemeId)?.id ??
+    SHADCN_DEFAULT_THEME.id;
 
   const changeMode = async (mode: AppearanceMode) => {
     if (busy) return;
@@ -174,10 +177,7 @@ export function AppearanceSettings() {
         </h3>
         <div className="min-w-0 divide-y divide-border border-y border-border">
           {themes.map((theme) => {
-            const active =
-              theme.id === SHADCN_DEFAULT_THEME.id
-                ? isBundledThemeId(document.appearance.activeThemeId)
-                : theme.id === document.appearance.activeThemeId;
+            const active = theme.id === activeThemeId;
             const custom = document.customThemes.some(
               ({ id }) => id === theme.id,
             );

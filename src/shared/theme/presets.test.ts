@@ -4,8 +4,10 @@ import type { KopperDocument, ThemeDefinition } from "../domain/document";
 import { deriveCompleteTheme, validateReadableTheme } from "./deriveTheme";
 import {
   BUNDLED_THEMES,
+  COBALT_THEME,
   LEGACY_BUNDLED_THEME_IDS,
   SHADCN_DEFAULT_THEME,
+  VIOLET_THEME,
   getThemeById,
   isBundledThemeId,
 } from "./presets";
@@ -27,7 +29,11 @@ function toExternalTheme(theme: ThemeDefinition): ThemeFile {
 
 describe("bundled themes", () => {
   it("ships the canonical shadcn Default theme", () => {
-    expect(BUNDLED_THEMES).toEqual([SHADCN_DEFAULT_THEME]);
+    expect(BUNDLED_THEMES).toEqual([
+      SHADCN_DEFAULT_THEME,
+      COBALT_THEME,
+      VIOLET_THEME,
+    ]);
     expect(SHADCN_DEFAULT_THEME).toMatchObject({
       id: "builtin:shadcn-default",
       version: 1,
@@ -79,6 +85,37 @@ describe("bundled themes", () => {
     });
   });
 
+  it("ships Cobalt and Violet accent definitions", () => {
+    expect(COBALT_THEME).toMatchObject({
+      id: "builtin:shadcn-cobalt",
+      name: "Cobalt",
+      light: {
+        primary: "oklch(0.488 0.243 264.376)",
+        "primary-foreground": "oklch(0.985 0 0)",
+        ring: "oklch(0.488 0.243 264.376)",
+      },
+      dark: {
+        primary: "oklch(0.707 0.165 254.624)",
+        "primary-foreground": "oklch(0.205 0 0)",
+        ring: "oklch(0.707 0.165 254.624)",
+      },
+    });
+    expect(VIOLET_THEME).toMatchObject({
+      id: "builtin:shadcn-violet",
+      name: "Violet",
+      light: {
+        primary: "oklch(0.491 0.27 292.581)",
+        "primary-foreground": "oklch(0.985 0 0)",
+        ring: "oklch(0.491 0.27 292.581)",
+      },
+      dark: {
+        primary: "oklch(0.702 0.183 293.541)",
+        "primary-foreground": "oklch(0.205 0 0)",
+        ring: "oklch(0.702 0.183 293.541)",
+      },
+    });
+  });
+
   it.each(BUNDLED_THEMES)(
     "$id passes external schema projection, derivation, and readability",
     (theme) => {
@@ -104,6 +141,14 @@ describe("bundled themes", () => {
 });
 
 describe("getThemeById", () => {
+  it.each([COBALT_THEME, VIOLET_THEME])(
+    "resolves $id to its own bundled definition",
+    (theme) => {
+      expect(isBundledThemeId(theme.id)).toBe(true);
+      expect(getThemeById({ customThemes: [] }, theme.id)).toBe(theme);
+    },
+  );
+
   it.each(LEGACY_BUNDLED_THEME_IDS)("resolves %s to Default", (id) => {
     expect(isBundledThemeId(id)).toBe(true);
     expect(getThemeById({ customThemes: [] }, id)).toBe(SHADCN_DEFAULT_THEME);

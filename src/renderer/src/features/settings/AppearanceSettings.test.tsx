@@ -7,7 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KopperDocumentContextValue } from "../../app/DocumentProvider";
 import { useKopperDocument } from "../../app/DocumentProvider";
 import { useTheme } from "../../theme/ThemeProvider";
-import { SHADCN_DEFAULT_THEME } from "../../../../shared/theme/presets";
+import {
+  COBALT_THEME,
+  SHADCN_DEFAULT_THEME,
+} from "../../../../shared/theme/presets";
 import {
   AppearanceSettings,
   parseAppearanceMode,
@@ -86,6 +89,34 @@ describe("AppearanceSettings", () => {
     ).toBeInTheDocument();
     await userEvent.click(screen.getByRole("menuitem", { name: "Export" }));
     expect(window.kopper.exportTheme).toHaveBeenCalledWith(SHADCN_DEFAULT_THEME.id);
+  });
+
+  it("projects the current bundled active ID onto its own row", () => {
+    vi.mocked(useKopperDocument).mockReturnValue({
+      document: {
+        ...document,
+        appearance: {
+          ...document.appearance,
+          activeThemeId: COBALT_THEME.id,
+        },
+      },
+      ready: true,
+      pendingAction: null,
+      error: null,
+      execute,
+      undo: vi.fn(),
+      retryLastAction: vi.fn(),
+      clearError: vi.fn(),
+    });
+
+    render(<AppearanceSettings />);
+
+    expect(screen.getByText("Default")).toBeInTheDocument();
+    expect(screen.getByText("Cobalt")).toBeInTheDocument();
+    expect(screen.getByText("Violet")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Activate Default" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Active Cobalt" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Activate Violet" })).toBeEnabled();
   });
 
   it("keeps a failed custom-theme deletion authoritative, visible, and retryable", async () => {
