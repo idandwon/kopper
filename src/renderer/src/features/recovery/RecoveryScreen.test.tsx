@@ -76,10 +76,23 @@ describe("RecoveryScreen", () => {
 
   it("offers import and unchanged damaged-byte export", async () => {
     const user = userEvent.setup();
+    api.exportRecoveryBytes.mockResolvedValueOnce({
+      ok: true,
+      value: { cancelled: false, fileName: "damaged.json" },
+    });
     render(<RecoveryScreen error={error} api={api} />);
+
+    await user.click(screen.getByRole("button", { name: "Export damaged content" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Exported damaged.json unchanged.");
+
     await user.click(screen.getByRole("button", { name: "Choose another file" }));
     expect(api.chooseDataImport).toHaveBeenCalledOnce();
+    expect(screen.queryByText("Import cancelled.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Exported damaged.json unchanged.")).not.toBeInTheDocument();
+
     await user.click(screen.getByRole("button", { name: "Export damaged content" }));
-    expect(api.exportRecoveryBytes).toHaveBeenCalledOnce();
+    expect(api.exportRecoveryBytes).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText("Damaged-content export cancelled.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 });

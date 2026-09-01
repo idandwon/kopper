@@ -143,6 +143,7 @@ export function RecoveryScreen({
 
   const chooseImport = async () => {
     setBusy(true);
+    setMessage(null);
     try {
       const result = await api.chooseDataImport();
       if (!result.ok) {
@@ -150,7 +151,6 @@ export function RecoveryScreen({
         return;
       }
       if (result.value === null) {
-        setMessage("Import cancelled.");
         return;
       }
       setPreview(result.value);
@@ -174,6 +174,7 @@ export function RecoveryScreen({
 
   const exportDamaged = async () => {
     setBusy(true);
+    setMessage(null);
     try {
       const result = await api.exportRecoveryBytes();
       if (!result.ok) {
@@ -181,7 +182,6 @@ export function RecoveryScreen({
         return;
       }
       if (result.value.cancelled) {
-        setMessage("Damaged-content export cancelled.");
         return;
       }
       setMessage(

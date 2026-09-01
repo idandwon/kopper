@@ -30,11 +30,32 @@ describe("DataSettings", () => {
     expect(exportAction.parentElement).toHaveClass("flex-wrap");
   });
 
-  it("reports cancellation as a successful outcome", async () => {
+  it("leaves cancelled data file selection silent", async () => {
     const user = userEvent.setup();
     render(<DataSettings api={api} />);
+
     await user.click(screen.getByRole("button", { name: "Export data" }));
-    expect(screen.getByRole("status")).toHaveTextContent("Export cancelled");
+    expect(screen.queryByText("Export cancelled.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+    api.chooseDataImport.mockResolvedValueOnce({ ok: true, value: null });
+    await user.click(screen.getByRole("button", { name: "Import data" }));
+    expect(screen.queryByText("Import cancelled.")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("reports a completed data export", async () => {
+    const user = userEvent.setup();
+    api.exportData.mockResolvedValueOnce({
+      ok: true,
+      value: { cancelled: false, fileName: "kopper-backup.json" },
+    });
+    render(<DataSettings api={api} />);
+
+    await user.click(screen.getByRole("button", { name: "Export data" }));
+    expect(screen.getByRole("status")).toHaveTextContent("Exported kopper-backup.json.");
   });
 
   it("renders export and import operation failures as alerts", async () => {

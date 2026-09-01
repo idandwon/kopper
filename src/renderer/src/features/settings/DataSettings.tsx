@@ -33,16 +33,14 @@ export function DataSettings({
     setFeedback(null);
     try {
       const result = await api.exportData();
-      setFeedback(
-        result.ok
-          ? {
-              text: result.value.cancelled
-                ? "Export cancelled."
-                : `Exported ${result.value.fileName ?? "Kopper data"}.`,
-              tone: "status",
-            }
-          : { text: result.error.message, tone: "error" },
-      );
+      if (!result.ok) {
+        setFeedback({ text: result.error.message, tone: "error" });
+      } else if (!result.value.cancelled) {
+        setFeedback({
+          text: `Exported ${result.value.fileName ?? "Kopper data"}.`,
+          tone: "status",
+        });
+      }
     } catch {
       setFeedback({ text: "Data export could not run.", tone: "error" });
     } finally {
@@ -57,9 +55,7 @@ export function DataSettings({
       const result = await api.chooseDataImport();
       if (!result.ok) {
         setFeedback({ text: result.error.message, tone: "error" });
-      } else if (result.value === null) {
-        setFeedback({ text: "Import cancelled.", tone: "status" });
-      } else {
+      } else if (result.value !== null) {
         setPreview(result.value);
       }
     } catch {
