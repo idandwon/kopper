@@ -273,7 +273,11 @@ test("persists modes, presets, edited custom theme, and imported preview decisio
   const savedPreview = await expectExportedLightPreview(page, exported);
   expect(savedPreview).not.toEqual(beforeSavedPreview);
   await secondImport.getByRole("button", { name: "Save imported theme" }).click();
-  await expect(page.getByText("Default Custom saved and activated.")).toBeVisible();
+  await expect(secondImport).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Active Default Custom", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Default Custom saved and activated.")).toHaveCount(0);
   await expect.poll(() => readRootThemeSnapshot(page)).toEqual(savedPreview);
   await expectSurfaceContained(page, "settings");
 
