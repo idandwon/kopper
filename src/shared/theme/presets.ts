@@ -50,151 +50,74 @@ function createMode(palette: ModePalette): CompleteThemeMode {
   };
 }
 
-export const OXIDE_LEDGER_THEME: ThemeDefinition = {
-  id: "builtin:oxide-ledger",
+export const LEGACY_BUNDLED_THEME_IDS = [
+  "builtin:oxide-ledger",
+  "builtin:night-workshop",
+  "builtin:index-drawer",
+] as const;
+
+const bundledThemeIds = new Set<string>([
+  "builtin:shadcn-default",
+  ...LEGACY_BUNDLED_THEME_IDS,
+]);
+
+export const SHADCN_DEFAULT_THEME: ThemeDefinition = {
+  id: "builtin:shadcn-default",
   version: 1,
-  name: "Oxide Ledger",
+  name: "Default",
   light: createMode({
-    background: "#F6F9F6",
-    card: "#FFFFFF",
-    popover: "#FFFFFF",
-    foreground: "#173D35",
-    primary: "#173D35",
-    primaryForeground: "#F6F9F6",
-    secondary: "#C7D9D5",
-    secondaryForeground: "#173D35",
-    muted: "#C7D9D5",
-    mutedForeground: "#173D35",
-    accent: "#C7D9D5",
-    accentForeground: "#173D35",
-    destructive: "#173D35",
-    destructiveForeground: "#F6F9F6",
-    border: "#C7D9D5",
-    input: "#C7D9D5",
-    ring: "#2E8775",
+    background: "oklch(1 0 0)",
+    card: "oklch(1 0 0)",
+    popover: "oklch(1 0 0)",
+    foreground: "oklch(0.145 0 0)",
+    primary: "oklch(0.205 0 0)",
+    primaryForeground: "oklch(0.985 0 0)",
+    secondary: "oklch(0.97 0 0)",
+    secondaryForeground: "oklch(0.205 0 0)",
+    muted: "oklch(0.97 0 0)",
+    mutedForeground: "oklch(0.556 0 0)",
+    accent: "oklch(0.97 0 0)",
+    accentForeground: "oklch(0.205 0 0)",
+    destructive: "oklch(0.577 0.245 27.325)",
+    destructiveForeground: "oklch(0.985 0 0)",
+    border: "oklch(0.922 0 0)",
+    input: "oklch(0.922 0 0)",
+    ring: "oklch(0.708 0 0)",
   }),
   dark: createMode({
-    background: "#173D35",
-    card: "#20483F",
-    popover: "#20483F",
-    foreground: "#F6F9F6",
-    primary: "#F6F9F6",
-    primaryForeground: "#173D35",
-    secondary: "#2E8775",
-    secondaryForeground: "#F6F9F6",
-    muted: "#2E8775",
-    mutedForeground: "#F6F9F6",
-    accent: "#C7D9D5",
-    accentForeground: "#173D35",
-    destructive: "#F6F9F6",
-    destructiveForeground: "#173D35",
-    border: "#2E8775",
-    input: "#2E8775",
-    ring: "#C7D9D5",
+    background: "oklch(0.145 0 0)",
+    card: "oklch(0.205 0 0)",
+    popover: "oklch(0.205 0 0)",
+    foreground: "oklch(0.985 0 0)",
+    primary: "oklch(0.922 0 0)",
+    primaryForeground: "oklch(0.205 0 0)",
+    secondary: "oklch(0.269 0 0)",
+    secondaryForeground: "oklch(0.985 0 0)",
+    muted: "oklch(0.269 0 0)",
+    mutedForeground: "oklch(0.708 0 0)",
+    accent: "oklch(0.269 0 0)",
+    accentForeground: "oklch(0.985 0 0)",
+    destructive: "oklch(0.704 0.191 22.216)",
+    destructiveForeground: "oklch(0.985 0 0)",
+    border: "oklch(1 0 0 / 10%)",
+    input: "oklch(1 0 0 / 15%)",
+    ring: "oklch(0.556 0 0)",
   }),
 };
 
-const NIGHT_WORKSHOP_THEME: ThemeDefinition = {
-  id: "builtin:night-workshop",
-  version: 1,
-  name: "Night Workshop",
-  light: createMode({
-    background: "#F0ECE6",
-    card: "#FAF8F4",
-    popover: "#FFFFFF",
-    foreground: "#25282A",
-    primary: "#774028",
-    primaryForeground: "#FFFFFF",
-    secondary: "#D7E2DF",
-    secondaryForeground: "#25282A",
-    muted: "#DDD9D2",
-    mutedForeground: "#414649",
-    accent: "#D7E2DF",
-    accentForeground: "#25282A",
-    destructive: "#7A2E2E",
-    destructiveForeground: "#FFFFFF",
-    border: "#C4C0BA",
-    input: "#C4C0BA",
-    ring: "#527166",
-  }),
-  dark: createMode({
-    background: "#202326",
-    card: "#2A2E31",
-    popover: "#303538",
-    foreground: "#F0ECE6",
-    primary: "#D59774",
-    primaryForeground: "#202326",
-    secondary: "#3B5E56",
-    secondaryForeground: "#FFFFFF",
-    muted: "#34393C",
-    mutedForeground: "#C8C3BC",
-    accent: "#3B5E56",
-    accentForeground: "#FFFFFF",
-    destructive: "#C86B67",
-    destructiveForeground: "#202326",
-    border: "#454B4E",
-    input: "#454B4E",
-    ring: "#7BA296",
-  }),
-};
+export const BUNDLED_THEMES = [SHADCN_DEFAULT_THEME] as const;
 
-const INDEX_DRAWER_THEME: ThemeDefinition = {
-  id: "builtin:index-drawer",
-  version: 1,
-  name: "Index Drawer",
-  light: createMode({
-    background: "#F4F0E7",
-    card: "#FFFDF8",
-    popover: "#FFFFFF",
-    foreground: "#29251F",
-    primary: "#8B4B2D",
-    primaryForeground: "#FFFFFF",
-    secondary: "#DFD6C7",
-    secondaryForeground: "#29251F",
-    muted: "#E6DED1",
-    mutedForeground: "#514A40",
-    accent: "#D8E0D6",
-    accentForeground: "#29251F",
-    destructive: "#8A332B",
-    destructiveForeground: "#FFFFFF",
-    border: "#C9BEAE",
-    input: "#C9BEAE",
-    ring: "#637A68",
-  }),
-  dark: createMode({
-    background: "#29251F",
-    card: "#342F28",
-    popover: "#3B352D",
-    foreground: "#F4F0E7",
-    primary: "#D59A77",
-    primaryForeground: "#29251F",
-    secondary: "#526858",
-    secondaryForeground: "#FFFFFF",
-    muted: "#3A352D",
-    mutedForeground: "#D2C8B9",
-    accent: "#526858",
-    accentForeground: "#FFFFFF",
-    destructive: "#D47A70",
-    destructiveForeground: "#29251F",
-    border: "#514A40",
-    input: "#514A40",
-    ring: "#8DA394",
-  }),
-};
-
-export const BUNDLED_THEMES: readonly ThemeDefinition[] = [
-  OXIDE_LEDGER_THEME,
-  NIGHT_WORKSHOP_THEME,
-  INDEX_DRAWER_THEME,
-];
+export function isBundledThemeId(id: string): boolean {
+  return bundledThemeIds.has(id);
+}
 
 export function getThemeById(
   document: Pick<KopperDocument, "customThemes">,
   id: string,
 ): ThemeDefinition | null {
-  return (
-    BUNDLED_THEMES.find((theme) => theme.id === id) ??
-    document.customThemes.find((theme) => theme.id === id) ??
-    null
-  );
+  if (isBundledThemeId(id)) return SHADCN_DEFAULT_THEME;
+  return document.customThemes.find((theme) => theme.id === id) ?? null;
 }
+
+/** @deprecated Temporary fixture bridge; remove in Task 4. */
+export const OXIDE_LEDGER_THEME = SHADCN_DEFAULT_THEME;
