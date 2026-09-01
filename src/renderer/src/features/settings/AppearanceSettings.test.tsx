@@ -176,6 +176,44 @@ describe("AppearanceSettings", () => {
     ).toBeEnabled();
   });
 
+  it("clears failed deletion feedback when a retry succeeds", async () => {
+    const user = userEvent.setup();
+    const customTheme = {
+      ...structuredClone(SHADCN_DEFAULT_THEME),
+      id: "custom:deletion-retry",
+      name: "Deletion Retry Theme",
+    };
+    vi.mocked(useKopperDocument).mockReturnValue({
+      document: { ...document, customThemes: [customTheme] },
+      ready: true,
+      pendingAction: null,
+      error: null,
+      execute,
+      undo: vi.fn(),
+      retryLastAction: vi.fn(),
+      clearError: vi.fn(),
+    });
+    execute.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    render(<AppearanceSettings />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Actions for Deletion Retry Theme" }),
+    );
+    await user.click(screen.getByRole("menuitem", { name: "Delete" }));
+    await user.click(screen.getByRole("button", { name: "Delete theme" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Custom theme could not be deleted.",
+    );
+
+    await user.click(screen.getByRole("button", { name: "Delete theme" }));
+
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Custom theme could not be deleted."),
+    ).not.toBeInTheDocument();
+  });
+
   it("deletes a custom theme without redundant feedback", async () => {
     const user = userEvent.setup();
     const customTheme = {

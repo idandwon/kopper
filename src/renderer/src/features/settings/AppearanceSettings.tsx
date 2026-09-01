@@ -114,6 +114,7 @@ export function AppearanceSettings() {
 
   const removeTheme = async () => {
     if (deleteTheme === null) return;
+    setFeedback(null);
     const deleted = await execute({
       type: "appearance.deleteCustomTheme",
       themeId: deleteTheme.id,
