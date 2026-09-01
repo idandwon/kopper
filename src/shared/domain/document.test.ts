@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { OXIDE_LEDGER_THEME } from "../theme/presets";
+import { OXIDE_LEDGER_THEME, SHADCN_DEFAULT_THEME } from "../theme/presets";
 import {
   createEmptyDocument,
   parseDocument,
@@ -62,7 +62,10 @@ describe("createEmptyDocument", () => {
           togglePanel: "CommandOrControl+Shift+Space",
         },
         window: { pinned: false, bounds: null },
-        appearance: { mode: "system", activeThemeId: "builtin:oxide-ledger" },
+        appearance: {
+          mode: "system",
+          activeThemeId: SHADCN_DEFAULT_THEME.id,
+        },
         customThemes: [],
         draft: null,
       }),

@@ -4,6 +4,7 @@ import {
   CompleteThemeModeSchema,
   type CompleteThemeMode,
 } from "../theme/themeSchema";
+import { SHADCN_DEFAULT_THEME } from "../theme/presets";
 import { validatePersistedCustomTheme } from "../theme/validatePersistedTheme";
 import type { KopperError, Result } from "./errors";
 
@@ -215,7 +216,7 @@ export function createEmptyDocument(now: Date = new Date()): KopperDocument {
     activeSectionId: inboxId,
     shortcuts: structuredClone(DEFAULT_SHORTCUT_PREFERENCES),
     window: structuredClone(DEFAULT_WINDOW_PREFERENCES),
-    appearance: { mode: "system", activeThemeId: "builtin:oxide-ledger" },
+    appearance: { mode: "system", activeThemeId: SHADCN_DEFAULT_THEME.id },
     customThemes: [],
     draft: null,
   };

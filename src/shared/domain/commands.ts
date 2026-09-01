@@ -14,8 +14,8 @@ import {
 } from "./document";
 import type { KopperError, Result } from "./errors";
 import {
-  BUNDLED_THEMES,
-  OXIDE_LEDGER_THEME,
+  isBundledThemeId,
+  SHADCN_DEFAULT_THEME,
 } from "../theme/presets";
 import { validatePersistedCustomTheme } from "../theme/validatePersistedTheme";
 
@@ -635,7 +635,7 @@ function applyAppearanceCommand(
 
     case "appearance.setActiveTheme": {
       const exists =
-        BUNDLED_THEMES.some(({ id }) => id === command.themeId) ||
+        isBundledThemeId(command.themeId) ||
         document.customThemes.some(({ id }) => id === command.themeId);
       if (!exists) return validationError("The selected theme does not exist.");
       document.appearance.activeThemeId = command.themeId;
@@ -655,7 +655,7 @@ function applyAppearanceCommand(
     }
 
     case "appearance.deleteCustomTheme": {
-      if (BUNDLED_THEMES.some(({ id }) => id === command.themeId)) {
+      if (isBundledThemeId(command.themeId)) {
         return validationError("Bundled themes cannot be deleted.");
       }
       const index = document.customThemes.findIndex(
@@ -664,7 +664,7 @@ function applyAppearanceCommand(
       if (index === -1) return validationError("The custom theme does not exist.");
       document.customThemes.splice(index, 1);
       if (document.appearance.activeThemeId === command.themeId) {
-        document.appearance.activeThemeId = OXIDE_LEDGER_THEME.id;
+        document.appearance.activeThemeId = SHADCN_DEFAULT_THEME.id;
       }
       return { ok: true, value: undefined };
     }

@@ -13,7 +13,11 @@ import {
   type Note,
   type ThemeDefinition,
 } from "./document";
-import { BUNDLED_THEMES, OXIDE_LEDGER_THEME } from "../theme/presets";
+import {
+  LEGACY_BUNDLED_THEME_IDS,
+  OXIDE_LEDGER_THEME,
+  SHADCN_DEFAULT_THEME,
+} from "../theme/presets";
 
 const initialTimestamp = "2026-08-15T12:00:00.000Z";
 const commandTimestamp = "2026-08-16T12:00:00.000Z";
@@ -567,7 +571,7 @@ describe("appearance commands", () => {
     name: "Duplicate name allowed",
   });
 
-  it("sets appearance mode and activates bundled or custom theme IDs", () => {
+  it("sets appearance mode and activates canonical, legacy bundled, or custom theme IDs", () => {
     const document = makeDocument();
     document.customThemes = [customTheme()];
 
@@ -576,9 +580,15 @@ describe("appearance commands", () => {
     expect(
       apply(dark, {
         type: "appearance.setActiveTheme",
-        themeId: BUNDLED_THEMES[1].id,
+        themeId: SHADCN_DEFAULT_THEME.id,
       }).appearance.activeThemeId,
-    ).toBe(BUNDLED_THEMES[1].id);
+    ).toBe(SHADCN_DEFAULT_THEME.id);
+    expect(
+      apply(dark, {
+        type: "appearance.setActiveTheme",
+        themeId: "builtin:oxide-ledger",
+      }).appearance.activeThemeId,
+    ).toBe("builtin:oxide-ledger");
     expect(
       apply(dark, {
         type: "appearance.setActiveTheme",
@@ -613,7 +623,7 @@ describe("appearance commands", () => {
     ).toEqual([inserted.customThemes[0], replacement]);
   });
 
-  it("rejects unknown activation/deletion and bundled overwrite/deletion", () => {
+  it("rejects unknown activation/deletion and canonical or legacy bundled deletion", () => {
     const document = makeDocument();
     for (const command of [
       { type: "appearance.setActiveTheme", themeId: "missing" },
@@ -624,8 +634,12 @@ describe("appearance commands", () => {
       },
       {
         type: "appearance.deleteCustomTheme",
-        themeId: OXIDE_LEDGER_THEME.id,
+        themeId: SHADCN_DEFAULT_THEME.id,
       },
+      ...LEGACY_BUNDLED_THEME_IDS.map((themeId) => ({
+        type: "appearance.deleteCustomTheme" as const,
+        themeId,
+      })),
     ] satisfies DocumentCommand[]) {
       expect(applyDocumentCommand(document, command, makeContext())).toEqual({
         ok: false,
@@ -652,7 +666,7 @@ describe("appearance commands", () => {
     }
   });
 
-  it("falls back to Oxide Ledger only when deleting the active custom theme", () => {
+  it("falls back to the canonical default only when deleting the active custom theme", () => {
     const first = { ...customTheme(), id: "custom:first" };
     const second = { ...customTheme(), id: "custom:second" };
     const document = makeDocument();
@@ -669,7 +683,7 @@ describe("appearance commands", () => {
       type: "appearance.deleteCustomTheme",
       themeId: first.id,
     });
-    expect(activeDeleted.appearance.activeThemeId).toBe(OXIDE_LEDGER_THEME.id);
+    expect(activeDeleted.appearance.activeThemeId).toBe(SHADCN_DEFAULT_THEME.id);
   });
 });
 
