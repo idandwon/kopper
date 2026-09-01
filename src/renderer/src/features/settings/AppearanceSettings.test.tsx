@@ -7,7 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KopperDocumentContextValue } from "../../app/DocumentProvider";
 import { useKopperDocument } from "../../app/DocumentProvider";
 import { useTheme } from "../../theme/ThemeProvider";
-import { OXIDE_LEDGER_THEME } from "../../../../shared/theme/presets";
+import {
+  OXIDE_LEDGER_THEME,
+  SHADCN_DEFAULT_THEME,
+} from "../../../../shared/theme/presets";
 import {
   AppearanceSettings,
   parseAppearanceMode,
@@ -26,7 +29,7 @@ const document = {
   activeSectionId: "inbox",
   shortcuts: { capture: { kind: "double-modifier" as const, modifier: "shift" as const }, togglePanel: "CommandOrControl+Shift+Space" },
   window: { pinned: false, bounds: null },
-  appearance: { mode: "system" as const, activeThemeId: OXIDE_LEDGER_THEME.id },
+  appearance: { mode: "system" as const, activeThemeId: "builtin:night-workshop" },
   customThemes: [],
   draft: null,
 };
@@ -67,15 +70,17 @@ describe("AppearanceSettings", () => {
     );
   });
 
-  it("renders bundled presets, activates by authoritative ID, and exports that ID", async () => {
+  it("projects a legacy bundled active ID onto the Default row", async () => {
     render(<AppearanceSettings />);
-    expect(screen.getByText("Night Workshop")).toBeInTheDocument();
-    const row = screen.getByText("Night Workshop").parentElement?.parentElement;
-    expect(row).not.toBeNull();
-    await userEvent.click(screen.getByRole("button", { name: "Activate Night Workshop" }));
-    expect(execute).toHaveBeenCalledWith({ type: "appearance.setActiveTheme", themeId: "builtin:night-workshop" });
+    expect(screen.getByText("Default")).toBeInTheDocument();
+    expect(screen.queryByText("Oxide Ledger")).not.toBeInTheDocument();
+    expect(screen.queryByText("Night Workshop")).not.toBeInTheDocument();
+    expect(screen.queryByText("Index Drawer")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Active Default" }),
+    ).toBeDisabled();
     const actions = screen.getByRole("button", {
-      name: "Actions for Night Workshop",
+      name: "Actions for Default",
     });
     expect(actions).toHaveTextContent(/^Actions$/);
     await userEvent.click(actions);
@@ -83,7 +88,7 @@ describe("AppearanceSettings", () => {
       screen.getByRole("menuitem", { name: "Customize" }),
     ).toBeInTheDocument();
     await userEvent.click(screen.getByRole("menuitem", { name: "Export" }));
-    expect(window.kopper.exportTheme).toHaveBeenCalledWith("builtin:night-workshop");
+    expect(window.kopper.exportTheme).toHaveBeenCalledWith(SHADCN_DEFAULT_THEME.id);
   });
 
   it("keeps a failed custom-theme deletion authoritative, visible, and retryable", async () => {
@@ -109,6 +114,9 @@ describe("AppearanceSettings", () => {
     await user.click(
       screen.getByRole("button", { name: "Actions for Deletion Failure Theme" }),
     );
+    expect(screen.getByRole("menuitem", { name: "Edit" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Export" })).toBeInTheDocument();
+    expect(screen.getByRole("menuitem", { name: "Delete" })).toBeInTheDocument();
     await user.click(screen.getByRole("menuitem", { name: "Delete" }));
     await user.click(screen.getByRole("button", { name: "Delete theme" }));
 

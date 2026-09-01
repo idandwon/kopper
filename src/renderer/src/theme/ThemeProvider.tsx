@@ -15,7 +15,7 @@ import type {
 } from "../../../shared/domain/document";
 import {
   getThemeById,
-  OXIDE_LEDGER_THEME,
+  SHADCN_DEFAULT_THEME,
 } from "../../../shared/theme/presets";
 import { useKopperDocument } from "../app/DocumentProvider";
 import { applyTheme } from "./applyTheme";
@@ -100,8 +100,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
         ? (getThemeById(
             kopperDocument,
             kopperDocument.appearance.activeThemeId,
-          ) ?? OXIDE_LEDGER_THEME)
-        : OXIDE_LEDGER_THEME,
+          ) ?? SHADCN_DEFAULT_THEME)
+        : SHADCN_DEFAULT_THEME,
     [kopperDocument, ready],
   );
   const activeTheme =

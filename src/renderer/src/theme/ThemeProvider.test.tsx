@@ -9,7 +9,10 @@ import type {
   ThemeDefinition,
 } from "../../../shared/domain/document";
 import type { KopperApi } from "../../../shared/ipc/contract";
-import { OXIDE_LEDGER_THEME } from "../../../shared/theme/presets";
+import {
+  OXIDE_LEDGER_THEME,
+  SHADCN_DEFAULT_THEME,
+} from "../../../shared/theme/presets";
 import {
   useKopperDocument,
   type KopperDocumentContextValue,
@@ -318,7 +321,7 @@ describe("ThemeProvider resolution and root application", () => {
     expect(unsubscribeNative).toHaveBeenCalledOnce();
   });
 
-  it("uses Oxide while unloaded and for a missing active ID without persistence", () => {
+  it("uses Default while unloaded and for a missing active ID without persistence", () => {
     const availableCustom = customTheme();
     const renderedDocument = makeDocument(
       { mode: "light", activeThemeId: availableCustom.id },
@@ -326,7 +329,7 @@ describe("ThemeProvider resolution and root application", () => {
     );
     setDocumentContext(renderedDocument, false);
     const rendered = renderHook(() => useTheme(), { wrapper });
-    expect(rendered.result.current.activeTheme).toBe(OXIDE_LEDGER_THEME);
+    expect(rendered.result.current.activeTheme).toBe(SHADCN_DEFAULT_THEME);
 
     setDocumentContext(
       makeDocument({ mode: "light", activeThemeId: "custom:missing" }, [
@@ -335,8 +338,23 @@ describe("ThemeProvider resolution and root application", () => {
       true,
     );
     rendered.rerender();
-    expect(rendered.result.current.activeTheme).toBe(OXIDE_LEDGER_THEME);
+    expect(rendered.result.current.activeTheme).toBe(SHADCN_DEFAULT_THEME);
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("projects legacy bundled IDs as Default and preserves a resolved custom theme", () => {
+    setDocumentContext(
+      makeDocument({ mode: "light", activeThemeId: "builtin:night-workshop" }),
+    );
+    const rendered = renderHook(() => useTheme(), { wrapper });
+    expect(rendered.result.current.activeTheme).toBe(SHADCN_DEFAULT_THEME);
+
+    const custom = customTheme();
+    setDocumentContext(
+      makeDocument({ mode: "dark", activeThemeId: custom.id }, [custom]),
+    );
+    rendered.rerender();
+    expect(rendered.result.current.activeTheme).toBe(custom);
   });
 });
 

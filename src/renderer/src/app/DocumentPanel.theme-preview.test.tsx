@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createEmptyDocument } from "../../../shared/domain/document";
 import type { ThemeImportPreview } from "../../../shared/ipc/contract";
-import { OXIDE_LEDGER_THEME } from "../../../shared/theme/presets";
+import { SHADCN_DEFAULT_THEME } from "../../../shared/theme/presets";
 import { ThemeProvider, useTheme } from "../theme/ThemeProvider";
 import { DocumentPanel } from "./DocumentPanel";
 import { useKopperDocument } from "./DocumentProvider";
@@ -18,14 +18,14 @@ const kopperDocument = createEmptyDocument(
 );
 kopperDocument.appearance = {
   mode: "light",
-  activeThemeId: OXIDE_LEDGER_THEME.id,
+  activeThemeId: SHADCN_DEFAULT_THEME.id,
 };
 const importedTheme = {
-  ...structuredClone(OXIDE_LEDGER_THEME),
+  ...structuredClone(SHADCN_DEFAULT_THEME),
   id: "custom:import-route-cleanup",
   name: "Import route cleanup",
   light: {
-    ...OXIDE_LEDGER_THEME.light,
+    ...SHADCN_DEFAULT_THEME.light,
     primary: "#123456",
   },
 };
@@ -80,7 +80,7 @@ async function expectNativeRouteRestoredPersistedTheme() {
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   await waitFor(() =>
     expect(screen.getByLabelText("Applied theme primary")).toHaveTextContent(
-      OXIDE_LEDGER_THEME.light.primary,
+      SHADCN_DEFAULT_THEME.light.primary,
     ),
   );
   await waitFor(() =>
@@ -147,7 +147,7 @@ describe("DocumentPanel native Settings theme-preview ownership", () => {
     await openAppearanceSettings(user);
 
     await user.click(
-      screen.getByRole("button", { name: `Actions for ${OXIDE_LEDGER_THEME.name}` }),
+      screen.getByRole("button", { name: `Actions for ${SHADCN_DEFAULT_THEME.name}` }),
     );
     await user.click(screen.getByRole("menuitem", { name: "Customize" }));
     fireEvent.change(screen.getByLabelText("primary"), {

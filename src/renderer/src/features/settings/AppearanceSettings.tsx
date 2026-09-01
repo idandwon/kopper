@@ -4,7 +4,11 @@ import type {
   AppearanceMode,
   ThemeDefinition,
 } from "../../../../shared/domain/document";
-import { BUNDLED_THEMES } from "../../../../shared/theme/presets";
+import {
+  BUNDLED_THEMES,
+  isBundledThemeId,
+  SHADCN_DEFAULT_THEME,
+} from "../../../../shared/theme/presets";
 import { useKopperDocument } from "../../app/DocumentProvider";
 import {
   AlertDialog,
@@ -170,7 +174,10 @@ export function AppearanceSettings() {
         </h3>
         <div className="min-w-0 divide-y divide-border border-y border-border">
           {themes.map((theme) => {
-            const active = theme.id === document.appearance.activeThemeId;
+            const active =
+              theme.id === SHADCN_DEFAULT_THEME.id
+                ? isBundledThemeId(document.appearance.activeThemeId)
+                : theme.id === document.appearance.activeThemeId;
             const custom = document.customThemes.some(
               ({ id }) => id === theme.id,
             );
@@ -273,7 +280,7 @@ export function AppearanceSettings() {
             <AlertDialogDescription className="break-words">
               {deleteTheme === null
                 ? "This cannot be undone."
-                : `${deleteTheme.name} will be removed. If active, Oxide Ledger becomes active.`}
+                : `${deleteTheme.name} will be removed. If active, Default becomes active.`}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <SettingsFeedback
