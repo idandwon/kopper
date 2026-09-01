@@ -120,6 +120,7 @@ describe("ShortcutSettings", () => {
         togglePanel: "Command+Alt+P",
       }),
     );
+    expect(screen.queryByText("Shortcuts saved.")).not.toBeInTheDocument();
   });
 
   it("uses a named radio group and cancels shortcut recording with Escape", async () => {
@@ -136,9 +137,12 @@ describe("ShortcutSettings", () => {
     );
     fireEvent.keyDown(window, { key: "Escape" });
 
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Shortcut recording cancelled.",
-    );
+    expect(
+      screen.getByRole("button", { name: "Change capture shortcut" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Shortcut recording cancelled."),
+    ).not.toBeInTheDocument();
   });
 
   it("selects Double Shift or records an immutable accelerator candidate", async () => {
@@ -201,7 +205,12 @@ describe("ShortcutSettings", () => {
       screen.getByRole("button", { name: "Recording panel shortcut…" }),
     ).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.getByRole("status")).toHaveTextContent("recording cancelled");
+    expect(
+      screen.getByRole("button", { name: "Change panel shortcut" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Shortcut recording cancelled."),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByLabelText(
         "Panel shortcut: CommandOrControl+Shift+Space",
@@ -283,7 +292,7 @@ describe("ShortcutSettings", () => {
     ).toHaveTextContent("⌘ ⇧ C");
   });
 
-  it("resets through the same acknowledged save transaction", async () => {
+  it("resets through the same acknowledged save transaction without a notice", async () => {
     render(<ShortcutSettings captureUnavailable={false} />);
     await userEvent.click(screen.getByRole("button", { name: "Reset" }));
     await waitFor(() =>
@@ -292,9 +301,9 @@ describe("ShortcutSettings", () => {
         togglePanel: "CommandOrControl+Shift+Space",
       }),
     );
-    expect(await screen.findByRole("status")).toHaveTextContent(
-      "Shortcuts reset to defaults.",
-    );
+    expect(
+      screen.queryByText("Shortcuts reset to defaults."),
+    ).not.toBeInTheDocument();
   });
 
   it("uses dedicated pending state, disables repeat tests, and announces the fixed result", async () => {
@@ -338,7 +347,18 @@ describe("ShortcutSettings", () => {
     expect(screen.getByText(/Capture is unavailable/)).toBeInTheDocument();
   });
 
-  it("shows pin state only from an acknowledged native+persistence result", async () => {
+  it("requests a successful pin change silently", async () => {
+    render(<ShortcutSettings captureUnavailable={false} />);
+    await userEvent.click(
+      screen.getByRole("switch", { name: "Keep panel on top" }),
+    );
+
+    expect(window.kopper.setPinned).toHaveBeenCalledWith(true);
+    expect(screen.queryByText("Panel pinned.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Panel unpinned.")).not.toBeInTheDocument();
+  });
+
+  it("shows pin failures only from an acknowledged native+persistence result", async () => {
     vi.mocked(window.kopper.setPinned).mockResolvedValueOnce({
       ok: false,
       error: {

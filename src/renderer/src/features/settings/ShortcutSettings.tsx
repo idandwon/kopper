@@ -91,10 +91,7 @@ export function ShortcutSettings({
       if (event.key === "Escape") {
         event.stopImmediatePropagation();
         setRecordingTarget(null);
-        setFeedback({
-          text: "Shortcut recording cancelled.",
-          tone: "status",
-        });
+        setFeedback(null);
         return;
       }
       const accelerator = acceleratorFromEvent(event);
@@ -114,7 +111,7 @@ export function ShortcutSettings({
     return () => globalThis.removeEventListener("keydown", onKeyDown, true);
   }, [active, recordingTarget]);
 
-  const save = async (preferences: ShortcutPreferences, reset = false) => {
+  const save = async (preferences: ShortcutPreferences) => {
     if (busy) return;
     setBusy(true);
     setFeedback(null);
@@ -130,10 +127,6 @@ export function ShortcutSettings({
         return;
       }
       setCandidate(structuredClone(saved.value.shortcuts));
-      setFeedback({
-        text: reset ? "Shortcuts reset to defaults." : "Shortcuts saved.",
-        tone: "status",
-      });
     } catch {
       setFeedback({ text: "Shortcuts could not be saved.", tone: "error" });
     } finally {
@@ -155,16 +148,9 @@ export function ShortcutSettings({
     setFeedback(null);
     try {
       const result = await window.kopper.setPinned(!document.window.pinned);
-      setFeedback(
-        result.ok
-          ? {
-              text: result.value.window.pinned
-                ? "Panel pinned."
-                : "Panel unpinned.",
-              tone: "status",
-            }
-          : { text: result.error.message, tone: "error" },
-      );
+      if (!result.ok) {
+        setFeedback({ text: result.error.message, tone: "error" });
+      }
     } catch {
       setFeedback({
         text: "The panel pin could not be changed.",
@@ -388,7 +374,7 @@ export function ShortcutSettings({
             const defaults = structuredClone(DEFAULT_SHORTCUT_PREFERENCES);
             setCandidate(defaults);
             setRecordingTarget(null);
-            void save(defaults, true);
+            void save(defaults);
           }}
         >
           Reset

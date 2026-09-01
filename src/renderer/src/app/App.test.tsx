@@ -1129,7 +1129,7 @@ describe("Default theme App", () => {
     expect(undo).toHaveBeenCalledOnce();
   });
 
-  it("reports pin success and failure through the shared visible feedback", async () => {
+  it("keeps successful pin updates silent while showing failures", async () => {
     const user = userEvent.setup();
     render(<App />);
 
@@ -1139,13 +1139,9 @@ describe("Default theme App", () => {
     await user.click(pin);
     expect(setPinned).toHaveBeenCalledWith(true);
 
-    const status = globalThis.document.querySelector('[data-slot="toast"]');
-    expect(status).toHaveAttribute("role", "status");
-    expect(status).toHaveTextContent("Panel pinned.");
-    expect(status).toBeVisible();
     expect(
-      globalThis.document.querySelectorAll('[data-slot="toast"]'),
-    ).toHaveLength(1);
+      globalThis.document.querySelector('[data-slot="toast"]'),
+    ).not.toBeInTheDocument();
 
     setPinned.mockResolvedValueOnce({
       ok: false,
@@ -1157,15 +1153,9 @@ describe("Default theme App", () => {
     });
     await user.click(pin);
 
-    expect(
-      globalThis.document.querySelector('[data-slot="toast"][role="status"]'),
-    ).not.toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent(
       "The panel pin could not be saved.",
     );
-    expect(
-      globalThis.document.querySelectorAll('[data-slot="toast"]'),
-    ).toHaveLength(1);
   });
 
   it("exposes persisted pinned state and requests an acknowledged unpin", async () => {
@@ -1191,8 +1181,8 @@ describe("Default theme App", () => {
 
     expect(setPinned).toHaveBeenCalledWith(false);
     expect(
-      globalThis.document.querySelector('[data-slot="toast"][role="status"]'),
-    ).toHaveTextContent("Panel unpinned.");
+      globalThis.document.querySelector('[data-slot="toast"]'),
+    ).not.toBeInTheDocument();
   });
 
   it("disables pin while its native acknowledgement is pending", async () => {

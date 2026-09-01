@@ -33,9 +33,6 @@ export function PanelPinButton() {
         reportNotice(result.error.message, "error");
         return;
       }
-      reportNotice(
-        result.value.window.pinned ? "Panel pinned." : "Panel unpinned.",
-      );
     } catch {
       reportNotice("The panel pin could not be changed.", "error");
     } finally {
