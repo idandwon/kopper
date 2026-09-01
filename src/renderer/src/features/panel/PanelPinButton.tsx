@@ -14,10 +14,11 @@ import { PinIcon } from "./PanelIcons";
 
 export function PanelPinButton() {
   const { document, pendingAction } = useKopperDocument();
-  const { reportNotice } = usePanelFeedback();
+  const { dismissNotice, reportNotice } = usePanelFeedback();
   const [tooltipOpen, setTooltipOpen] = useState(false);
   const [pinRequestPending, setPinRequestPending] = useState(false);
   const pinRequestPendingRef = useRef(false);
+  const pinErrorNoticeIdRef = useRef<number | null>(null);
   const tooltipOverlay = useNotesSurfaceOverlay(tooltipOpen, setTooltipOpen);
   const busy = pendingAction !== null || pinRequestPending;
   const pinned = document.window.pinned;
@@ -30,11 +31,21 @@ export function PanelPinButton() {
     try {
       const result = await window.kopper.setPinned(!pinned);
       if (!result.ok) {
-        reportNotice(result.error.message, "error");
+        pinErrorNoticeIdRef.current = reportNotice(
+          result.error.message,
+          "error",
+        );
         return;
       }
+      if (pinErrorNoticeIdRef.current !== null) {
+        dismissNotice(pinErrorNoticeIdRef.current);
+        pinErrorNoticeIdRef.current = null;
+      }
     } catch {
-      reportNotice("The panel pin could not be changed.", "error");
+      pinErrorNoticeIdRef.current = reportNotice(
+        "The panel pin could not be changed.",
+        "error",
+      );
     } finally {
       pinRequestPendingRef.current = false;
       setPinRequestPending(false);

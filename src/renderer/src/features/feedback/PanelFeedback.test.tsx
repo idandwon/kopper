@@ -8,16 +8,19 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { useRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PanelFeedbackProvider, usePanelFeedback } from "./PanelFeedback";
 
 function FeedbackHarness() {
   const {
+    dismissNotice,
     reportClipboardResult,
     reportClipboardUnavailable,
     reportNotice,
   } = usePanelFeedback();
+  const ownedNoticeId = useRef<number | null>(null);
 
   return (
     <>
@@ -60,6 +63,24 @@ function FeedbackHarness() {
       </button>
       <button type="button" onClick={() => reportNotice("Second notice")}>
         Report second notice
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          ownedNoticeId.current = reportNotice("Owned failure", "error");
+        }}
+      >
+        Report owned failure
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          if (ownedNoticeId.current !== null) {
+            dismissNotice(ownedNoticeId.current);
+          }
+        }}
+      >
+        Dismiss owned failure
       </button>
     </>
   );
@@ -156,6 +177,41 @@ describe("panel feedback", () => {
       document.querySelector('[data-slot="toast"]'),
     ).not.toBeInTheDocument();
     expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("dismisses only the notice whose identity the caller owns", () => {
+    render(
+      <PanelFeedbackProvider>
+        <FeedbackHarness />
+      </PanelFeedbackProvider>,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Report owned failure" }),
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent("Owned failure");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Report singular success" }),
+    );
+    expect(document.querySelector('[data-slot="toast"]')).toHaveTextContent(
+      "Copied note.",
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Dismiss owned failure" }),
+    );
+    expect(document.querySelector('[data-slot="toast"]')).toHaveTextContent(
+      "Copied note.",
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Report owned failure" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Dismiss owned failure" }),
+    );
+    expect(document.querySelector('[data-slot="toast"]')).not.toBeInTheDocument();
   });
 
   it("cancels the notice timer on provider unmount with no later timer work", () => {

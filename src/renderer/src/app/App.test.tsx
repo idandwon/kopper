@@ -137,6 +137,7 @@ const execute = vi.fn<KopperDocumentContextValue["execute"]>();
 const undo = vi.fn<KopperDocumentContextValue["undo"]>();
 const retryLastAction = vi.fn<KopperDocumentContextValue["retryLastAction"]>();
 const clearError = vi.fn<KopperDocumentContextValue["clearError"]>();
+const copyNotes = vi.fn();
 const setPinned = vi.fn();
 const scrollIntoView = vi.fn();
 
@@ -221,6 +222,10 @@ beforeEach(() => {
   undo.mockReset().mockResolvedValue(true);
   retryLastAction.mockReset().mockResolvedValue(true);
   clearError.mockReset();
+  copyNotes.mockReset().mockResolvedValue({
+    ok: true,
+    value: { copiedCount: 1 },
+  });
   setPinned.mockReset().mockResolvedValue({
     ok: true,
     value: { ...document, window: { ...document.window, pinned: true } },
@@ -238,7 +243,7 @@ beforeEach(() => {
       return vi.fn();
     }),
     openEditorWindow: vi.fn(),
-    copyNotes: vi.fn(),
+    copyNotes,
     setPinned,
   } as never;
 });
@@ -1156,6 +1161,83 @@ describe("Default theme App", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "The panel pin could not be saved.",
     );
+  });
+
+  it("silently clears its own failure after a successful pin retry", async () => {
+    const user = userEvent.setup();
+    setPinned.mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: "write_failed",
+        message: "The panel pin could not be saved.",
+        retryable: true,
+      },
+    });
+    render(<App />);
+
+    const pin = screen.getByRole("button", { name: "Pin panel" });
+    await user.click(pin);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The panel pin could not be saved.",
+    );
+
+    await user.click(pin);
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(
+      globalThis.document.querySelector('[data-slot="toast"]'),
+    ).not.toBeInTheDocument();
+  });
+
+  it("preserves newer clipboard feedback when a pin retry succeeds", async () => {
+    const user = userEvent.setup();
+    let acknowledgeRetry: (() => void) | undefined;
+    setPinned
+      .mockResolvedValueOnce({
+        ok: false,
+        error: {
+          code: "write_failed",
+          message: "The panel pin could not be saved.",
+          retryable: true,
+        },
+      })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            acknowledgeRetry = () =>
+              resolve({
+                ok: true,
+                value: {
+                  ...document,
+                  window: { ...document.window, pinned: true },
+                },
+              });
+          }),
+      );
+    render(<App />);
+
+    const pin = screen.getByRole("button", { name: "Pin panel" });
+    await user.click(pin);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "The panel pin could not be saved.",
+    );
+
+    fireEvent.click(pin);
+    fireEvent.keyDown(
+      screen.getByRole("option", { name: "Note: Captured note" }),
+      { key: "c", metaKey: true },
+    );
+    await vi.waitFor(() =>
+      expect(
+        globalThis.document.querySelector('[data-slot="toast"]'),
+      ).toHaveTextContent("Copied note."),
+    );
+
+    await act(async () => acknowledgeRetry?.());
+
+    expect(
+      globalThis.document.querySelector('[data-slot="toast"]'),
+    ).toHaveTextContent("Copied note.");
   });
 
   it("exposes persisted pinned state and requests an acknowledged unpin", async () => {

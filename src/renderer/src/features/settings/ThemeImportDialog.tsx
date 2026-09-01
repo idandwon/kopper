@@ -103,6 +103,9 @@ export function ThemeImportDialog({ api = window.kopper }: { api?: Pick<KopperAp
     if (didPreview) cancelPreview(previewOwner);
     setDidPreview(false);
     setPreview(null);
+    setMessage(null);
+    setError(false);
+    setImportError(null);
   };
 
   const applyPreview = () => {
@@ -114,7 +117,9 @@ export function ThemeImportDialog({ api = window.kopper }: { api?: Pick<KopperAp
   const save = async () => {
     if (preview === null || busy) return;
     setBusy(true);
+    setMessage(null);
     setError(false);
+    setImportError(null);
     const result = await savePreview(previewOwner, preview.theme);
     setBusy(false);
     switch (result.status) {

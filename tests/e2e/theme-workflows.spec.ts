@@ -177,7 +177,7 @@ test("contains non-sticky theme headings above a compact footer at 340x480", asy
 test("persists modes, presets, edited custom theme, and imported preview decisions", async ({
   kopper,
 }) => {
-  const page = await kopper.launchKopper();
+  let page = await kopper.launchKopper();
   await continueWithoutCaptureIfNeeded(page);
   await setSurfaceSize(page, 340, 480);
   await openAppearance(page);
@@ -249,6 +249,16 @@ test("persists modes, presets, edited custom theme, and imported preview decisio
   await page.getByRole("button", { name: "Activate Default", exact: true }).click();
   await expect(page.getByRole("button", { name: "Active Default", exact: true })).toBeVisible();
 
+  await kopper.closeKopper();
+  const beforeImport = await kopper.readPersistedDocument();
+  const preImportCustomThemeIds = new Set(
+    beforeImport.customThemes.map(({ id }) => id),
+  );
+  page = await kopper.relaunchKopper();
+  await continueWithoutCaptureIfNeeded(page);
+  await setSurfaceSize(page, 340, 480);
+  await openAppearance(page);
+
   await kopper.stubNextOpenDialog(exportedTheme);
   await page.getByRole("button", { name: "Import theme" }).click();
   const importDialog = page.getByRole("dialog", { name: "Default Custom" });
@@ -283,8 +293,10 @@ test("persists modes, presets, edited custom theme, and imported preview decisio
 
   await kopper.closeKopper();
   const persisted = await kopper.readPersistedDocument();
+  const importedThemeId = persisted.appearance.activeThemeId;
+  expect(preImportCustomThemeIds.has(importedThemeId)).toBe(false);
   const active = persisted.customThemes.find(
-    ({ id }) => id === persisted.appearance.activeThemeId,
+    ({ id }) => id === importedThemeId,
   );
   expect(active?.name).toBe("Default Custom");
   expect(active?.light.capture).toBe("#285F54");

@@ -154,4 +154,51 @@ describe("ThemeImportDialog", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("saved, but could not be activated");
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
+
+  it("clears a save failure when Cancel closes the import dialog", async () => {
+    const user = userEvent.setup();
+    savePreview.mockResolvedValueOnce({ status: "upsert_failed" });
+    render(<ThemeImportDialog api={api({ ok: true, value: preview })} />);
+    await user.click(screen.getByRole("button", { name: "Import theme" }));
+    await user.click(
+      screen.getByRole("button", { name: "Save imported theme" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("was not saved");
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByText(/was not saved/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("clears the previous failure while a save retry is pending", async () => {
+    let resolveRetry: ((value: { status: "saved" }) => void) | undefined;
+    savePreview
+      .mockResolvedValueOnce({ status: "upsert_failed" })
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveRetry = resolve;
+          }),
+      );
+    const user = userEvent.setup();
+    render(<ThemeImportDialog api={api({ ok: true, value: preview })} />);
+    await user.click(screen.getByRole("button", { name: "Import theme" }));
+    await user.click(
+      screen.getByRole("button", { name: "Save imported theme" }),
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("was not saved");
+
+    await user.click(
+      screen.getByRole("button", { name: "Save imported theme" }),
+    );
+
+    expect(screen.queryByText(/was not saved/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+
+    await act(async () => resolveRetry?.({ status: "saved" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
 });

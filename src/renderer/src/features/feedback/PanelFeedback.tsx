@@ -29,7 +29,8 @@ interface FeedbackNotice {
 }
 
 export interface PanelFeedbackValue {
-  reportNotice(message: string, tone?: "status" | "error"): void;
+  reportNotice(message: string, tone?: "status" | "error"): number;
+  dismissNotice(noticeId: number): void;
   reportClipboardResult(result: ClipboardCopyResult): void;
   reportClipboardUnavailable(): void;
 }
@@ -47,6 +48,7 @@ export function usePanelFeedback(): PanelFeedbackValue {
 export function PanelFeedbackProvider({ children }: { children: ReactNode }) {
   const [notice, setNotice] = useState<FeedbackNotice | null>(null);
   const noticeIdRef = useRef(0);
+  const activeNoticeIdRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearNoticeTimer = useCallback(() => {
@@ -59,16 +61,23 @@ export function PanelFeedbackProvider({ children }: { children: ReactNode }) {
     (message: string, tone: "status" | "error" = "status") => {
       clearNoticeTimer();
       noticeIdRef.current += 1;
-      setNotice({ id: noticeIdRef.current, message, tone });
+      const noticeId = noticeIdRef.current;
+      activeNoticeIdRef.current = noticeId;
+      setNotice({ id: noticeId, message, tone });
       timerRef.current = setTimeout(() => {
         timerRef.current = null;
+        if (activeNoticeIdRef.current !== noticeId) return;
+        activeNoticeIdRef.current = null;
         setNotice(null);
       }, tone === "error" ? ERROR_FEEDBACK_DURATION_MS : FEEDBACK_DURATION_MS);
+      return noticeId;
     },
     [clearNoticeTimer],
   );
 
-  const dismissNotice = useCallback(() => {
+  const dismissNotice = useCallback((noticeId: number) => {
+    if (activeNoticeIdRef.current !== noticeId) return;
+    activeNoticeIdRef.current = null;
     clearNoticeTimer();
     setNotice(null);
   }, [clearNoticeTimer]);
@@ -93,12 +102,23 @@ export function PanelFeedbackProvider({ children }: { children: ReactNode }) {
   }, [reportNotice]);
 
   const feedback = useMemo(
-    () => ({ reportNotice, reportClipboardResult, reportClipboardUnavailable }),
-    [reportNotice, reportClipboardResult, reportClipboardUnavailable],
+    () => ({
+      reportNotice,
+      dismissNotice,
+      reportClipboardResult,
+      reportClipboardUnavailable,
+    }),
+    [
+      reportNotice,
+      dismissNotice,
+      reportClipboardResult,
+      reportClipboardUnavailable,
+    ],
   );
 
   useEffect(
     () => () => {
+      activeNoticeIdRef.current = null;
       clearNoticeTimer();
     },
     [clearNoticeTimer],
@@ -121,7 +141,7 @@ export function PanelFeedbackProvider({ children }: { children: ReactNode }) {
             aria-atomic="true"
             className={errorNotice ? "border-destructive" : undefined}
             onOpenChange={(open) => {
-              if (!open) dismissNotice();
+              if (!open) dismissNotice(notice.id);
             }}
           >
             <ToastTitle>{notice.message}</ToastTitle>
